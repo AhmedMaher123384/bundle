@@ -341,6 +341,9 @@ function createApiRouter(config) {
     parts.push(`var merchantId=${JSON.stringify(merchantId)};`);
     parts.push(`var token=${JSON.stringify(token)};`);
     parts.push('var scriptSrc=(document.currentScript&&document.currentScript.src)||"";');
+    parts.push(
+      "if(!scriptSrc){try{var ss=document.getElementsByTagName(\"script\");for(var i=0;i<ss.length;i++){var s=ss[i];var src=(s&&s.src)||\"\";if(!src)continue;if(src.indexOf(\"/api/storefront/snippet.js\")!==-1&&src.indexOf(\"merchantId=\"+encodeURIComponent(merchantId))!==-1){scriptSrc=src;break}}}catch(e){}}"
+    );
     parts.push("var debug=false;try{debug=new URL(scriptSrc).searchParams.get(\"debug\")===\"1\"}catch(e){}");
     parts.push("function log(){if(!debug)return;try{console.log.apply(console,arguments)}catch(e){}}");
     parts.push("function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}");
@@ -384,6 +387,12 @@ function createApiRouter(config) {
     parts.push("g.BundleApp.getProductBundles=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getCartBanner=getCartBanner;");
     parts.push("g.BundleApp.refreshProduct=refreshProduct;");
+    parts.push(
+      "g.BundleApp.debugIds=function(){return{scriptSrc:scriptSrc,origin:getBackendOrigin(),variantId:findVariantId(),productId:findProductId()}};"
+    );
+    parts.push(
+      "g.BundleApp.renderTest=function(){renderProductBanner({bannerColor:\"#0ea5e9\",title:\"Bundle test\",cta:\"OK\",bundleItems:[]})};"
+    );
     parts.push("initAuto();");
     parts.push("})();");
     return parts.join("");
