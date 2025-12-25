@@ -325,6 +325,70 @@ function createApiRouter(config) {
     merchantId: Joi.string().trim().min(1).max(80).required()
   }).unknown(true);
 
+  function buildStorefrontSnippetJs(merchantId, token) {
+    return `(function(){try{var merchantId=${JSON.stringify(merchantId)};var token=${JSON.stringify(
+      token
+    )};var scriptSrc=(document.currentScript&&document.currentScript.src)||"";var debug=false;try{debug=new URL(scriptSrc).searchParams.get("debug")==="1"}catch(e){}function log(){if(!debug)return;try{console.log.apply(console,arguments)}catch(e){}}function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}function getBackendOrigin(){try{return new URL(scriptSrc).origin}catch(e){return""}}function findVariantId(){try{var url=new URL(window.location.href);var fromUrl=url.searchParams.get("variant_id")||url.searchParams.get("variantId")||url.searchParams.get("variant")||"";if(fromUrl)return String(fromUrl).trim();var el=document.querySelector('[name="variant_id"],[name="variantId"],[data-variant-id],input[name="variant_id"],select[name="variant_id"]');if(el){var v=el.getAttribute("data-variant-id")||el.value||"";v=String(v).trim();if(v)return v}var any=document.querySelector("[data-variant-id]");if(any){var a=String(any.getAttribute("data-variant-id")||"").trim();if(a)return a}return""}catch(e){return""}}function findProductId(){try{var path=String(window.location.pathname||"");var m=path.match(/\\/p(\\d+)(?:[/?#]|$)/);if(m&&m[1])return String(m[1]);var el=document.querySelector("[data-product-id],input[name=\\"product_id\\"],input[name=\\"productId\\"]");if(el){var v=el.getAttribute("data-product-id")||el.value||"";v=String(v).trim();if(v)return v}return""}catch(e){return""}}async function fetchJson(url,opts){var r=await fetch(url,opts);var t=await r.text();var j=null;try{j=t?JSON.parse(t):null}catch(e){throw new Error("Invalid JSON response")}if(!r.ok){var msg=(j&&j.message)||("HTTP "+r.status);var err=new Error(msg);err.status=r.status;err.details=j;throw err}return j}function buildUrl(path,params){var origin=getBackendOrigin();if(!origin)return null;var u=new URL(origin+path);for(var k in (params||{})){if(!Object.prototype.hasOwnProperty.call(params,k))continue;var v=params[k];if(v==null||v==="")continue;u.searchParams.set(k,String(v))}u.searchParams.set("merchantId",merchantId);u.searchParams.set("token",token);return u}async function getProductBundlesByVariantId(variantId){var v=String(variantId||"").trim();if(!v)return null;var u=buildUrl("/api/proxy/bundles/product",{variantId:v});if(!u)return null;return fetchJson(u.toString())}async function getProductBundlesByProductId(productId){var p=String(productId||"").trim();if(!p)return null;var u=buildUrl("/api/proxy/bundles/for-product",{productId:p});if(!u)return null;return fetchJson(u.toString())}async function getCartBanner(items){var payload={items:Array.isArray(items)?items:[]};if(!payload.items.length)return null;var u=buildUrl("/api/proxy/cart/banner",{});if(!u)return null;return fetchJson(u.toString(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})}function ensureStyles(){if(document.getElementById("bundle-app-style"))return;var s=document.createElement("style");s.id="bundle-app-style";s.textContent='.bundle-app-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999;border-radius:14px;padding:12px 14px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 10px 25px rgba(0,0,0,.18)}.bundle-app-row{display:flex;gap:10px;align-items:center;justify-content:space-between}.bundle-app-title{font-size:14px;font-weight:700;line-height:1.2}.bundle-app-sub{font-size:12px;opacity:.9;margin-top:2px}.bundle-app-btn{border:0;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.18);color:#fff}.bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}';document.head.appendChild(s)}function renderProductBanner(bundle){ensureStyles();var id="bundle-app-banner";var root=document.getElementById(id);if(!root){root=document.createElement("div");root.id=id;document.body.appendChild(root)}root.className="bundle-app-banner";root.style.background=String(bundle&&bundle.bannerColor||"#0ea5e9");var title=String(bundle&&bundle.title||"");var cta=String(bundle&&bundle.cta||"أضف الباقة");var html='<div class="bundle-app-row"><div><div class="bundle-app-title"></div><div class="bundle-app-sub"></div></div><button class="bundle-app-btn" type="button"></button></div>';root.innerHTML=html;root.querySelector(".bundle-app-title").textContent=title;root.querySelector(".bundle-app-sub").textContent="";var btn=root.querySelector(".bundle-app-btn");btn.textContent=cta;btn.onclick=async function(){try{btn.disabled=true;var items=(bundle&&bundle.bundleItems)||[];for(var i=0;i<items.length;i++){var it=items[i]||{};var pid=Number(it.productId);var qty=Math.max(1,Math.floor(Number(it.quantity||1)));if(!Number.isFinite(pid)||pid<=0)continue;if(window.salla&&window.salla.cart&&typeof window.salla.cart.addItem==="function"){await window.salla.cart.addItem({id:pid,quantity:qty})}}btn.disabled=false}catch(e){btn.disabled=false;warn("bundle-app: add-to-cart failed",e&&((e.details)||e.message||e))}}}function clearProductBanner(){var root=document.getElementById("bundle-app-banner");if(root)root.remove()}async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log("bundle-app: ids",{"variantId":variantId,"productId":productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanner(bundles[0])}catch(e){warn("bundle-app: refresh failed",e&&((e.details)||e.message||e));clearProductBanner()}}function initAuto(){var inited=false;function start(){if(inited)return;inited=true;refreshProduct();setInterval(refreshProduct,1500)}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start)}else{start()}}window.BundleApp=window.BundleApp||{};window.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;window.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;window.BundleApp.getCartBanner=getCartBanner;window.BundleApp.refreshProduct=refreshProduct;initAuto()}catch(e){}})();`;
+  }
+
+  void buildStorefrontSnippetJs;
+
+  function buildStorefrontSnippetJsV2(merchantId, token) {
+    const parts = [];
+    parts.push("(function(){");
+    parts.push("var g=null;try{g=globalThis}catch(e){g=window}if(!g)g=window;");
+    parts.push("g.BundleApp=g.BundleApp||{};");
+    parts.push(`var merchantId=${JSON.stringify(merchantId)};`);
+    parts.push(`var token=${JSON.stringify(token)};`);
+    parts.push('var scriptSrc=(document.currentScript&&document.currentScript.src)||"";');
+    parts.push("var debug=false;try{debug=new URL(scriptSrc).searchParams.get(\"debug\")===\"1\"}catch(e){}");
+    parts.push("function log(){if(!debug)return;try{console.log.apply(console,arguments)}catch(e){}}");
+    parts.push("function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}");
+    parts.push("function getBackendOrigin(){try{return new URL(scriptSrc).origin}catch(e){return\"\"}}");
+    parts.push(
+      "function findVariantId(){try{var url=new URL(window.location.href);var fromUrl=url.searchParams.get(\"variant_id\")||url.searchParams.get(\"variantId\")||url.searchParams.get(\"variant\")||\"\";if(fromUrl)return String(fromUrl).trim();var el=document.querySelector('[name=\"variant_id\"],[name=\"variantId\"],[data-variant-id],input[name=\"variant_id\"],select[name=\"variant_id\"]');if(el){var v=el.getAttribute(\"data-variant-id\")||el.value||\"\";v=String(v).trim();if(v)return v}var any=document.querySelector(\"[data-variant-id]\");if(any){var a=String(any.getAttribute(\"data-variant-id\")||\"\").trim();if(a)return a}return\"\"}catch(e){return\"\"}}"
+    );
+    parts.push(
+      "function findProductId(){try{var path=String(window.location.pathname||\"\");var m=path.match(/\\/p(\\d+)(?:[/?#]|$)/);if(m&&m[1])return String(m[1]);var el=document.querySelector(\"[data-product-id],input[name=\\\"product_id\\\"],input[name=\\\"productId\\\"]\");if(el){var v=el.getAttribute(\"data-product-id\")||el.value||\"\";v=String(v).trim();if(v)return v}return\"\"}catch(e){return\"\"}}"
+    );
+    parts.push(
+      "async function fetchJson(url,opts){var r=await fetch(url,opts);var t=await r.text();var j=null;try{j=t?JSON.parse(t):null}catch(e){throw new Error(\"Invalid JSON response\")}if(!r.ok){var msg=(j&&j.message)||(\"HTTP \"+r.status);var err=new Error(msg);err.status=r.status;err.details=j;throw err}return j}"
+    );
+    parts.push(
+      "function buildUrl(path,params){var origin=getBackendOrigin();if(!origin)return null;var u=new URL(origin+path);for(var k in (params||{})){if(!Object.prototype.hasOwnProperty.call(params,k))continue;var v=params[k];if(v==null||v===\"\")continue;u.searchParams.set(k,String(v))}u.searchParams.set(\"merchantId\",merchantId);u.searchParams.set(\"token\",token);return u.toString()}"
+    );
+    parts.push(
+      "async function getProductBundlesByVariantId(variantId){var v=String(variantId||\"\").trim();if(!v)return null;var u=buildUrl(\"/api/proxy/bundles/product\",{variantId:v});if(!u)return null;return fetchJson(u)}"
+    );
+    parts.push(
+      "async function getProductBundlesByProductId(productId){var p=String(productId||\"\").trim();if(!p)return null;var u=buildUrl(\"/api/proxy/bundles/for-product\",{productId:p});if(!u)return null;return fetchJson(u)}"
+    );
+    parts.push(
+      "async function getCartBanner(items){var payload={items:Array.isArray(items)?items:[]};if(!payload.items.length)return null;var body=JSON.stringify(payload);var u=buildUrl(\"/api/proxy/cart/banner\",{});if(!u)return null;return fetchJson(u,{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:body})}"
+    );
+    parts.push(
+      "function ensureStyles(){if(document.getElementById(\"bundle-app-style\"))return;var s=document.createElement(\"style\");s.id=\"bundle-app-style\";s.textContent='.bundle-app-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999;border-radius:14px;padding:12px 14px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 10px 25px rgba(0,0,0,.18)}.bundle-app-row{display:flex;gap:10px;align-items:center;justify-content:space-between}.bundle-app-title{font-size:14px;font-weight:700;line-height:1.2}.bundle-app-sub{font-size:12px;opacity:.9;margin-top:2px}.bundle-app-btn{border:0;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.18);color:#fff}.bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}';document.head.appendChild(s)}"
+    );
+    parts.push(
+      "function renderProductBanner(bundle){ensureStyles();var id=\"bundle-app-banner\";var root=document.getElementById(id);if(!root){root=document.createElement(\"div\");root.id=id;document.body.appendChild(root)}root.className=\"bundle-app-banner\";root.style.background=String(bundle&&bundle.bannerColor||\"#0ea5e9\");var title=String(bundle&&bundle.title||\"\");var cta=String(bundle&&bundle.cta||\"أضف الباقة\");var html='<div class=\"bundle-app-row\"><div><div class=\"bundle-app-title\"></div><div class=\"bundle-app-sub\"></div></div><button class=\"bundle-app-btn\" type=\"button\"></button></div>';root.innerHTML=html;root.querySelector(\".bundle-app-title\").textContent=title;root.querySelector(\".bundle-app-sub\").textContent=\"\";var btn=root.querySelector(\".bundle-app-btn\");btn.textContent=cta;btn.onclick=async function(){try{btn.disabled=true;var items=(bundle&&bundle.bundleItems)||[];for(var i=0;i<items.length;i++){var it=items[i]||{};var pid=Number(it.productId);var qty=Math.max(1,Math.floor(Number(it.quantity||1)));if(!Number.isFinite(pid)||pid<=0)continue;if(window.salla&&window.salla.cart&&typeof window.salla.cart.addItem===\"function\"){await window.salla.cart.addItem({id:pid,quantity:qty})}}btn.disabled=false}catch(e){btn.disabled=false;warn(\"bundle-app: add-to-cart failed\",e&&((e.details)||e.message||e))}}}"
+    );
+    parts.push("function clearProductBanner(){var root=document.getElementById(\"bundle-app-banner\");if(root)root.remove()}");
+    parts.push(
+      "async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanner(bundles[0])}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}}"
+    );
+    parts.push(
+      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;refreshProduct();setInterval(refreshProduct,1500)}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+    );
+    parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
+    parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");
+    parts.push("g.BundleApp.getProductBundles=getProductBundlesByVariantId;");
+    parts.push("g.BundleApp.getCartBanner=getCartBanner;");
+    parts.push("g.BundleApp.refreshProduct=refreshProduct;");
+    parts.push("initAuto();");
+    parts.push("})();");
+    return parts.join("");
+  }
+
   router.get("/storefront/snippet.js", async (req, res, next) => {
     try {
       const { error, value } = storefrontSnippetQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
@@ -374,6 +438,7 @@ function createApiRouter(config) {
         "window.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;window.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;window.BundleApp.getProductBundles=getProductBundlesByVariantId;"
       );
 
+      js = buildStorefrontSnippetJsV2(merchantId, token);
       return res.send(js);
     } catch (err) {
       return next(err);
