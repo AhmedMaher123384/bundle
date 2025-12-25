@@ -1,0 +1,104 @@
+const express = require("express");
+const Joi = require("joi");
+const { createBundleController } = require("../controllers/bundle.controller");
+const { validate } = require("../middlewares/validate.middleware");
+
+const componentSchema = Joi.object({
+  variantId: Joi.string().trim().min(1).max(120).required(),
+  quantity: Joi.number().integer().min(1).max(999).required(),
+  group: Joi.string().trim().min(1).max(50).required()
+});
+
+const tierSchema = Joi.object({
+  minQty: Joi.number().integer().min(1).max(999).required(),
+  type: Joi.string().valid("fixed", "percentage", "bundle_price").required(),
+  value: Joi.number().min(0).required()
+});
+
+const rulesSchema = Joi.object({
+  type: Joi.string().valid("fixed", "percentage", "bundle_price").required(),
+  value: Joi.number().min(0).required(),
+  tiers: Joi.array().items(tierSchema).min(1),
+  eligibility: Joi.object({
+    mustIncludeAllGroups: Joi.boolean().default(true),
+    minCartQty: Joi.number().integer().min(1).default(1)
+  }).default({ mustIncludeAllGroups: true, minCartQty: 1 }),
+  limits: Joi.object({
+    maxUsesPerOrder: Joi.number().integer().min(1).max(50).default(1)
+  }).default({ maxUsesPerOrder: 1 })
+});
+
+const presentationSchema = Joi.object({
+  coverVariantId: Joi.string().trim().min(1).max(120).allow(null, "")
+}).default({});
+
+const createBundleSchema = Joi.object({
+  version: Joi.number().integer().valid(1).default(1),
+  name: Joi.string().trim().min(1).max(200).required(),
+  status: Joi.string().valid("draft", "active", "paused").default("draft"),
+  components: Joi.array().items(componentSchema).min(1).required(),
+  rules: rulesSchema.required(),
+  presentation: presentationSchema
+});
+
+const updateBundleSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(200),
+  status: Joi.string().valid("draft", "active", "paused"),
+  components: Joi.array().items(componentSchema).min(1),
+  rules: rulesSchema,
+  presentation: presentationSchema
+}).min(1);
+
+const listQuerySchema = Joi.object({
+  status: Joi.string().valid("draft", "active", "paused")
+});
+
+const evaluateQuerySchema = Joi.object({
+  createCoupon: Joi.boolean().default(false)
+});
+
+const cartItemsSchema = Joi.array()
+  .items(
+    Joi.object({
+      variantId: Joi.string().trim().min(1).required(),
+      quantity: Joi.number().integer().min(1).required()
+    })
+  )
+  .min(1)
+  .required();
+
+const evaluateSchema = Joi.object({
+  items: cartItemsSchema
+});
+
+const previewSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(200).allow(""),
+  components: Joi.array().items(componentSchema).min(1).required(),
+  rules: rulesSchema.required(),
+  presentation: presentationSchema,
+  items: cartItemsSchema
+});
+
+function createBundleRouter(config) {
+  const router = express.Router();
+  const bundleController = createBundleController(config);
+
+  router.post("/", validate(createBundleSchema, "body"), bundleController.createBundle);
+  router.get("/", validate(listQuerySchema, "query"), bundleController.listBundles);
+  router.post("/preview", validate(previewSchema, "body"), bundleController.previewBundle);
+  router.patch("/:id", validate(updateBundleSchema, "body"), bundleController.updateBundle);
+  router.delete("/:id", bundleController.deleteBundle);
+  router.post(
+    "/evaluate",
+    validate(evaluateQuerySchema, "query"),
+    validate(evaluateSchema, "body"),
+    bundleController.evaluateBundles
+  );
+  router.post("/cart-banner", validate(evaluateSchema, "body"), bundleController.cartBanner);
+
+  return router;
+}
+
+module.exports = {
+  createBundleRouter
+};
