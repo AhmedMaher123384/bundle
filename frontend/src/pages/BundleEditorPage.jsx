@@ -186,7 +186,7 @@ export function BundleEditorPage({ mode }) {
     if (name.trim()) return
     const productName = String(product?.name ?? product?.title ?? '').trim()
     if (!productName) return
-    setName(`Bundle - ${productName}`)
+    setName(`باقة - ${productName}`)
   }, [name, product])
 
   const baseVariantLabel = useMemo(() => {
