@@ -345,6 +345,8 @@ function createApiRouter(config) {
       res.type("js");
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
 
       const js = `(function(){var merchantId=${JSON.stringify(merchantId)};var token=${JSON.stringify(
         token

@@ -8,6 +8,13 @@ export class HttpError extends Error {
   }
 }
 
+const ENV_API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+const API_BASE_URL =
+  ENV_API_BASE_URL ||
+  (import.meta.env.PROD && window.location.hostname.endsWith('netlify.app')
+    ? 'https://bundle-phi.vercel.app'
+    : window.location.origin)
+
 function safeJsonParse(text) {
   try {
     return JSON.parse(text)
@@ -20,7 +27,7 @@ export async function requestJson(path, { method = 'GET', token, query, body, he
   // Single JSON client used across dashboard:
   // - Sends `Authorization: Bearer <merchantAccessToken>` when `token` exists
   // - Throws `HttpError` with normalized `{ status, code, details }` for toast + auth handling
-  const url = new URL(path, window.location.origin)
+  const url = new URL(path, API_BASE_URL)
   if (query && typeof query === 'object') {
     for (const [k, v] of Object.entries(query)) {
       if (v == null || v === '') continue
@@ -30,12 +37,13 @@ export async function requestJson(path, { method = 'GET', token, query, body, he
 
   let response
   try {
+    const ngrokHeaders = API_BASE_URL.includes('ngrok') ? { 'ngrok-skip-browser-warning': '1' } : {}
     response = await fetch(url.toString(), {
       method,
       headers: {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        'ngrok-skip-browser-warning': '1',
+        ...ngrokHeaders,
         ...(headers || {}),
       },
       body: body ? JSON.stringify(body) : undefined,

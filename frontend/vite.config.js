@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://d76e88236c49.ngrok-free.app',
+        target: 'https://bundle-phi.vercel.app/',
         changeOrigin: true,
       },
     },
