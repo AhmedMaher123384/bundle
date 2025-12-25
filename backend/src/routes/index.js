@@ -443,7 +443,7 @@ function createApiRouter(config) {
     hmac: Joi.string().trim().min(8)
   })
     .or("signature", "hmac", "token")
-    .unknown(true); 
+    .unknown(true);
 
   router.get("/stores/:storeId/bundles/for-product/:productId", validate(storeBundlesParamsSchema, "params"), async (req, res, next) => {
     try {
