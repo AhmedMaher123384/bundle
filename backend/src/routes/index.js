@@ -348,9 +348,31 @@ function createApiRouter(config) {
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
 
-      const js = `(function(){var merchantId=${JSON.stringify(merchantId)};var token=${JSON.stringify(
+      let js = `(function(){var merchantId=${JSON.stringify(merchantId)};var token=${JSON.stringify(
         token
       )};function getBackendOrigin(){try{var cs=document.currentScript;var src=(cs&&cs.src)||"";if(!src)return"";return new URL(src).origin}catch(e){return""}}function findVariantId(){try{var url=new URL(window.location.href);var fromUrl=url.searchParams.get("variant_id")||url.searchParams.get("variantId")||url.searchParams.get("variant")||"";if(fromUrl)return String(fromUrl).trim();var el=document.querySelector('[name="variant_id"],[name="variantId"],[data-variant-id],input[name="variant_id"],select[name="variant_id"]');if(el){var v=el.getAttribute("data-variant-id")||el.value||"";v=String(v).trim();if(v)return v}var any=document.querySelector('[data-variant-id]');if(any){var a=String(any.getAttribute("data-variant-id")||"").trim();if(a)return a}return""}catch(e){return""}}async function fetchJson(url,opts){var r=await fetch(url,opts);var t=await r.text();var j=null;try{j=t?JSON.parse(t):null}catch(e){throw new Error("Invalid JSON response")}if(!r.ok){var msg=(j&&j.message)||("HTTP "+r.status);var err=new Error(msg);err.status=r.status;err.details=j;throw err}return j}async function getProductBundles(variantId){var v=String(variantId||"").trim();if(!v)return null;var origin=getBackendOrigin();if(!origin)return null;var u=new URL(origin+"/api/proxy/bundles/product");u.searchParams.set("merchantId",merchantId);u.searchParams.set("variantId",v);u.searchParams.set("token",token);return fetchJson(u.toString())}async function getCartBanner(items){var origin=getBackendOrigin();if(!origin)return null;var payload={items:Array.isArray(items)?items:[]};if(!payload.items.length)return null;var body=JSON.stringify(payload);var u=new URL(origin+"/api/proxy/cart/banner");u.searchParams.set("merchantId",merchantId);u.searchParams.set("token",token);return fetchJson(u.toString(),{method:"POST",headers:{"Content-Type":"application/json"},body:body})}function ensureStyles(){if(document.getElementById("bundle-app-style"))return;var s=document.createElement("style");s.id="bundle-app-style";s.textContent='.bundle-app-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999;border-radius:14px;padding:12px 14px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 10px 25px rgba(0,0,0,.18)}.bundle-app-row{display:flex;gap:10px;align-items:center;justify-content:space-between}.bundle-app-title{font-size:14px;font-weight:700;line-height:1.2}.bundle-app-sub{font-size:12px;opacity:.9;margin-top:2px}.bundle-app-btn{border:0;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.18);color:#fff}.bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}';document.head.appendChild(s)}function renderProductBanner(bundle){ensureStyles();var id="bundle-app-banner";var root=document.getElementById(id);if(!root){root=document.createElement("div");root.id=id;document.body.appendChild(root)}root.className="bundle-app-banner";root.style.background=String(bundle&&bundle.bannerColor||"#0ea5e9");var title=String(bundle&&bundle.title||"");var cta=String(bundle&&bundle.cta||"أضف الباقة");var html='<div class="bundle-app-row"><div><div class="bundle-app-title"></div><div class="bundle-app-sub"></div></div><button class="bundle-app-btn" type="button"></button></div>';root.innerHTML=html;root.querySelector(".bundle-app-title").textContent=title;root.querySelector(".bundle-app-sub").textContent="";var btn=root.querySelector(".bundle-app-btn");btn.textContent=cta;btn.onclick=async function(){try{btn.disabled=true;var items=(bundle&&bundle.bundleItems)||[];for(var i=0;i<items.length;i++){var it=items[i]||{};var pid=Number(it.productId);var qty=Math.max(1,Math.floor(Number(it.quantity||1)));if(!Number.isFinite(pid)||pid<=0)continue;if(window.salla&&window.salla.cart&&typeof window.salla.cart.addItem==="function"){await window.salla.cart.addItem({id:pid,quantity:qty})}}btn.disabled=false}catch(e){btn.disabled=false}}}function clearProductBanner(){var root=document.getElementById("bundle-app-banner");if(root)root.remove()}async function refreshProduct(){try{var variantId=findVariantId();if(!variantId){clearProductBanner();return}var res=await getProductBundles(variantId);var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanner(bundles[0])}catch(e){}}function initAuto(){var inited=false;function start(){if(inited)return;inited=true;refreshProduct();setInterval(refreshProduct,1500)}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start)}else{start()}}window.BundleApp=window.BundleApp||{};window.BundleApp.getProductBundles=getProductBundles;window.BundleApp.getCartBanner=getCartBanner;window.BundleApp.refreshProduct=refreshProduct;initAuto();})();`;
+
+      js = js.replace(
+        "async function fetchJson(url,opts){",
+        'function findProductId(){try{var m=String(window.location.pathname||"").match(/\\\\/p(\\\\d+)(?:[/?#]|$)/);if(m&&m[1])return String(m[1]);var el=document.querySelector("[data-product-id],input[name=\\"product_id\\"],input[name=\\"productId\\"]");if(el){var v=el.getAttribute("data-product-id")||el.value||"";v=String(v).trim();if(v)return v}return""}catch(e){return""}}async function fetchJson(url,opts){'
+      );
+
+      js = js.replace("async function getProductBundles(variantId){", "async function getProductBundlesByVariantId(variantId){");
+
+      js = js.replace(
+        "async function getCartBanner(items){",
+        'async function getProductBundlesByProductId(productId){var p=String(productId||"").trim();if(!p)return null;var origin=getBackendOrigin();if(!origin)return null;var u=new URL(origin+"/api/proxy/bundles/for-product");u.searchParams.set("merchantId",merchantId);u.searchParams.set("productId",p);u.searchParams.set("token",token);return fetchJson(u.toString())}async function getCartBanner(items){'
+      );
+
+      js = js.replace(
+        "async function refreshProduct(){try{var variantId=findVariantId();if(!variantId){clearProductBanner();return}var res=await getProductBundles(variantId);var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanner(bundles[0])}catch(e){}}",
+        "async function refreshProduct(){try{var variantId=findVariantId();var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else{var productId=findProductId();if(!productId){clearProductBanner();return}res=await getProductBundlesByProductId(productId)}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanner(bundles[0])}catch(e){}}"
+      );
+
+      js = js.replace(
+        "window.BundleApp.getProductBundles=getProductBundles;",
+        "window.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;window.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;window.BundleApp.getProductBundles=getProductBundlesByVariantId;"
+      );
 
       return res.send(js);
     } catch (err) {
@@ -426,6 +448,73 @@ function createApiRouter(config) {
         bundles: safeBundles,
         validation: {
           missing: combinedMissing,
+          inactive: inactiveVariantIds
+        }
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyProductByProductIdQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    productId: Joi.string().trim().min(1).max(120).required(),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.get("/proxy/bundles/for-product", async (req, res, next) => {
+    try {
+      const { error, value } = proxyProductByProductIdQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      await ensureMerchantTokenFresh(merchant);
+
+      const triggerProductId = String(value.productId || "").trim();
+      const bundles = triggerProductId ? await bundleService.getBundlesForProduct(merchant.merchantId, triggerProductId) : [];
+
+      const componentVariantIds = Array.from(
+        new Set(
+          bundles
+            .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+            .map((c) => String(c?.variantId || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const componentReport = componentVariantIds.length
+        ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, componentVariantIds, { concurrency: 4, maxAttempts: 3 })
+        : { snapshots: new Map(), missing: [] };
+
+      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, componentReport.snapshots, triggerProductId));
+
+      const inactiveVariantIds = Array.from(componentReport.snapshots.values())
+        .filter((s) => s?.isActive !== true)
+        .map((s) => String(s?.variantId || "").trim())
+        .filter(Boolean);
+
+      return res.json({
+        ok: true,
+        merchantId: String(value.merchantId),
+        productId: triggerProductId,
+        triggerProductId,
+        bundles: safeBundles,
+        validation: {
+          missing: componentReport.missing || [],
           inactive: inactiveVariantIds
         }
       });
