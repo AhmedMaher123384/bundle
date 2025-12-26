@@ -410,13 +410,16 @@ function createApiRouter(config) {
       "function buildCartItems(bundle,baseQty){var comps=(bundle&&bundle.components)||[];if(!Array.isArray(comps)||!comps.length){comps=(bundle&&bundle.bundleItems)||[]}var out=[];for(var i=0;i<comps.length;i++){var c=comps[i]||{};var v=String(c.variantId||\"\").trim();var pid=String(c.productId||\"\").trim();var isBase=Boolean(c.isBase);var q=isBase?Math.max(1,Math.floor(Number(baseQty||1))):Math.max(1,Math.floor(Number(c.quantity||1)));if(v)out.push({variantId:v,productId:pid||null,quantity:q,isBase:isBase})}return out}"
     );
     parts.push(
-      "async function tryApplyCoupon(code){var c=String(code||\"\").trim();if(!c)return false;try{var cart=window.salla&&window.salla.cart;if(cart&&typeof cart.applyCoupon===\"function\"){await cart.applyCoupon(c);return true}if(cart&&cart.coupon&&typeof cart.coupon.apply===\"function\"){await cart.coupon.apply(c);return true}if(window.salla&&typeof window.salla.applyCoupon===\"function\"){await window.salla.applyCoupon(c);return true}}catch(e){}return false}"
+      "async function tryApplyCoupon(code){var c=String(code||\"\").trim();if(!c)return false;function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}for(var attempt=0;attempt<6;attempt++){try{var cart=window.salla&&window.salla.cart;var applied=false;if(cart&&typeof cart.applyCoupon===\"function\"){await cart.applyCoupon(c);applied=true}else if(cart&&cart.coupon&&typeof cart.coupon.apply===\"function\"){await cart.coupon.apply(c);applied=true}else if(cart&&cart.coupon&&typeof cart.coupon.set===\"function\"){await cart.coupon.set(c);applied=true}else if(cart&&typeof cart.setCoupon===\"function\"){await cart.setCoupon(c);applied=true}else if(cart&&typeof cart.addCoupon===\"function\"){await cart.addCoupon(c);applied=true}else if(window.salla&&typeof window.salla.applyCoupon===\"function\"){await window.salla.applyCoupon(c);applied=true}else if(window.salla&&window.salla.coupon&&typeof window.salla.coupon.apply===\"function\"){await window.salla.coupon.apply(c);applied=true}if(applied)return true}catch(e){warn(\"bundle-app: coupon apply failed\",e&&((e.details)||e.message||e))}await sleep(400+attempt*250)}return false}"
     );
     parts.push(
-      "function savePendingCoupon(code){try{var c=String(code||\"\").trim();if(c)localStorage.setItem(\"bundle_app_pending_coupon\",c)}catch(e){}}"
+      "function pendingCouponKey(){return \"bundle_app_pending_coupon:\"+String(merchantId||\"\")}"
     );
     parts.push(
-      "async function applyPendingCoupon(){try{var c=localStorage.getItem(\"bundle_app_pending_coupon\");if(!c)return;var ok=await tryApplyCoupon(c);if(ok)localStorage.removeItem(\"bundle_app_pending_coupon\")}catch(e){}}"
+      "function savePendingCoupon(code){try{var c=String(code||\"\").trim();if(!c)return;localStorage.setItem(pendingCouponKey(),c)}catch(e){}}"
+    );
+    parts.push(
+      "async function applyPendingCoupon(){try{var k=pendingCouponKey();var c=localStorage.getItem(k)||localStorage.getItem(\"bundle_app_pending_coupon\");if(!c)return;var ok=await tryApplyCoupon(c);if(ok){localStorage.removeItem(k);try{localStorage.removeItem(\"bundle_app_pending_coupon\")}catch(e){}}}catch(e){}}"
     );
     parts.push(
       "async function addItemsToCart(items){var cart=window.salla&&window.salla.cart;if(!cart||typeof cart.addItem!==\"function\")throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var pidNum=Number(it.productId);try{if(it.productId&&Number.isFinite(pidNum)&&pidNum>0){await cart.addItem({id:pidNum,quantity:qty});continue}await cart.addItem({id:String(it.variantId),quantity:qty})}catch(e){try{await cart.addItem({id:String(it.variantId),quantity:qty})}catch(e2){throw e2}}}}"
@@ -432,7 +435,7 @@ function createApiRouter(config) {
       "async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanners(bundles)}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}}"
     );
     parts.push(
-      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct();setInterval(refreshProduct,1500)}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct();setInterval(function(){applyPendingCoupon();refreshProduct()},1500);try{window.addEventListener(\"focus\",applyPendingCoupon);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")applyPendingCoupon()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
     );
     parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");

@@ -367,12 +367,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const bundles = await loadActiveBundlesForStore(storeId);
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
-  const cartProductIds = new Set();
-  for (const it of normalized) {
-    const snap = variantSnapshotById?.get ? variantSnapshotById.get(String(it.variantId)) : null;
-    const pid = String(snap?.productId || "").trim();
-    if (pid) cartProductIds.add(pid);
-  }
 
   const evaluations = [];
   const appliedBundles = [];
@@ -380,19 +374,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const appliedProductIds = new Set();
 
   for (const bundle of bundles) {
-    const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    if (triggerProductId && !cartProductIds.has(triggerProductId)) {
-      evaluations.push({
-        bundle,
-        matched: false,
-        applied: false,
-        uses: 0,
-        discountAmount: 0,
-        matchedVariants: [],
-        matchedProductIds: []
-      });
-      continue;
-    }
     const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
     const matched = applications.length > 0;
     const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
