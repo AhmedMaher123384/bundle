@@ -220,6 +220,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
       const matchedProductIds = Array.from(new Set(selection.map((s) => String(s.productId)).filter(Boolean)));
 
       applications.push({
+        appliedRule: { type: rules.type, value: rules.value, minQty: rules.eligibility.minCartQty },
         selection: selection.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
         matchedVariants,
         matchedProductIds,
@@ -266,14 +267,15 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
     const matchedVariants = Array.from(new Set(best.selection.map((s) => String(s.variantId)).filter(Boolean)));
     const matchedProductIds = Array.from(new Set(best.selection.map((s) => String(s.productId)).filter(Boolean)));
 
-    applications.push({
-      tier: { minQty: best.tier.minQty, type: best.tier.type, value: best.tier.value },
-      selection: best.selection.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
-      matchedVariants,
-      matchedProductIds,
-      subtotal: best.subtotal,
-      discountAmount: best.discountAmount
-    });
+            applications.push({
+              tier: { minQty: best.tier.minQty, type: best.tier.type, value: best.tier.value },
+              appliedRule: { type: best.tier.type, value: best.tier.value, minQty: best.tier.minQty },
+              selection: best.selection.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
+              matchedVariants,
+              matchedProductIds,
+              subtotal: best.subtotal,
+              discountAmount: best.discountAmount
+            });
   }
 
   return applications;
@@ -382,6 +384,21 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     const matchedProductIds = Array.from(new Set(applications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
     for (const pid of matchedProductIds) appliedProductIds.add(pid);
 
+    const appliedRules = [];
+    const appliedRuleKeys = new Set();
+    for (const app of applications) {
+      const r = app?.appliedRule;
+      if (!r) continue;
+      const type = String(r.type || "").trim();
+      const value = Number(r.value);
+      const minQty = Math.max(1, Math.floor(Number(r.minQty || 1)));
+      if (!type || !Number.isFinite(value) || value < 0) continue;
+      const key = `${type}:${value}:${minQty}`;
+      if (appliedRuleKeys.has(key)) continue;
+      appliedRuleKeys.add(key);
+      appliedRules.push({ type, value, minQty });
+    }
+
     const applied = matched && discountAmount > 0;
     if (applied) {
       appliedBundles.push({
@@ -389,7 +406,8 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
         uses: applications.length,
         discountAmount: Number(discountAmount.toFixed(2)),
         matchedVariants,
-        matchedProductIds
+        matchedProductIds,
+        appliedRules
       });
       totalDiscount += discountAmount;
 
@@ -420,7 +438,23 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     applied: {
       bundles: appliedBundles,
       matchedProductIds: Array.from(appliedProductIds),
-      totalDiscount: appliedBundles.length ? Number(totalDiscount.toFixed(2)) : 0
+      totalDiscount: appliedBundles.length ? Number(totalDiscount.toFixed(2)) : 0,
+      rule: (() => {
+        const rules = [];
+        const keys = new Set();
+        for (const b of appliedBundles) {
+          for (const r of Array.isArray(b?.appliedRules) ? b.appliedRules : []) {
+            const type = String(r?.type || "").trim();
+            const value = Number(r?.value);
+            if (!type || !Number.isFinite(value) || value < 0) continue;
+            const key = `${type}:${value}`;
+            if (keys.has(key)) continue;
+            keys.add(key);
+            rules.push({ type, value });
+          }
+        }
+        return rules.length === 1 ? rules[0] : null;
+      })()
     }
   };
 }
