@@ -77,6 +77,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
+  const includeProductIdsNumeric = includeProductIds
+    .map((v) => Number.parseInt(String(v), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
 
   const appliedRule = evaluationResult?.applied?.rule || null;
   const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
@@ -97,7 +100,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: formatDateOnly(expiresAt),
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds
   };
   const fixedPayload = { ...basePayload, type: "fixed", amount: discountAmount };
   const percentagePayload = pct != null ? { ...basePayload, type: "percentage", amount: pct } : null;

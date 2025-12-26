@@ -10,6 +10,11 @@ const Bundle = require("../src/models/Bundle");
 const Log = require("../src/models/Log");
 
 describe("bundle.service.evaluateBundles", () => {
+  beforeEach(() => {
+    Bundle.find.mockReset();
+    Log.create.mockReset();
+  });
+
   test("applies percentage discount and returns matched product ids", async () => {
     const bundleDoc = {
       _id: "b1",
@@ -201,5 +206,78 @@ describe("bundle.service.evaluateBundles", () => {
     expect(result.applied.totalDiscount).toBe(30);
     expect(result.applied.matchedProductIds.sort()).toEqual(["p1", "p2"]);
     expect(result.applied.bundles).toHaveLength(1);
+  });
+
+  test("applies only one bundle per trigger product id", async () => {
+    const bundleA = {
+      _id: "b_a",
+      merchantId: "m1",
+      status: "active",
+      triggerProductId: "p_trigger",
+      name: "A",
+      components: [
+        { variantId: "v1", quantity: 1, group: "A" },
+        { variantId: "v2", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "percentage",
+        value: 10,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    const bundleB = {
+      _id: "b_b",
+      merchantId: "m1",
+      status: "active",
+      triggerProductId: "p_trigger",
+      name: "B",
+      components: [
+        { variantId: "v1", quantity: 1, group: "A" },
+        { variantId: "v2", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "fixed",
+        value: 20,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleA, bundleB])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([
+      ["v1", { variantId: "v1", productId: "p1", price: 100, isActive: true }],
+      ["v2", { variantId: "v2", productId: "p2", price: 50, isActive: true }]
+    ]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [
+        { variantId: "v1", quantity: 1 },
+        { variantId: "v2", quantity: 1 }
+      ],
+      variantSnapshotById
+    );
+
+    expect(result.applied.totalDiscount).toBe(20);
+    expect(result.applied.bundles).toHaveLength(1);
+    expect(result.applied.bundles[0].bundleId).toBe("b_b");
+    expect(Log.create).toHaveBeenCalledTimes(1);
   });
 });
