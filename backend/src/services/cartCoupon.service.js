@@ -22,9 +22,8 @@ function computeCartHash(items) {
 }
 
 function buildCouponCode(merchantId, cartHash) {
-  const codeHash = sha256Hex(`${merchantId}:${cartHash}`).slice(0, 10).toUpperCase();
-  const nonce = sha256Hex(`${Date.now()}:${Math.random()}`).slice(0, 6).toUpperCase();
-  return `BNDL${codeHash}${nonce}`;
+  const seed = `${merchantId}:${cartHash}:${Date.now()}:${Math.random()}`;
+  return `B${sha256Hex(seed).slice(0, 15).toUpperCase()}`;
 }
 
 function formatDateOnly(date) {
@@ -76,6 +75,10 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
+  const includeProductIdsNumeric = includeProductIds
+    .map((v) => Number.parseInt(String(v), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
   const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
@@ -95,7 +98,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: formatDateOnly(expiresAt),
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: includeProductIdsForApi
   };
   const preferPercentage = Boolean(pct != null);
 
@@ -139,7 +142,30 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
             created = true;
           } catch (e3) {
             if (e3 instanceof ApiError && e3.statusCode === 409) continue;
-            if (e3 instanceof ApiError && e3.statusCode === 422) return null;
+            if (e3 instanceof ApiError && e3.statusCode === 422) {
+              if (secondPayload.type === "fixed") {
+                const secondAmount = Number(secondPayload.amount);
+                const floored = Math.floor(secondAmount);
+                if (Number.isFinite(floored) && floored >= 1 && floored < secondAmount) {
+                  try {
+                    const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, {
+                      ...secondPayload,
+                      amount: floored
+                    });
+                    sallaCouponId = createdCouponResponse?.data?.id ?? null;
+                    created = true;
+                  } catch (e4) {
+                    if (e4 instanceof ApiError && e4.statusCode === 409) continue;
+                    if (e4 instanceof ApiError && e4.statusCode === 422) return null;
+                    throw e4;
+                  }
+                } else {
+                  return null;
+                }
+              } else {
+                return null;
+              }
+            }
             throw e3;
           }
         }

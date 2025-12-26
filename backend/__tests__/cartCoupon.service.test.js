@@ -56,7 +56,8 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
       { ttlHours: 24 }
     );
 
-    expect(record.code.startsWith("BNDL")).toBe(true);
+    expect(record.code.startsWith("B")).toBe(true);
+    expect(record.code.length).toBeLessThanOrEqual(16);
     expect(record.status).toBe("issued");
     expect(record.discountAmount).toBe(10);
     expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
