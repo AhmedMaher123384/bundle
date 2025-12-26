@@ -537,9 +537,7 @@ function createApiRouter(config) {
     parts.push(
       "function buildItemsText(bundle,baseQty){var comps=(bundle&&bundle.components)||[];if(!Array.isArray(comps)||!comps.length){comps=(bundle&&bundle.bundleItems)||[]}if(!Array.isArray(comps)||!comps.length)return\"\";var products=0;var totalQty=0;for(var i=0;i<comps.length;i++){var c=comps[i]||{};var pid=String(c.productId||\"\").trim();if(!pid)continue;products++;var isBase=Boolean(c.isBase);var q=isBase?Math.max(1,Math.floor(Number(baseQty||1))):Math.max(1,Math.floor(Number(c.quantity||1)));totalQty+=q}return \"عدد المنتجات: \"+fmtNum(products)+\" • إجمالي القطع: \"+fmtNum(totalQty)}"
     );
-    parts.push(
-      "function getDefaultMinQty(bundle){var tiers=bundle&&bundle.pricing&&bundle.pricing.tiers;if(Array.isArray(tiers)&&tiers.length){var m=Number(tiers[0]&&tiers[0].minQty)||1;for(var i=1;i<tiers.length;i++){var x=Number(tiers[i]&&tiers[i].minQty)||m;if(x<m)m=x}return Math.max(1,Math.floor(m))}return 1}"
-    );
+    parts.push("function getDefaultMinQty(bundle){return 1}");
     parts.push(
       "function pickMinQty(bundle,idx){var v=Number(selectedTierByBundle[idx]);if(Number.isFinite(v)&&v>=1)return Math.floor(v);return getDefaultMinQty(bundle)}"
     );
@@ -792,9 +790,7 @@ function createApiRouter(config) {
     parts.push(
       "function pctFrom(orig,final){var o=Number(orig),f=Number(final);if(!Number.isFinite(o)||!Number.isFinite(f)||o<=0)return null;var p=(1-(f/o))*100;return Math.max(0,Math.round(p))}"
     );
-    parts.push(
-      "function getDefaultMinQty(bundle){try{var tiers=(bundle&&bundle.offer&&bundle.offer.tiers)||[];if(!Array.isArray(tiers)||!tiers.length)return 1;var q=getPageQty();var best=null;for(var i=0;i<tiers.length;i++){var mq=Math.floor(Number(tiers[i]&&tiers[i].minQty||0));if(!Number.isFinite(mq)||mq<1)continue;if(mq<=q&&(best==null||mq>best))best=mq}if(best!=null)return best;var min=null;for(var j=0;j<tiers.length;j++){var x=Math.floor(Number(tiers[j]&&tiers[j].minQty||0));if(!Number.isFinite(x)||x<1)continue;if(min==null||x<min)min=x}return min!=null?min:1}catch(e){return 1}}"
-    );
+    parts.push("function getDefaultMinQty(bundle){return 1}");
     parts.push(
       "function pickMinQty(bundle){try{var bid=String(bundle&&bundle.id||\"\");var v=Number(selectedTierByBundleId[bid]);if(Number.isFinite(v)&&v>=1)return Math.floor(v);return getDefaultMinQty(bundle)}catch(e){return 1}}"
     );
