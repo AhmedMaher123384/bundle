@@ -167,8 +167,10 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
 
 function resolveBaseVariantId(bundle, components) {
   const cover = String(bundle?.presentation?.coverVariantId || "").trim();
-  if (cover) return cover;
-  return String(components?.[0]?.variantId || "").trim() || null;
+  const componentVariantIds = new Set((Array.isArray(components) ? components : []).map((c) => String(c?.variantId || "").trim()).filter(Boolean));
+  if (cover && componentVariantIds.has(cover)) return cover;
+  const first = (Array.isArray(components) ? components : []).map((c) => String(c?.variantId || "").trim()).find(Boolean);
+  return first || null;
 }
 
 function buildGroupMapForComponents(components, overridesByVariantId) {

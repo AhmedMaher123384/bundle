@@ -63,11 +63,57 @@ function createApiRouter(config) {
 
   function resolveBaseVariantIdFromBundle(bundle) {
     const cover = String(bundle?.presentation?.coverVariantId || "").trim();
-    if (cover) return cover;
-    const first = (Array.isArray(bundle?.components) ? bundle.components : [])
-      .map((c) => String(c?.variantId || "").trim())
-      .find(Boolean);
+    const componentVariantIds = new Set(
+      (Array.isArray(bundle?.components) ? bundle.components : []).map((c) => String(c?.variantId || "").trim()).filter(Boolean)
+    );
+    if (cover && componentVariantIds.has(cover)) return cover;
+    const first = (Array.isArray(bundle?.components) ? bundle.components : []).map((c) => String(c?.variantId || "").trim()).find(Boolean);
     return first || null;
+  }
+
+  function uniqStrings(values) {
+    return Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || "").trim()).filter(Boolean)));
+  }
+
+  function sortBundlesNewestFirst(bundles) {
+    return (Array.isArray(bundles) ? bundles : []).slice().sort((a, b) => {
+      const at = a?.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bt = b?.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      if (bt !== at) return bt - at;
+      return String(b?._id || "").localeCompare(String(a?._id || ""));
+    });
+  }
+
+  async function loadActiveBundlesForTriggerProduct(merchant, merchantAccessToken, triggerProductId) {
+    const storeId = String(merchant?.merchantId || "").trim();
+    const trigger = String(triggerProductId || "").trim();
+    if (!storeId || !trigger) return { bundles: [], coverReport: { snapshots: new Map(), missing: [] } };
+
+    const activeBundles = await bundleService.listBundles(storeId, { status: "active" });
+    const direct = activeBundles.filter((b) => String(b?.triggerProductId || "").trim() === trigger);
+
+    const coverVariantIdByBundleId = new Map();
+    for (const b of activeBundles) {
+      const coverVariantId = resolveBaseVariantIdFromBundle(b);
+      if (!coverVariantId) continue;
+      coverVariantIdByBundleId.set(String(b?._id), String(coverVariantId));
+    }
+    const coverVariantIds = uniqStrings(Array.from(coverVariantIdByBundleId.values()));
+    const coverReport = coverVariantIds.length
+      ? await fetchVariantsSnapshotReport(config.salla, merchantAccessToken, coverVariantIds, { concurrency: 5, maxAttempts: 3 })
+      : { snapshots: new Map(), missing: [] };
+
+    const byCover = activeBundles.filter((b) => {
+      const coverVariantId = coverVariantIdByBundleId.get(String(b?._id));
+      if (!coverVariantId) return false;
+      const snap = coverReport.snapshots.get(String(coverVariantId));
+      const pid = String(snap?.productId || "").trim();
+      return Boolean(pid && pid === trigger);
+    });
+
+    const byId = new Map();
+    for (const b of [...direct, ...byCover]) byId.set(String(b?._id), b);
+    return { bundles: sortBundlesNewestFirst(Array.from(byId.values())), coverReport };
   }
 
   function normalizeComponentsForStorefront(bundle, variantSnapshots) {
@@ -219,7 +265,7 @@ function createApiRouter(config) {
     const display = computeDisplay(bundle, offer, pricing);
     return {
       id: String(bundle?._id),
-      triggerProductId: String(bundle?.triggerProductId || triggerProductId || "").trim(),
+      triggerProductId: String(triggerProductId || bundle?.triggerProductId || "").trim(),
       title: display.title,
       cta: display.cta,
       bannerColor: display.bannerColor,
@@ -543,7 +589,9 @@ function createApiRouter(config) {
       const variantReport = await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, [value.variantId], { concurrency: 2, maxAttempts: 3 });
       const snap = variantReport.snapshots.get(String(value.variantId));
       const productId = String(snap?.productId || "").trim() || null;
-      const bundles = productId ? await bundleService.getBundlesForProduct(merchant.merchantId, productId) : [];
+      const { bundles, coverReport } = productId
+        ? await loadActiveBundlesForTriggerProduct(merchant, merchant.accessToken, productId)
+        : { bundles: [], coverReport: { snapshots: new Map(), missing: [] } };
 
       const componentVariantIds = Array.from(
         new Set(
@@ -560,7 +608,7 @@ function createApiRouter(config) {
 
       const combinedSnapshots = new Map(componentReport.snapshots);
       if (snap) combinedSnapshots.set(String(value.variantId), snap);
-      const combinedMissing = [...(variantReport.missing || []), ...(componentReport.missing || [])];
+      const combinedMissing = [...(variantReport.missing || []), ...(componentReport.missing || []), ...(coverReport?.missing || [])];
 
       const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, productId));
 
@@ -614,7 +662,9 @@ function createApiRouter(config) {
       await ensureMerchantTokenFresh(merchant);
 
       const triggerProductId = String(value.productId || "").trim();
-      const bundles = triggerProductId ? await bundleService.getBundlesForProduct(merchant.merchantId, triggerProductId) : [];
+      const { bundles, coverReport } = triggerProductId
+        ? await loadActiveBundlesForTriggerProduct(merchant, merchant.accessToken, triggerProductId)
+        : { bundles: [], coverReport: { snapshots: new Map(), missing: [] } };
 
       const componentVariantIds = Array.from(
         new Set(
@@ -643,7 +693,7 @@ function createApiRouter(config) {
         triggerProductId,
         bundles: safeBundles,
         validation: {
-          missing: componentReport.missing || [],
+          missing: [...(componentReport.missing || []), ...(coverReport?.missing || [])],
           inactive: inactiveVariantIds
         }
       });
@@ -688,7 +738,10 @@ function createApiRouter(config) {
 
       await ensureMerchantTokenFresh(merchant);
 
-      const bundles = await bundleService.getBundlesForProduct(String(req.params.storeId), String(req.params.productId));
+      const triggerProductId = String(req.params.productId || "").trim();
+      const { bundles, coverReport } = triggerProductId
+        ? await loadActiveBundlesForTriggerProduct(merchant, merchant.accessToken, triggerProductId)
+        : { bundles: [], coverReport: { snapshots: new Map(), missing: [] } };
       const componentVariantIds = Array.from(
         new Set(
           bundles
@@ -701,7 +754,6 @@ function createApiRouter(config) {
         ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, componentVariantIds, { concurrency: 4, maxAttempts: 3 })
         : { snapshots: new Map(), missing: [] };
 
-      const triggerProductId = String(req.params.productId || "").trim();
       const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, componentReport.snapshots, triggerProductId));
 
       const inactiveVariantIds = Array.from(componentReport.snapshots.values())
@@ -716,7 +768,7 @@ function createApiRouter(config) {
         triggerProductId,
         bundles: safeBundles,
         validation: {
-          missing: componentReport.missing || [],
+          missing: [...(componentReport.missing || []), ...(coverReport?.missing || [])],
           inactive: inactiveVariantIds
         }
       });

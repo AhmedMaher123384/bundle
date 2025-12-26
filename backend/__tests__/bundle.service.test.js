@@ -107,6 +107,52 @@ describe("bundle.service.evaluateBundles", () => {
     expect(result.applied.bundles).toHaveLength(1);
   });
 
+  test("tiered discount uses a component as base when coverVariantId isn't a component", async () => {
+    const bundleDoc = {
+      _id: "b_qty_cover_mismatch",
+      merchantId: "m1",
+      status: "active",
+      name: "Tiered Qty (cover mismatch)",
+      components: [{ variantId: "v1", quantity: 1, group: "A" }],
+      presentation: { coverVariantId: "v_missing" },
+      rules: {
+        type: "percentage",
+        value: 0,
+        tiers: [
+          { minQty: 2, type: "percentage", value: 10 },
+          { minQty: 3, type: "percentage", value: 30 }
+        ],
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 1 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleDoc])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([["v1", { variantId: "v1", productId: "p1", price: 100, isActive: true }]]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [{ variantId: "v1", quantity: 5 }],
+      variantSnapshotById
+    );
+
+    expect(result.applied.totalDiscount).toBe(110);
+    expect(result.applied.matchedProductIds.sort()).toEqual(["p1"]);
+    expect(result.applied.bundles).toHaveLength(1);
+  });
+
   test("supports bundle_price discount type", async () => {
     const bundleDoc = {
       _id: "b_price",
