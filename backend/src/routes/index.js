@@ -536,6 +536,26 @@ function createApiRouter(config) {
     parts.push(
       "async function requestApplyBundle(bundleId,items){var payload={bundleId:String(bundleId||\"\"),items:Array.isArray(items)?items:[]};var u=buildUrl(\"/api/proxy/bundles/apply\",{});if(!u)return null;return fetchJson(u,{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify(payload)})}"
     );
+    parts.push(
+      "async function getProductVariantsByProductId(productId){var p=String(productId||\"\").trim();if(!p)return null;var u=buildUrl(\"/api/proxy/products/variants\",{productId:p});if(!u)return null;return fetchJson(u)}"
+    );
+    parts.push("function isProductRef(variantId){return String(variantId||\"\").trim().indexOf(\"product:\")===0}");
+    parts.push("var variantsCacheByProductId={};");
+    parts.push(
+      "async function getCachedVariants(productId){var pid=String(productId||\"\").trim();if(!pid)return[];if(Object.prototype.hasOwnProperty.call(variantsCacheByProductId,pid))return variantsCacheByProductId[pid]||[];var res=await getProductVariantsByProductId(pid);var vars=(res&&res.variants)||[];variantsCacheByProductId[pid]=Array.isArray(vars)?vars:[];return variantsCacheByProductId[pid]}"
+    );
+    parts.push(
+      "function stringifyAttrs(attrs){try{if(!attrs||typeof attrs!==\"object\")return\"\";var parts=[];for(var k in attrs){if(!Object.prototype.hasOwnProperty.call(attrs,k))continue;var v=attrs[k];if(v==null)continue;var ks=String(k||\"\").trim();var vs=String(v||\"\").trim();if(!ks||!vs)continue;parts.push(ks+\": \"+vs)}return parts.join(\" • \")}catch(e){return\"\"}}"
+    );
+    parts.push(
+      "function variantLabel(v){var name=String(v&&v.name||\"\").trim();var attrs=stringifyAttrs(v&&v.attributes);var price=v&&v.price!=null?Number(v.price):null;var priceText=(Number.isFinite(price)&&price>=0)?(\" • \"+fmtMoney(price)):\"\";if(attrs)return (name||\"فاريانت\")+\" (\"+attrs+\")\"+priceText;return (name||\"فاريانت\")+priceText}"
+    );
+    parts.push(
+      "function openPickerModal(titleHtml,bodyHtml){var resolver=null;var wait=new Promise(function(r){resolver=r});var overlay=document.createElement(\"div\");overlay.id=\"bundle-app-modal\";overlay.style.position=\"fixed\";overlay.style.inset=\"0\";overlay.style.background=\"rgba(0,0,0,.45)\";overlay.style.zIndex=\"100000\";overlay.style.display=\"flex\";overlay.style.alignItems=\"center\";overlay.style.justifyContent=\"center\";overlay.style.padding=\"16px\";var card=document.createElement(\"div\");card.style.width=\"min(520px,100%)\";card.style.maxHeight=\"80vh\";card.style.overflow=\"auto\";card.style.background=\"#fff\";card.style.borderRadius=\"14px\";card.style.boxShadow=\"0 12px 40px rgba(0,0,0,.25)\";card.style.padding=\"12px\";card.innerHTML='<div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px\"><div style=\"font-weight:900;font-size:14px\">'+titleHtml+'</div><button type=\"button\" data-action=\"close\" style=\"border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer\">×</button></div><div style=\"margin-top:10px\">'+bodyHtml+'</div>';overlay.appendChild(card);function close(val){try{overlay.remove()}catch(e){}if(resolver){var r=resolver;resolver=null;r(val)}}overlay.addEventListener(\"click\",function(e){if(e.target===overlay)close(null)});var closeBtn=card.querySelector('button[data-action=\"close\"]');if(closeBtn)closeBtn.onclick=function(){close(null)};document.body.appendChild(overlay);return {overlay:overlay,card:card,close:close,wait:wait}}"
+    );
+    parts.push(
+      "async function resolveProductRefItems(items){var arr=Array.isArray(items)?items:[];var needs=[];var fixed=[];for(var i=0;i<arr.length;i++){var it=arr[i]||{};var v=String(it.variantId||\"\").trim();var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var pid=String(it.productId||\"\").trim();if(isProductRef(v)){if(!pid)return null;needs.push({productId:pid,quantity:qty})}else{if(!v)continue;fixed.push({variantId:v,quantity:qty})}}if(!needs.length)return fixed;var units=[];var uniqPid={};for(var j=0;j<needs.length;j++){var n=needs[j];var pid2=String(n.productId);uniqPid[pid2]=true;for(var u=0;u<Number(n.quantity||0);u++){units.push({productId:pid2,key:pid2+\":\"+u})}}var pidList=Object.keys(uniqPid);var varsByPid={};for(var p=0;p<pidList.length;p++){var pid3=pidList[p];var vars=await getCachedVariants(pid3);varsByPid[pid3]=Array.isArray(vars)?vars:[];if(!varsByPid[pid3].length)return null}var selectedByKey={};var pending=[];for(var k=0;k<units.length;k++){var unit=units[k];var vlist=(varsByPid[unit.productId]||[]).filter(function(x){return x&&x.isActive===true});if(vlist.length===1){selectedByKey[unit.key]=String(vlist[0].variantId||\"\").trim()}else{pending.push(unit)}}if(pending.length){var body='';for(var x=0;x<pending.length;x++){var un=pending[x];var opts=(varsByPid[un.productId]||[]).filter(function(y){return y&&y.isActive===true});body+='<div style=\"margin-bottom:10px;padding:10px;border:1px solid #e5e7eb;border-radius:12px\"><div style=\"font-weight:800;font-size:12px;margin-bottom:6px\">اختر الفاريانت (قطعة '+fmtNum(x+1)+')</div><select data-key=\"'+escHtml(un.key)+'\" style=\"width:100%;padding:10px;border-radius:10px;border:1px solid #d1d5db\">';body+='<option value=\"\">— اختر —</option>';for(var o=0;o<opts.length;o++){var vv=opts[o]||{};var vid=String(vv.variantId||\"\").trim();if(!vid)continue;body+='<option value=\"'+escHtml(vid)+'\">'+escHtml(variantLabel(vv))+'</option>'}body+='</select></div>'}body+='<div style=\"display:flex;gap:10px;justify-content:flex-end\"><button type=\"button\" data-action=\"cancel\" style=\"padding:10px 12px;border-radius:12px;border:1px solid #d1d5db;background:#fff;cursor:pointer\">إلغاء</button><button type=\"button\" data-action=\"confirm\" disabled style=\"padding:10px 12px;border-radius:12px;border:0;background:#111827;color:#fff;cursor:pointer;opacity:.6\">تأكيد</button></div>';var modal=openPickerModal('اختيار الفاريانت',body);if(!modal)return null;var card=modal.card;var confirm=card.querySelector('button[data-action=\"confirm\"]');var cancel=card.querySelector('button[data-action=\"cancel\"]');function recompute(){var selects=card.querySelectorAll('select[data-key]');var ok=true;for(var i2=0;i2<selects.length;i2++){var s=selects[i2];var val=String(s.value||\"\").trim();if(!val){ok=false;break}}if(confirm){confirm.disabled=!ok;confirm.style.opacity=ok?'1':'.6'}}card.addEventListener('change',function(e){var t=e&&e.target;if(!t||t.tagName!=='SELECT')return;var key=String(t.getAttribute('data-key')||\"\");if(!key)return;selectedByKey[key]=String(t.value||\"\").trim();recompute()});recompute();if(cancel)cancel.onclick=function(){modal.close(null)};if(confirm)confirm.onclick=function(){modal.close(true)};var done=await modal.wait;if(!done)return null}var count={};for(var kk in selectedByKey){if(!Object.prototype.hasOwnProperty.call(selectedByKey,kk))continue;var vid2=String(selectedByKey[kk]||\"\").trim();if(!vid2)continue;count[vid2]=(count[vid2]||0)+1}var out=fixed.slice();for(var vidKey in count){if(!Object.prototype.hasOwnProperty.call(count,vidKey))continue;out.push({variantId:String(vidKey),quantity:Math.max(1,Math.floor(Number(count[vidKey]||1)))})}out.sort(function(a,b){return String(a.variantId).localeCompare(String(b.variantId))});return out}"
+    );
     parts.push("var selectedBundleId=null;");
     parts.push("var lastTriggerProductId=null;");
     parts.push("var messageByBundleId={};");
@@ -611,10 +631,10 @@ function createApiRouter(config) {
       "async function tryClearCoupon(){try{var cart=window.salla&&window.salla.cart;if(cart&&cart.coupon&&typeof cart.coupon.remove===\"function\"){await cart.coupon.remove();return true}if(cart&&typeof cart.removeCoupon===\"function\"){await cart.removeCoupon();return true}if(cart&&typeof cart.clearCoupon===\"function\"){await cart.clearCoupon();return true}if(cart&&cart.coupon&&typeof cart.coupon.set===\"function\"){await cart.coupon.set(\"\");return true}if(cart&&typeof cart.applyCoupon===\"function\"){try{await cart.applyCoupon(\"\");return true}catch(e){}}}catch(e){warn(\"bundle-app: clear coupon failed\",e&&((e.details)||e.message||e))}return false}"
     );
     parts.push(
-      "async function addItemsToCart(items){var cart=window.salla&&window.salla.cart;if(!cart||typeof cart.addItem!==\"function\")throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var pidNum=Number(it.productId);try{if(it.productId&&Number.isFinite(pidNum)&&pidNum>0){await cart.addItem({id:pidNum,quantity:qty});continue}await cart.addItem({id:String(it.variantId),quantity:qty})}catch(e){try{await cart.addItem({id:String(it.variantId),quantity:qty})}catch(e2){throw e2}}}}"
+      "async function addItemsToCart(items){var cart=window.salla&&window.salla.cart;if(!cart||typeof cart.addItem!==\"function\")throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var vid=String(it.variantId||\"\").trim();if(!vid||isProductRef(vid))throw new Error(\"Missing or invalid variant selection\");try{await cart.addItem({id:vid,quantity:qty})}catch(e){try{await cart.addItem({id:vid,quantity:qty})}catch(e2){throw e2}}}}"
     );
     parts.push(
-      "async function removeItemsFromCart(items){var cart=window.salla&&window.salla.cart;if(!cart)throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var v=String(it.variantId||\"\").trim();var pid=String(it.productId||\"\").trim();var pidNum=Number(pid);try{if(cart&&typeof cart.removeItem===\"function\"){if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.removeItem(pidNum)}else if(v){await cart.removeItem(v)}continue}if(cart&&typeof cart.deleteItem===\"function\"){if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.deleteItem(pidNum)}else if(v){await cart.deleteItem(v)}continue}if(cart&&typeof cart.updateItem===\"function\"){if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.updateItem({id:pidNum,quantity:0})}else if(v){await cart.updateItem({id:v,quantity:0})}continue}if(cart&&typeof cart.setItemQuantity===\"function\"){if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.setItemQuantity(pidNum,0)}else if(v){await cart.setItemQuantity(v,0)}continue}}catch(e){warn(\"bundle-app: remove item failed\",e&&((e.details)||e.message||e))}}}"
+      "async function removeItemsFromCart(items){var cart=window.salla&&window.salla.cart;if(!cart)throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var v=String(it.variantId||\"\").trim();var pid=String(it.productId||\"\").trim();var pidNum=Number(pid);try{if(cart&&typeof cart.removeItem===\"function\"){if(v){await cart.removeItem(v)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.removeItem(pidNum)}continue}if(cart&&typeof cart.deleteItem===\"function\"){if(v){await cart.deleteItem(v)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.deleteItem(pidNum)}continue}if(cart&&typeof cart.updateItem===\"function\"){if(v){await cart.updateItem({id:v,quantity:0})}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.updateItem({id:pidNum,quantity:0})}continue}if(cart&&typeof cart.setItemQuantity===\"function\"){if(v){await cart.setItemQuantity(v,0)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.setItemQuantity(pidNum,0)}continue}}catch(e){warn(\"bundle-app: remove item failed\",e&&((e.details)||e.message||e))}}}"
     );
     parts.push(
       "async function applyPendingCouponForCart(){if(!isCartLikePage())return;try{var trigger=String(lastTriggerProductId||\"\");if(!trigger)return;var pending=loadPendingCoupon(trigger);if(!pending||!pending.code)return;var ts=Number(pending.ts||0);if(!Number.isFinite(ts)||ts<=0||Date.now()-ts>10*60*1000){clearPendingCoupon(trigger);return}var ok=await tryApplyCoupon(pending.code);if(ok){clearPendingCoupon(trigger)}}catch(e){}}"
@@ -650,7 +670,7 @@ function createApiRouter(config) {
       "function renderProductBanners(bundles){ensureStyles();var id=\"bundle-app-banner\";var root=document.getElementById(id);if(!root){root=document.createElement(\"div\");root.id=id}mountBanner(root);var arr=Array.isArray(bundles)?bundles:[];if(!arr.length){clearProductBanner();return}var trigger=String(arr[0]&&arr[0].triggerProductId||\"\");lastTriggerProductId=trigger||lastTriggerProductId;if(!selectedBundleId&&arr[0]&&arr[0].id)selectedBundleId=String(arr[0].id||\"\");var html='';for(var i=0;i<arr.length;i++){var b=arr[i]||{};var bid=String(b.id||\"\");var color=String(b.bannerColor||\"#0ea5e9\");var title=normalizeTitle(b.title);var selectedMinQty=pickMinQty(b);var items=normalizeItems(b);var itemsText=items.length?buildItemsText(items):'';var priceText=buildPriceText(b);var tiersHtml=buildTierRows(b,bid,selectedMinQty);var msg=String(messageByBundleId[bid]||\"\");var checked=bid===String(selectedBundleId||\"\");var cls='bundle-app-card'+(checked?' bundle-app-card--selected':'');var btnLabel='أضف الباقة';if(tiersHtml){btnLabel=btnLabel+' ('+fmtNum(Math.max(getPageQty(),Math.max(minRequiredBaseQty(b),selectedMinQty)))+' قطع)'}html+='<div class=\"'+cls+'\" style=\"background:'+escHtml(color)+'\" data-bundle-id=\"'+escHtml(bid)+'\"><div class=\"bundle-app-row\"><label class=\"bundle-app-choice\"><input class=\"bundle-app-radio\" type=\"radio\" name=\"bundle_app_choice\" value=\"'+escHtml(bid)+'\" '+(checked?'checked':'')+' /><div><div class=\"bundle-app-title\">'+escHtml(title)+'</div>'+(itemsText?('<div class=\"bundle-app-items\">'+escHtml(itemsText)+'</div>'):'')+(priceText?('<div class=\"bundle-app-price\">'+escHtml(priceText)+'</div>'):'')+(msg?('<div class=\"bundle-app-msg\">'+escHtml(msg)+'</div>'):'')+'</div></label><button class=\"bundle-app-btn\" type=\"button\" data-action=\"apply-one\" data-bundle-id=\"'+escHtml(bid)+'\" '+(applying?'disabled':'')+'>'+escHtml(btnLabel)+'</button></div>'+(tiersHtml?('<div class=\"bundle-app-tiers\">'+tiersHtml+'</div>'):'')+'</div>'}root.innerHTML=html;var radios=root.querySelectorAll('input.bundle-app-radio[name=\"bundle_app_choice\"]');for(var r=0;r<radios.length;r++){(function(el){el.onchange=function(){selectedBundleId=String(el.value||\"\");renderProductBanners(arr)}})(radios[r])}var tierEls=root.querySelectorAll('.bundle-app-tier[data-tier-minqty][data-bundle-id]');for(var t=0;t<tierEls.length;t++){(function(el){el.onclick=function(){var bid=String(el.getAttribute('data-bundle-id')||\"\");var mq=Number(el.getAttribute('data-tier-minqty'));if(bid&&Number.isFinite(mq)&&mq>=1){selectedTierByBundleId[bid]=Math.floor(mq);messageByBundleId[bid]='';renderProductBanners(arr)}}})(tierEls[t])}var btns=root.querySelectorAll('button.bundle-app-btn[data-action=\"apply-one\"][data-bundle-id]');for(var k=0;k<btns.length;k++){(function(btn){btn.onclick=function(){if(applying)return;var bid=String(btn.getAttribute('data-bundle-id')||\"\");if(!bid)return;selectedBundleId=bid;var chosen=null;for(var j=0;j<arr.length;j++){if(String(arr[j]&&arr[j].id||\"\")===bid){chosen=arr[j];break}}if(!chosen)return;applyBundleSelection(chosen)}})(btns[k])}}"
     );
     parts.push(
-      "async function applyBundleSelection(bundle){var bid=String(bundle&&bundle.id||\"\");var trigger=String(bundle&&bundle.triggerProductId||\"\");if(!bid||!trigger)return;selectedBundleId=bid;applying=true;try{messageByBundleId[bid]='جاري إضافة الباقة...';renderProductBanners(lastBundles||[])}catch(e){}try{var items=normalizeItems(bundle);var prev=loadSelection(trigger);await tryClearCoupon();if(prev&&prev.bundleId&&String(prev.bundleId)!==bid&&Array.isArray(prev.items)&&prev.items.length){await removeItemsFromCart(prev.items)}await addItemsToCart(items);messageByBundleId[bid]='جاري تجهيز الخصم...';try{renderProductBanners(lastBundles||[])}catch(e2){}var res=await requestApplyBundle(bid,items.map(function(it){return{variantId:it.variantId,quantity:it.quantity}}));var hasDiscount=Boolean(res&&res.hasDiscount&&res.couponCode);if(hasDiscount){saveSelection(trigger,{bundleId:bid,triggerProductId:trigger,items:items,ts:Date.now()});savePendingCoupon(trigger,{code:String(res.couponCode),ts:Date.now()});var ok=await tryApplyCoupon(String(res.couponCode));if(ok){clearPendingCoupon(trigger);messageByBundleId[bid]='تم تطبيق الخصم على السلة'}else{messageByBundleId[bid]='تم تجهيز الكوبون، افتح السلة وسيتم تطبيقه تلقائيًا'}}else{messageByBundleId[bid]='تمت إضافة الباقة. لا يوجد خصم لهذه الباقة.';clearPendingCoupon(trigger)}selectedBundleId=bid}catch(e){warn(\"bundle-app: apply bundle failed\",e&&((e.details)||e.message||e));messageByBundleId[bid]='حصل خطأ أثناء إضافة الباقة أو تطبيق الخصم'}applying=false;try{renderProductBanners(lastBundles||[])}catch(e){} }"
+      "async function applyBundleSelection(bundle){var bid=String(bundle&&bundle.id||\"\");var trigger=String(bundle&&bundle.triggerProductId||\"\");if(!bid||!trigger)return;selectedBundleId=bid;applying=true;try{messageByBundleId[bid]='جاري إضافة الباقة...';renderProductBanners(lastBundles||[])}catch(e){}try{var rawItems=normalizeItems(bundle);var items=await resolveProductRefItems(rawItems);if(!items||!items.length){messageByBundleId[bid]='لازم تختار الفاريانت قبل إضافة الباقة';applying=false;try{renderProductBanners(lastBundles||[])}catch(e0){}return}var prev=loadSelection(trigger);await tryClearCoupon();if(prev&&prev.bundleId&&String(prev.bundleId)!==bid&&Array.isArray(prev.items)&&prev.items.length){await removeItemsFromCart(prev.items)}await addItemsToCart(items);messageByBundleId[bid]='جاري تجهيز الخصم...';try{renderProductBanners(lastBundles||[])}catch(e2){}var res=await requestApplyBundle(bid,items.map(function(it){return{variantId:it.variantId,quantity:it.quantity}}));var hasDiscount=Boolean(res&&res.hasDiscount&&res.couponCode);if(hasDiscount){saveSelection(trigger,{bundleId:bid,triggerProductId:trigger,items:items,ts:Date.now()});savePendingCoupon(trigger,{code:String(res.couponCode),ts:Date.now()});var ok=await tryApplyCoupon(String(res.couponCode));if(ok){clearPendingCoupon(trigger);messageByBundleId[bid]='تم تطبيق الخصم على السلة'}else{messageByBundleId[bid]='تم تجهيز الكوبون، افتح السلة وسيتم تطبيقه تلقائيًا'}}else{messageByBundleId[bid]='تمت إضافة الباقة. لا يوجد خصم لهذه الباقة.';clearPendingCoupon(trigger)}selectedBundleId=bid}catch(e){warn(\"bundle-app: apply bundle failed\",e&&((e.details)||e.message||e));messageByBundleId[bid]='حصل خطأ أثناء إضافة الباقة أو تطبيق الخصم'}applying=false;try{renderProductBanners(lastBundles||[])}catch(e){} }"
     );
     parts.push("var lastBundles=null;");
     parts.push("function clearProductBanner(){var root=document.getElementById(\"bundle-app-banner\");if(root)root.remove()}");
@@ -865,6 +885,93 @@ function createApiRouter(config) {
         validation: {
           missing: [...(componentReport.missing || []), ...(coverReport?.missing || [])],
           inactive: inactiveVariantIds
+        }
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyProductVariantsQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    productId: Joi.string().trim().min(1).max(120).required(),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  function extractVariantIdsFromProductPayload(data) {
+    const roots = [];
+    if (data && typeof data === "object") roots.push(data);
+    if (data?.data && typeof data.data === "object") roots.push(data.data);
+
+    const candidates = [];
+    for (const root of roots) {
+      const v = root?.variants ?? root?.product_variants ?? root?.options ?? null;
+      if (!v) continue;
+      if (Array.isArray(v)) candidates.push(...v);
+      else if (Array.isArray(v?.data)) candidates.push(...v.data);
+      else if (Array.isArray(v?.items)) candidates.push(...v.items);
+      else if (Array.isArray(v?.list)) candidates.push(...v.list);
+    }
+
+    const ids = [];
+    for (const it of candidates) {
+      if (it == null) continue;
+      const id = it?.id ?? it?.variant_id ?? it?.variantId ?? it?.variantID ?? null;
+      const s = String(id ?? "").trim();
+      if (s) ids.push(s);
+    }
+    return Array.from(new Set(ids));
+  }
+
+  router.get("/proxy/products/variants", async (req, res, next) => {
+    try {
+      const { error, value } = proxyProductVariantsQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      await ensureMerchantTokenFresh(merchant);
+
+      const productId = String(value.productId || "").trim();
+      const productResp = await getProductById(config.salla, merchant.accessToken, productId, {});
+      const variantIds = extractVariantIdsFromProductPayload(productResp);
+      const report = variantIds.length
+        ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, variantIds, { concurrency: 6, maxAttempts: 3 })
+        : { snapshots: new Map(), missing: [] };
+
+      const variants = Array.from(report.snapshots.values())
+        .filter((s) => String(s?.productId || "").trim() === productId)
+        .map((s) => ({
+          variantId: String(s.variantId),
+          productId: String(s.productId),
+          name: s.name || null,
+          attributes: s.attributes || {},
+          imageUrl: s.imageUrl || null,
+          price: s.price != null ? Number(s.price) : null,
+          isActive: s.isActive === true
+        }))
+        .sort((a, b) => Number(Boolean(b.isActive)) - Number(Boolean(a.isActive)));
+
+      return res.json({
+        ok: true,
+        merchantId: String(value.merchantId),
+        productId,
+        variants,
+        validation: {
+          missing: report.missing || []
         }
       });
     } catch (err) {
