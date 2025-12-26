@@ -773,7 +773,7 @@ function createApiRouter(config) {
       "function storeClosedNow(){try{var until=Number(g.BundleApp&&g.BundleApp._storeClosedUntil||0);return Number.isFinite(until)&&until>Date.now()}catch(e){return false}}"
     );
     parts.push(
-      "function markStoreClosed(e){try{var st=extractHttpStatus(e);var msg=extractHttpMessage(e);var m=String(msg||\"\");var ml=m.toLowerCase();if(m.indexOf('المتجر مغلق')!==-1||ml.indexOf('store is closed')!==-1){g.BundleApp._storeClosedUntil=Date.now()+60000}}catch(x){}}"
+      "function markStoreClosed(e){try{var st=extractHttpStatus(e);var msg=extractHttpMessage(e);if(st===410){g.BundleApp._storeClosedUntil=Date.now()+60000;return}var m=String(msg||\"\");var ml=m.toLowerCase();if(m.indexOf('المتجر مغلق')!==-1||m.indexOf('لم يعد متاحا')!==-1||ml.indexOf('store is closed')!==-1||ml.indexOf('no longer available')!==-1){g.BundleApp._storeClosedUntil=Date.now()+60000}}catch(x){}}"
     );
     parts.push(
       "function humanizeCartError(e){var st=extractHttpStatus(e);var msg=extractHttpMessage(e);if(msg==='timeout')return 'تعذر الاتصال بسلة المتجر (مهلة)';if(msg&&String(msg).indexOf('ERR_NAME_NOT_RESOLVED')!==-1)return 'تعذر الاتصال بسلة المتجر (DNS)';if(st===410)return 'المتجر مغلق حالياً';if(st===401||st===403)return 'لا يمكن إضافة للسلّة (صلاحيات/جلسة غير صالحة)';if(st===404)return 'لا يمكن إضافة للسلّة (المنتج غير موجود)';if(msg)return msg;if(st!=null)return 'HTTP '+fmtNum(st);return 'حصل خطأ أثناء الإضافة للسلّة'}"
