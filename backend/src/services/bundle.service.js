@@ -247,10 +247,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   if (!components.length) return [];
 
   const totalQty = (Array.isArray(normalizedCart) ? normalizedCart : []).reduce((acc, it) => acc + Math.max(0, Math.floor(Number(it?.quantity || 0))), 0);
-  if (rules?.tiers?.length) {
-    const minTierQty = Math.min(...rules.tiers.map((t) => t.minQty));
-    if (totalQty < minTierQty) return [];
-  } else if (totalQty < rules.eligibility.minCartQty) return [];
+  if (totalQty < rules.eligibility.minCartQty) return [];
 
   const cartLines = buildCartVariantLines(normalizedCart, variantSnapshotById);
   const cartLineByVariantId = new Map(cartLines.map((l) => [String(l.variantId), l]));
@@ -300,27 +297,34 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   for (let use = 0; use < maxUses; use += 1) {
     let best = null;
 
-    for (const tier of rules.tiers) {
+    const candidates = [
+      { kind: "base", minQty: rules.eligibility.minCartQty, type: rules.type, value: rules.value },
+      ...(Array.isArray(rules.tiers) ? rules.tiers : []).map((t) => ({ kind: "tier", minQty: t.minQty, type: t.type, value: t.value }))
+    ]
+      .filter((c) => c && c.type && Number.isFinite(Number(c.value)) && Number(c.value) >= 0)
+      .sort((a, b) => Number(a.minQty) - Number(b.minQty));
+
+    for (const cand of candidates) {
       const availableForUse = new Map(availableQtyByVariant);
-      const overrides = new Map();
-      if (baseVariantId) overrides.set(String(baseVariantId), tier.minQty);
+      const overrides = cand.kind === "tier" ? new Map() : null;
+      if (overrides && baseVariantId) overrides.set(String(baseVariantId), cand.minQty);
       const groupMap = buildGroupMapForComponents(components, overrides);
 
-      const tierRules = {
+      const candRules = {
         ...rules,
-        type: tier.type,
-        value: tier.value,
-        eligibility: { ...rules.eligibility, minCartQty: Math.max(1, tier.minQty) }
+        type: cand.type,
+        value: cand.value,
+        eligibility: { ...rules.eligibility, minCartQty: Math.max(1, Math.floor(Number(cand.minQty || 1))) }
       };
 
-      const selectionLines = computeSelectionForUse(groupMap, tierRules, availableForUse, cartLineByVariantId, cartLinesByProductId);
+      const selectionLines = computeSelectionForUse(groupMap, candRules, availableForUse, cartLineByVariantId, cartLinesByProductId);
       if (!selectionLines || !selectionLines.length) continue;
 
       const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
-      const discountAmount = calcDiscountAmount(tierRules, subtotal);
+      const discountAmount = calcDiscountAmount(candRules, subtotal);
 
       if (!best || discountAmount > best.discountAmount) {
-        best = { tier, selectionLines, availableForUse, subtotal, discountAmount };
+        best = { cand, selectionLines, availableForUse, subtotal, discountAmount };
       }
     }
 
@@ -332,15 +336,16 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
     const matchedVariants = Array.from(new Set(best.selectionLines.map((s) => String(s.variantId)).filter(Boolean)));
     const matchedProductIds = Array.from(new Set(best.selectionLines.map((s) => String(s.productId)).filter(Boolean)));
 
-            applications.push({
-              tier: { minQty: best.tier.minQty, type: best.tier.type, value: best.tier.value },
-              appliedRule: { type: best.tier.type, value: best.tier.value, minQty: best.tier.minQty },
-              selection: best.selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
-              matchedVariants,
-              matchedProductIds,
-              subtotal: best.subtotal,
-              discountAmount: best.discountAmount
-            });
+    const app = {
+      appliedRule: { type: best.cand.type, value: best.cand.value, minQty: best.cand.minQty },
+      selection: best.selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
+      matchedVariants,
+      matchedProductIds,
+      subtotal: best.subtotal,
+      discountAmount: best.discountAmount
+    };
+    if (best.cand && best.cand.kind === "tier") app.tier = { minQty: best.cand.minQty, type: best.cand.type, value: best.cand.value };
+    applications.push(app);
   }
 
   return applications;
