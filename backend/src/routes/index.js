@@ -98,7 +98,7 @@ function createApiRouter(config) {
       if (!coverVariantId) continue;
       coverVariantIdByBundleId.set(String(b?._id), String(coverVariantId));
     }
-    const coverVariantIds = uniqStrings(Array.from(coverVariantIdByBundleId.values()));
+    const coverVariantIds = uniqStrings(Array.from(coverVariantIdByBundleId.values())).filter((v) => !String(v).startsWith("product:"));
     const coverReport = coverVariantIds.length
       ? await fetchVariantsSnapshotReport(config.salla, merchantAccessToken, coverVariantIds, { concurrency: 5, maxAttempts: 3 })
       : { snapshots: new Map(), missing: [] };
@@ -106,6 +106,10 @@ function createApiRouter(config) {
     const byCover = activeBundles.filter((b) => {
       const coverVariantId = coverVariantIdByBundleId.get(String(b?._id));
       if (!coverVariantId) return false;
+      if (String(coverVariantId).startsWith("product:")) {
+        const pid = String(coverVariantId).slice("product:".length).trim();
+        return Boolean(pid && pid === trigger);
+      }
       const snap = coverReport.snapshots.get(String(coverVariantId));
       const pid = String(snap?.productId || "").trim();
       return Boolean(pid && pid === trigger);
@@ -124,14 +128,17 @@ function createApiRouter(config) {
         const variantId = String(c?.variantId || "").trim();
         const quantity = Math.max(1, Math.floor(Number(c?.quantity || 1)));
         if (!variantId) return null;
-        const snap = variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
-        const productId = String(snap?.productId || "").trim() || null;
-        const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
-        const price = snap?.price != null ? Number(snap.price) : null;
+        const isProductRef = variantId.startsWith("product:");
+        const refProductId = isProductRef ? String(variantId.slice("product:".length) || "").trim() : "";
+        const snap = !isProductRef && variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
+        const productId = isProductRef ? (refProductId || null) : String(snap?.productId || "").trim() || null;
+        const imageUrl = isProductRef ? null : snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
+        const price = isProductRef ? null : snap?.price != null ? Number(snap.price) : null;
         return {
           variantId,
           productId,
           quantity,
+          group: String(c?.group || "").trim() || null,
           isBase: baseVariantId ? variantId === baseVariantId : false,
           imageUrl,
           price: Number.isFinite(price) ? price : null
@@ -148,6 +155,7 @@ function createApiRouter(config) {
         variantId: String(c?.variantId || "").trim() || null,
         productId: String(c?.productId || "").trim() || null,
         quantity: Math.max(1, Math.floor(Number(c?.quantity || 1))),
+        group: String(c?.group || "").trim() || null,
         isBase: Boolean(c?.isBase),
         imageUrl: c?.imageUrl ? String(c.imageUrl).trim() || null : null
       }))
@@ -279,6 +287,7 @@ function createApiRouter(config) {
           variantId: String(c.variantId),
           productId: String(c.productId || "").trim() || null,
           quantity: c.quantity,
+          group: String(c?.group || "").trim() || null,
           isBase: Boolean(c.isBase),
           imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null
         })),
@@ -839,7 +848,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter(Boolean)
+            .filter((v) => Boolean(v) && !v.startsWith("product:"))
         )
       );
 
@@ -912,7 +921,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter(Boolean)
+            .filter((v) => Boolean(v) && !v.startsWith("product:"))
         )
       );
 
@@ -1191,7 +1200,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter(Boolean)
+            .filter((v) => Boolean(v) && !v.startsWith("product:"))
         )
       );
       const componentReport = componentVariantIds.length
