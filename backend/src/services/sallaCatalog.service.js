@@ -21,7 +21,16 @@ function toNumber(value, fallback) {
 }
 
 function normalizeVariantSnapshot(variantId, variantData) {
-  const productId = String(variantData?.product_id ?? variantData?.productId ?? "").trim() || null;
+  const productId =
+    String(
+      variantData?.product_id ??
+        variantData?.productId ??
+        variantData?.product?.id ??
+        variantData?.product?.product_id ??
+        variantData?.product?.productId ??
+        variantData?.product?.data?.id ??
+        ""
+    ).trim() || null;
   const status = String(variantData?.status ?? variantData?.product_status ?? variantData?.state ?? "")
     .trim()
     .toLowerCase();
