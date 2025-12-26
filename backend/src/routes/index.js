@@ -188,7 +188,7 @@ function createApiRouter(config) {
         const refProductId = isProductRef ? String(variantId.slice("product:".length) || "").trim() : "";
 
         let outVariantId = variantId;
-        let snap = !isProductRef && variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
+        let snap = variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
         if (isProductRef) {
           const triggerProductId = String(ctx?.triggerProductId || "").trim();
           const triggerVariantId = String(ctx?.triggerVariantId || "").trim();
@@ -263,9 +263,9 @@ function createApiRouter(config) {
     const missingPriceVariantIds = [];
     let baseMissing = false;
     const baseSubtotal = (Array.isArray(components) ? components : []).reduce((acc, c) => {
-      const unit = Number(c?.price);
+      const unit = c?.price == null ? null : Number(c.price);
       const qty = Math.max(1, Math.floor(Number(c?.quantity || 1)));
-      if (!Number.isFinite(unit) || unit < 0) {
+      if (unit == null || !Number.isFinite(unit) || unit < 0) {
         missingPriceVariantIds.push(String(c?.variantId || "").trim());
         baseMissing = true;
         return acc;
@@ -296,10 +296,10 @@ function createApiRouter(config) {
         const missingTier = [];
         let tierMissing = false;
         const tierSubtotal = (Array.isArray(components) ? components : []).reduce((acc, c) => {
-          const unit = Number(c?.price);
+          const unit = c?.price == null ? null : Number(c.price);
           const qtyRaw = Math.max(1, Math.floor(Number(c?.quantity || 1)));
           const qty = baseVariantId && String(c?.variantId) === String(baseVariantId) ? tier.minQty : qtyRaw;
-          if (!Number.isFinite(unit) || unit < 0) {
+          if (unit == null || !Number.isFinite(unit) || unit < 0) {
             missingTier.push(String(c?.variantId || "").trim());
             tierMissing = true;
             return acc;
@@ -575,7 +575,7 @@ function createApiRouter(config) {
       "async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanners(bundles)}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}}"
     );
     parts.push(
-      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct();setInterval(function(){applyPendingCoupon();refreshProduct()},1500);try{window.addEventListener(\"focus\",applyPendingCoupon);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")applyPendingCoupon()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct();setInterval(function(){applyPendingCoupon();refreshProduct()},5000);try{window.addEventListener(\"focus\",applyPendingCoupon);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")applyPendingCoupon()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
     );
     parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");
@@ -775,7 +775,7 @@ function createApiRouter(config) {
       "function humanizeCartError(e){var st=extractHttpStatus(e);var msg=extractHttpMessage(e);if(st===410)return 'المتجر مغلق حالياً';if(st===401||st===403)return 'لا يمكن إضافة للسلّة (صلاحيات/جلسة غير صالحة)';if(st===404)return 'لا يمكن إضافة للسلّة (المنتج غير موجود)';if(msg)return msg;if(st!=null)return 'HTTP '+fmtNum(st);return 'حصل خطأ أثناء الإضافة للسلّة'}"
     );
     parts.push(
-      "async function addItemsToCart(items){var cart=window.salla&&window.salla.cart;if(!cart||typeof cart.addItem!==\"function\")throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var vid=String(it.variantId||\"\").trim();if(!vid||isProductRef(vid))throw new Error(\"Missing or invalid variant selection\");var skuNum=Number(vid);var skuId=(Number.isFinite(skuNum)&&skuNum>0)?skuNum:vid;try{await cart.addItem({id:skuId,quantity:qty});continue}catch(e){var pidStr=String(it.cartProductId||it.productId||\"\").trim();var pidNum=Number(pidStr);var opts=it&&it.cartOptions&&typeof it.cartOptions===\"object\"?it.cartOptions:null;if((!opts||!Object.keys(opts).length)&&typeof getCachedVariants===\"function\"&&pidStr){try{var c=await getCachedVariants(pidStr);for(var ci=0;ci<c.length;ci++){var cv=c[ci]||{};if(String(cv.variantId||\"\").trim()===vid){opts=cv.cartOptions||null;break}}}catch(e0){}}try{if(Number.isFinite(pidNum)&&pidNum>0){if(opts&&Object.keys(opts).length){await cart.addItem({id:pidNum,quantity:qty,options:opts});continue}await cart.addItem({id:pidNum,quantity:qty});continue}}catch(e2){if(typeof cart.quickAdd===\"function\"&&Number.isFinite(pidNum)&&pidNum>0){try{await cart.quickAdd(pidNum);continue}catch(e3){}}throw e2}}}}"
+      "async function addItemsToCart(items){var cart=window.salla&&window.salla.cart;if(!cart||typeof cart.addItem!==\"function\")throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var vid=String(it.variantId||\"\").trim();if(!vid)throw new Error(\"Missing variant selection\");var skuNum=Number(vid);var skuId=(Number.isFinite(skuNum)&&skuNum>0)?skuNum:vid;try{await cart.addItem({id:skuId,quantity:qty});continue}catch(e){var pidStr=String(it.cartProductId||it.productId||\"\").trim();if((!pidStr||pidStr===\"\")&&vid&&vid.indexOf('product:')===0){pidStr=String(vid).slice('product:'.length).trim()}var pidNum=Number(pidStr);var opts=it&&it.cartOptions&&typeof it.cartOptions===\"object\"?it.cartOptions:null;if((!opts||!Object.keys(opts).length)&&typeof getCachedVariants===\"function\"&&pidStr){try{var c=await getCachedVariants(pidStr);for(var ci=0;ci<c.length;ci++){var cv=c[ci]||{};if(String(cv.variantId||\"\").trim()===vid){opts=cv.cartOptions||null;break}}}catch(e0){}}try{if(Number.isFinite(pidNum)&&pidNum>0){if(opts&&Object.keys(opts).length){await cart.addItem({id:pidNum,quantity:qty,options:opts});continue}await cart.addItem({id:pidNum,quantity:qty});continue}}catch(e2){if(typeof cart.quickAdd===\"function\"&&Number.isFinite(pidNum)&&pidNum>0){try{await cart.quickAdd(pidNum);continue}catch(e3){}}throw e2}}}}"
     );
     parts.push(
       "async function removeItemsFromCart(items){var cart=window.salla&&window.salla.cart;if(!cart)throw new Error(\"Salla cart API not available\");for(var i=0;i<items.length;i++){var it=items[i]||{};var v=String(it.variantId||\"\").trim();var pid=String(it.productId||\"\").trim();if(v&&v.indexOf('product:')===0){if(!pid)pid=String(v).slice('product:'.length).trim();v='' }var pidNum=Number(pid);try{if(cart&&typeof cart.removeItem===\"function\"){if(v){await cart.removeItem(v)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.removeItem(pidNum)}continue}if(cart&&typeof cart.deleteItem===\"function\"){if(v){await cart.deleteItem(v)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.deleteItem(pidNum)}continue}if(cart&&typeof cart.updateItem===\"function\"){if(v){await cart.updateItem({id:v,quantity:0})}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.updateItem({id:pidNum,quantity:0})}continue}if(cart&&typeof cart.setItemQuantity===\"function\"){if(v){await cart.setItemQuantity(v,0)}else if(pid&&Number.isFinite(pidNum)&&pidNum>0){await cart.setItemQuantity(pidNum,0)}continue}}catch(e){warn(\"bundle-app: remove item failed\",e&&((e.details)||e.message||e))}}}"
@@ -932,7 +932,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter((v) => Boolean(v) && !v.startsWith("product:"))
+            .filter((v) => Boolean(v))
         )
       );
 
@@ -1022,7 +1022,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter((v) => Boolean(v) && !v.startsWith("product:"))
+            .filter((v) => Boolean(v))
         )
       );
 
@@ -1348,7 +1348,7 @@ function createApiRouter(config) {
           bundles
             .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
             .map((c) => String(c?.variantId || "").trim())
-            .filter((v) => Boolean(v) && !v.startsWith("product:"))
+            .filter((v) => Boolean(v))
         )
       );
       const componentReport = componentVariantIds.length
@@ -1461,7 +1461,7 @@ function createApiRouter(config) {
       });
 
       const variantIds = Array.from(
-        new Set(items.map((i) => String(i.variantId)).filter((v) => Boolean(v) && !String(v).startsWith("product:")))
+        new Set(items.map((i) => String(i.variantId)).filter((v) => Boolean(v)))
       );
       const report = await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
       const combinedSnapshots = new Map(report.snapshots);
@@ -1565,7 +1565,7 @@ function createApiRouter(config) {
       });
 
       const variantIds = Array.from(
-        new Set(items.map((i) => String(i.variantId)).filter((v) => Boolean(v) && !String(v).startsWith("product:")))
+        new Set(items.map((i) => String(i.variantId)).filter((v) => Boolean(v)))
       );
       const report = await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
       const combinedSnapshots = new Map(report.snapshots);
