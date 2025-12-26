@@ -1019,7 +1019,23 @@ function createApiRouter(config) {
       const s = String(id ?? "").trim();
       if (s) ids.push(s);
     }
-    return Array.from(new Set(ids));
+    const uniq = Array.from(new Set(ids));
+    if (uniq.length) return uniq;
+
+    const fallback = [];
+    for (const root of roots) {
+      const direct =
+        root?.default_variant_id ??
+        root?.defaultVariantId ??
+        root?.variant_id ??
+        root?.variantId ??
+        (root?.data && typeof root.data === "object"
+          ? root.data.default_variant_id ?? root.data.defaultVariantId ?? root.data.variant_id ?? root.data.variantId
+          : null);
+      const s = String(direct ?? "").trim();
+      if (s) fallback.push(s);
+    }
+    return Array.from(new Set(fallback));
   }
 
   function normalizeMaybeArray(input) {
