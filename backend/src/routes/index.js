@@ -939,18 +939,53 @@ function createApiRouter(config) {
 
     const candidates = [];
     for (const root of roots) {
-      const v = root?.variants ?? root?.product_variants ?? root?.options ?? null;
-      if (!v) continue;
-      if (Array.isArray(v)) candidates.push(...v);
-      else if (Array.isArray(v?.data)) candidates.push(...v.data);
-      else if (Array.isArray(v?.items)) candidates.push(...v.items);
-      else if (Array.isArray(v?.list)) candidates.push(...v.list);
+      const variantLike = root?.variants ?? root?.product_variants ?? null;
+      if (variantLike) {
+        if (Array.isArray(variantLike)) candidates.push(...variantLike);
+        else if (Array.isArray(variantLike?.data)) candidates.push(...variantLike.data);
+        else if (Array.isArray(variantLike?.items)) candidates.push(...variantLike.items);
+        else if (Array.isArray(variantLike?.list)) candidates.push(...variantLike.list);
+      }
+
+      const skus = root?.skus ?? null;
+      if (skus) {
+        if (Array.isArray(skus)) candidates.push(...skus);
+        else if (Array.isArray(skus?.data)) candidates.push(...skus.data);
+        else if (Array.isArray(skus?.items)) candidates.push(...skus.items);
+        else if (Array.isArray(skus?.list)) candidates.push(...skus.list);
+      }
+
+      const options = root?.options ?? null;
+      const optionArr = Array.isArray(options)
+        ? options
+        : Array.isArray(options?.data)
+          ? options.data
+          : Array.isArray(options?.items)
+            ? options.items
+            : Array.isArray(options?.list)
+              ? options.list
+              : [];
+
+      for (const opt of optionArr) {
+        const optSkus = opt?.skus ?? null;
+        if (!optSkus) continue;
+        const skuArr = Array.isArray(optSkus)
+          ? optSkus
+          : Array.isArray(optSkus?.data)
+            ? optSkus.data
+            : Array.isArray(optSkus?.items)
+              ? optSkus.items
+              : Array.isArray(optSkus?.list)
+                ? optSkus.list
+                : [];
+        candidates.push(...skuArr);
+      }
     }
 
     const ids = [];
     for (const it of candidates) {
       if (it == null) continue;
-      const id = it?.id ?? it?.variant_id ?? it?.variantId ?? it?.variantID ?? null;
+      const id = it?.id ?? it?.sku_id ?? it?.variant_id ?? it?.variantId ?? it?.variantID ?? null;
       const s = String(id ?? "").trim();
       if (s) ids.push(s);
     }
