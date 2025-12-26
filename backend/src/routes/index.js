@@ -94,7 +94,7 @@ function createApiRouter(config) {
 
     const coverVariantIdByBundleId = new Map();
     for (const b of activeBundles) {
-      const coverVariantId = resolveBaseVariantIdFromBundle(b);
+      const coverVariantId = String(b?.presentation?.coverVariantId || "").trim() || resolveBaseVariantIdFromBundle(b);
       if (!coverVariantId) continue;
       coverVariantIdByBundleId.set(String(b?._id), String(coverVariantId));
     }
@@ -145,12 +145,13 @@ function createApiRouter(config) {
       .slice()
       .sort((a, b) => Number(Boolean(b?.isBase)) - Number(Boolean(a?.isBase)))
       .map((c) => ({
+        variantId: String(c?.variantId || "").trim() || null,
         productId: String(c?.productId || "").trim() || null,
         quantity: Math.max(1, Math.floor(Number(c?.quantity || 1))),
         isBase: Boolean(c?.isBase),
         imageUrl: c?.imageUrl ? String(c.imageUrl).trim() || null : null
       }))
-      .filter((it) => Boolean(it.productId));
+      .filter((it) => Boolean(it.variantId || it.productId));
   }
 
   function calcDiscountAmount(offer, subtotal) {
@@ -280,8 +281,7 @@ function createApiRouter(config) {
           quantity: c.quantity,
           isBase: Boolean(c.isBase),
           imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null
-        }))
-        .filter((c) => Boolean(c.productId)),
+        })),
       offer,
       pricing
     };
@@ -565,7 +565,10 @@ function createApiRouter(config) {
       "function getPageQty(){try{var selectors=['input[name=\"quantity\"]','input.qty','input[name=\"qty\"]','select[name=\"quantity\"]','select[name=\"qty\"]','[data-quantity]'];for(var i=0;i<selectors.length;i++){var el=document.querySelector(selectors[i]);if(!el)continue;var raw=el.getAttribute&&el.getAttribute('data-quantity');if(raw==null||raw==='')raw=el.value;var n=Math.floor(Number(raw));if(Number.isFinite(n)&&n>0)return n}return 1}catch(e){return 1}}"
     );
     parts.push(
-      "function normalizeItems(bundle){var comps=(bundle&&bundle.components)||[];if(!Array.isArray(comps)||!comps.length){comps=(bundle&&bundle.bundleItems)||[]}var out=[];for(var i=0;i<comps.length;i++){var c=comps[i]||{};var v=String(c.variantId||\"\").trim();var pid=String(c.productId||\"\").trim();var isBase=Boolean(c.isBase);var q=isBase?getPageQty():Math.max(1,Math.floor(Number(c.quantity||1)));if(!v)continue;out.push({variantId:v,productId:pid||null,quantity:q,isBase:isBase})}out.sort(function(a,b){return String(a.variantId).localeCompare(String(b.variantId))});return out}"
+      "function minRequiredBaseQty(bundle){try{var offer=bundle&&bundle.offer||{};var min=1;var elig=offer&&offer.eligibility;var eligMin=Math.floor(Number(elig&&elig.minCartQty||0));if(Number.isFinite(eligMin)&&eligMin>1)min=eligMin;var tiers=offer&&offer.tiers;if(Array.isArray(tiers)&&tiers.length){var tmin=null;for(var i=0;i<tiers.length;i++){var mq=Math.floor(Number(tiers[i]&&tiers[i].minQty||0));if(!Number.isFinite(mq)||mq<1)continue;if(tmin==null||mq<tmin)tmin=mq}if(tmin!=null&&tmin>min)min=tmin}return min}catch(e){return 1}}"
+    );
+    parts.push(
+      "function normalizeItems(bundle){var comps=(bundle&&bundle.components)||[];if(!Array.isArray(comps)||!comps.length){comps=(bundle&&bundle.bundleItems)||[]}var out=[];var baseMin=minRequiredBaseQty(bundle);for(var i=0;i<comps.length;i++){var c=comps[i]||{};var v=String(c.variantId||\"\").trim();var pid=String(c.productId||\"\").trim();var isBase=Boolean(c.isBase);var q=isBase?Math.max(getPageQty(),baseMin):Math.max(1,Math.floor(Number(c.quantity||1)));if(!v)continue;out.push({variantId:v,productId:pid||null,quantity:q,isBase:isBase})}out.sort(function(a,b){return String(a.variantId).localeCompare(String(b.variantId))});return out}"
     );
     parts.push(
       "function buildItemsText(items){var products=0;var totalQty=0;for(var i=0;i<items.length;i++){var it=items[i]||{};if(!it.variantId)continue;products++;totalQty+=Math.max(1,Math.floor(Number(it.quantity||1)))}return \"عدد المنتجات: \"+fmtNum(products)+\" • إجمالي القطع: \"+fmtNum(totalQty)}"
@@ -627,7 +630,7 @@ function createApiRouter(config) {
       "async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}lastBundles=bundles;renderProductBanners(bundles)}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}}"
     );
     parts.push(
-      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;refreshProduct();setInterval(refreshProduct,2500);try{window.addEventListener(\"focus\",function(){applyPendingCouponForCart();refreshProduct()});document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\"){applyPendingCouponForCart();refreshProduct()}})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+      "function initAuto(){var inited=false;function tick(){applyPendingCouponForCart();refreshProduct()}function start(){if(inited)return;inited=true;tick();setInterval(tick,2500);try{window.addEventListener(\"focus\",tick);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")tick()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
     );
     parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");
