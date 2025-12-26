@@ -12,6 +12,17 @@ function componentsVariantIds(components) {
   return uniqStrings((Array.isArray(components) ? components : []).map((c) => c?.variantId));
 }
 
+function isProductRef(value) {
+  return String(value || "").trim().startsWith("product:");
+}
+
+function parseProductIdFromRef(value) {
+  const s = String(value || "").trim();
+  if (!s.startsWith("product:")) return null;
+  const pid = s.slice("product:".length).trim();
+  return pid || null;
+}
+
 function resolveCoverVariantId(components, presentation) {
   const cover = String(presentation?.coverVariantId || "").trim();
   if (cover) return cover;
@@ -24,6 +35,7 @@ function computeInvalidComponentVariantIds(report, componentVariantIds) {
   const missing = uniqStrings((report?.missing || []).map((m) => m?.variantId)).filter((id) => componentSet.has(id));
   const inactive = uniqStrings(
     componentVariantIds.filter((id) => {
+      if (isProductRef(id)) return false;
       const snap = report?.snapshots?.get ? report.snapshots.get(String(id)) : null;
       return !snap || snap?.isActive !== true;
     })
@@ -34,6 +46,8 @@ function computeInvalidComponentVariantIds(report, componentVariantIds) {
 function resolveTriggerProductIdFromReport(report, coverVariantId) {
   const cover = String(coverVariantId || "").trim();
   if (!cover) return null;
+  const fromRef = parseProductIdFromRef(cover);
+  if (fromRef) return fromRef;
   const snap = report?.snapshots?.get ? report.snapshots.get(cover) : null;
   const productId = String(snap?.productId || "").trim();
   return productId || null;

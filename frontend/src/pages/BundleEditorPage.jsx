@@ -18,6 +18,15 @@ function normalizeVariantId(value) {
   return s ? s : null
 }
 
+function isProductRef(value) {
+  return String(value || '').trim().startsWith('product:')
+}
+
+function toProductRef(productId) {
+  const pid = String(productId || '').trim()
+  return pid ? `product:${pid}` : null
+}
+
 function groupFromVariantId(variantId) {
   return String(`v:${String(variantId || '').trim()}`).slice(0, 50)
 }
@@ -69,6 +78,7 @@ export function BundleEditorPage({ mode }) {
   const [discountValue, setDiscountValue] = useState(10)
 
   const [baseVariantId, setBaseVariantId] = useState(null)
+  const [baseRefMode, setBaseRefMode] = useState('product')
   const [baseQty, setBaseQty] = useState(1)
   const [qtyTiers, setQtyTiers] = useState([{ minQty: 2, type: 'percentage', value: 10 }])
 
@@ -103,6 +113,7 @@ export function BundleEditorPage({ mode }) {
         setDiscountType(String(found?.rules?.type || 'percentage'))
         setDiscountValue(Number(found?.rules?.value || 0))
         setBaseVariantId(cover)
+        setBaseRefMode(isProductRef(cover) ? 'product' : 'variant')
 
         if (rest.length) {
           setOfferType('bundle')
@@ -175,12 +186,32 @@ export function BundleEditorPage({ mode }) {
     return extractVariants(product || {}, { includeDefault: true })
   }, [product])
 
-  useEffect(() => {
-    if (!productVariants.length) return
-    if (baseVariantId) return
+  const pickDefaultVariantId = useCallback(() => {
+    if (!productVariants.length) return null
     const active = productVariants.find((v) => v?.isActive && !v?.needsResolution) || productVariants.find((v) => !v?.needsResolution) || productVariants[0]
-    setBaseVariantId(normalizeVariantId(active?.variantId))
-  }, [baseVariantId, productVariants])
+    return normalizeVariantId(active?.variantId)
+  }, [productVariants])
+
+  useEffect(() => {
+    if (baseVariantId) return
+    if (effectiveProductId) {
+      setBaseVariantId(toProductRef(effectiveProductId))
+      setBaseRefMode('product')
+      return
+    }
+    const fallback = pickDefaultVariantId()
+    if (fallback) {
+      setBaseVariantId(fallback)
+      setBaseRefMode(isProductRef(fallback) ? 'product' : 'variant')
+    }
+  }, [baseVariantId, effectiveProductId, pickDefaultVariantId])
+
+  useEffect(() => {
+    if (mode !== 'create') return
+    if (!effectiveProductId) return
+    setBaseRefMode('product')
+    setBaseVariantId(toProductRef(effectiveProductId))
+  }, [effectiveProductId, mode])
 
   useEffect(() => {
     if (name.trim()) return
@@ -192,9 +223,13 @@ export function BundleEditorPage({ mode }) {
   const baseVariantLabel = useMemo(() => {
     const id = normalizeVariantId(baseVariantId)
     if (!id) return '—'
+    if (isProductRef(id)) {
+      const productName = String(product?.name ?? product?.title ?? '').trim() || '—'
+      return `${productName} (${id})`
+    }
     const v = productVariants.find((x) => String(x?.variantId) === String(id)) || null
     return v?.name ? `${v.name} (${id})` : id
-  }, [baseVariantId, productVariants])
+  }, [baseVariantId, product, productVariants])
 
   const addonsWithMeta = useMemo(() => {
     return (Array.isArray(addons) ? addons : []).map((a) => {
@@ -264,10 +299,10 @@ export function BundleEditorPage({ mode }) {
   }, [draft.components.length, draft.name, effectiveProductId, offerType, qtyTiersNormalized])
 
   const addAddon = useCallback(
-    (variant) => {
-      const id = normalizeVariantId(variant?.variantId)
+    (item) => {
+      const id = normalizeVariantId(item?.variantId)
       if (!id) return
-      setVariantMetaById((prev) => ({ ...prev, [id]: variant }))
+      setVariantMetaById((prev) => ({ ...prev, [id]: item }))
       setAddons((prev) => {
         const exists = (Array.isArray(prev) ? prev : []).some((x) => String(x?.variantId) === String(id))
         if (exists) return prev
@@ -398,20 +433,62 @@ export function BundleEditorPage({ mode }) {
           </div>
 
           <div className="md:col-span-2">
-            <label className="text-sm font-medium text-slate-700">المنتج الأساسي (Variant)</label>
-            <select
-              value={normalizeVariantId(baseVariantId) || ''}
-              onChange={(e) => setBaseVariantId(normalizeVariantId(e.target.value))}
-              disabled={!productVariants.length}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4 disabled:opacity-60"
-            >
-              <option value="">اختار Variant</option>
-              {productVariants.map((v) => (
-                <option key={v.variantId} value={v.variantId}>
-                  {v.name} ({v.variantId})
-                </option>
-              ))}
-            </select>
+            <label className="text-sm font-medium text-slate-700">المنتج الأساسي</label>
+            {mode !== 'create' ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={[
+                    'rounded-xl border px-3 py-2 text-sm font-semibold',
+                    baseRefMode === 'product'
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white hover:bg-slate-50',
+                  ].join(' ')}
+                  onClick={() => {
+                    setBaseRefMode('product')
+                    if (effectiveProductId) setBaseVariantId(toProductRef(effectiveProductId))
+                  }}
+                  disabled={!effectiveProductId}
+                >
+                  أي Variant
+                </button>
+                <button
+                  type="button"
+                  className={[
+                    'rounded-xl border px-3 py-2 text-sm font-semibold',
+                    baseRefMode === 'variant'
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white hover:bg-slate-50',
+                  ].join(' ')}
+                  onClick={() => {
+                    setBaseRefMode('variant')
+                    const next = pickDefaultVariantId()
+                    if (next) setBaseVariantId(next)
+                  }}
+                  disabled={!productVariants.length}
+                >
+                  Variant محدد
+                </button>
+              </div>
+            ) : null}
+
+            {mode !== 'create' && baseRefMode === 'variant' ? (
+              <select
+                value={normalizeVariantId(baseVariantId) || ''}
+                onChange={(e) => setBaseVariantId(normalizeVariantId(e.target.value))}
+                disabled={!productVariants.length}
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4 disabled:opacity-60"
+              >
+                <option value="">اختار Variant</option>
+                {productVariants.map((v) => (
+                  <option key={v.variantId} value={v.variantId}>
+                    {v.name} ({v.variantId})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800">{baseVariantLabel}</div>
+            )}
             <div className="mt-1 text-xs text-slate-600">المختار: {baseVariantLabel}</div>
           </div>
 
@@ -512,7 +589,7 @@ export function BundleEditorPage({ mode }) {
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
                     onClick={() => setPickerOpen((v) => !v)}
                   >
-                    {pickerOpen ? 'إخفاء الاختيار' : 'إضافة منتج'}
+                    {pickerOpen ? 'إخفاء الاختيار' : mode === 'create' || baseRefMode === 'product' ? 'إضافة منتج' : 'إضافة Variant'}
                   </button>
                 </div>
 
@@ -551,10 +628,20 @@ export function BundleEditorPage({ mode }) {
                   <VariantPicker
                     token={token}
                     onUnauthorized={logout}
-                    onPickVariant={(v) => {
-                      addAddon(v)
-                      setPickerOpen(false)
-                    }}
+                    mode={mode === 'create' ? 'product' : baseRefMode}
+                    {...(mode === 'create' || baseRefMode === 'product'
+                      ? {
+                          onPickProduct: (p) => {
+                            addAddon(p)
+                            setPickerOpen(false)
+                          },
+                        }
+                      : {
+                          onPickVariant: (v) => {
+                            addAddon(v)
+                            setPickerOpen(false)
+                          },
+                        })}
                   />
                 </div>
               ) : null}

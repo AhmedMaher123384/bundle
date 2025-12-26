@@ -66,6 +66,104 @@ describe("bundle.service.evaluateBundles", () => {
     expect(Log.create).toHaveBeenCalledTimes(1);
   });
 
+  test("supports product refs (product:ID) to match any variant of the product", async () => {
+    const bundleDoc = {
+      _id: "b_product_ref",
+      merchantId: "m1",
+      status: "active",
+      name: "Product Ref Bundle",
+      components: [
+        { variantId: "product:p1", quantity: 1, group: "A" },
+        { variantId: "product:p2", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "percentage",
+        value: 10,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleDoc])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([
+      ["v1_red", { variantId: "v1_red", productId: "p1", price: 100, isActive: true }],
+      ["v2", { variantId: "v2", productId: "p2", price: 50, isActive: true }]
+    ]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [
+        { variantId: "v1_red", quantity: 1 },
+        { variantId: "v2", quantity: 1 }
+      ],
+      variantSnapshotById
+    );
+
+    expect(result.applied.totalDiscount).toBe(15);
+    expect(result.applied.matchedProductIds.sort()).toEqual(["p1", "p2"]);
+    expect(result.applied.bundles).toHaveLength(1);
+  });
+
+  test("product ref allocates discount to highest priced variants first", async () => {
+    const bundleDoc = {
+      _id: "b_product_ref_price",
+      merchantId: "m1",
+      status: "active",
+      name: "Product Ref (price)",
+      components: [{ variantId: "product:p1", quantity: 1, group: "A" }],
+      rules: {
+        type: "percentage",
+        value: 10,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 1 },
+        limits: { maxUsesPerOrder: 1 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleDoc])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([
+      ["v1_cheap", { variantId: "v1_cheap", productId: "p1", price: 10, isActive: true }],
+      ["v1_exp", { variantId: "v1_exp", productId: "p1", price: 100, isActive: true }]
+    ]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [
+        { variantId: "v1_cheap", quantity: 1 },
+        { variantId: "v1_exp", quantity: 1 }
+      ],
+      variantSnapshotById
+    );
+
+    expect(result.applied.totalDiscount).toBe(10);
+    expect(result.applied.matchedProductIds.sort()).toEqual(["p1"]);
+    expect(result.applied.bundles).toHaveLength(1);
+    expect(result.applied.bundles[0].matchedVariants).toEqual(["v1_exp"]);
+  });
+
   test("supports tiered quantity discount in a single bundle", async () => {
     const bundleDoc = {
       _id: "b_qty",

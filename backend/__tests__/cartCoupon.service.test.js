@@ -1,6 +1,6 @@
 jest.mock("../src/models/CartCoupon", () => ({
   findOne: jest.fn(),
-  create: jest.fn(),
+  findOneAndUpdate: jest.fn(),
   updateMany: jest.fn()
 }));
 
@@ -14,17 +14,23 @@ const { createCoupon } = require("../src/services/sallaApi.service");
 describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
   beforeEach(() => {
     CartCoupon.findOne.mockReset();
-    CartCoupon.create.mockReset();
+    CartCoupon.findOneAndUpdate.mockReset();
     CartCoupon.updateMany.mockReset();
     createCoupon.mockReset();
   });
 
   test("creates coupon when evaluation has discount and matched products", async () => {
     CartCoupon.findOne.mockResolvedValueOnce(null);
-    CartCoupon.findOne.mockReturnValueOnce({ lean: jest.fn().mockResolvedValue(null) });
     CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
     createCoupon.mockResolvedValue({ data: { id: 123 } });
-    CartCoupon.create.mockImplementation(async (doc) => doc);
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc1",
+      couponId: String(doc?.$set?.couponId || ""),
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || []
+    }));
 
     const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
 
@@ -55,6 +61,6 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.discountAmount).toBe(10);
     expect(record.includeProductIds.sort()).toEqual(["p1", "p2"]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
-    expect(CartCoupon.create).toHaveBeenCalledTimes(1);
+    expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 });

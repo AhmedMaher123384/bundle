@@ -113,54 +113,109 @@ function buildAvailableQtyByVariant(normalizedCart) {
   return new Map((Array.isArray(normalizedCart) ? normalizedCart : []).map((i) => [String(i.variantId), Number(i.quantity)]));
 }
 
-function pickBestOptionForGroup(groupOptions, availableQtyByVariant, cartLineByVariantId) {
+function parseProductRef(value) {
+  const s = String(value || "").trim();
+  if (!s.startsWith("product:")) return null;
+  const productId = s.slice("product:".length).trim();
+  return productId ? productId : null;
+}
+
+function pickAllocationForProduct(productId, requiredQty, availableQtyByVariant, cartLinesByProductId) {
+  const pid = String(productId || "").trim();
+  const req = Math.max(1, Math.floor(Number(requiredQty || 1)));
+  if (!pid || req <= 0) return null;
+
+  const lines = Array.isArray(cartLinesByProductId.get(pid)) ? cartLinesByProductId.get(pid) : [];
+  if (!lines.length) return null;
+
+  const sorted = [...lines].sort((a, b) => Number(b.unitPrice) - Number(a.unitPrice));
+  let remaining = req;
+  const picked = [];
+  let cost = 0;
+
+  for (const l of sorted) {
+    if (remaining <= 0) break;
+    const variantId = String(l?.variantId || "").trim();
+    const unitPrice = Number(l?.unitPrice);
+    if (!variantId || !Number.isFinite(unitPrice) || unitPrice < 0) continue;
+    const have = Math.max(0, Math.floor(Number(availableQtyByVariant.get(variantId) || 0)));
+    if (have <= 0) continue;
+    const take = Math.min(have, remaining);
+    if (take <= 0) continue;
+    picked.push({ variantId, productId: String(pid), unitPrice, quantity: take });
+    cost += unitPrice * take;
+    remaining -= take;
+  }
+
+  if (remaining > 0) return null;
+  return { lines: picked, cost };
+}
+
+function pickAllocationForVariant(variantId, requiredQty, availableQtyByVariant, cartLineByVariantId) {
+  const vid = String(variantId || "").trim();
+  const req = Math.max(1, Math.floor(Number(requiredQty || 1)));
+  if (!vid || req <= 0) return null;
+
+  const have = Math.max(0, Math.floor(Number(availableQtyByVariant.get(vid) || 0)));
+  if (have < req) return null;
+
+  const line = cartLineByVariantId.get(vid);
+  if (!line) return null;
+
+  const unitPrice = Number(line.unitPrice);
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) return null;
+
+  return {
+    lines: [{ variantId: vid, productId: String(line.productId), unitPrice, quantity: req }],
+    cost: unitPrice * req
+  };
+}
+
+function pickBestOptionForGroup(groupOptions, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId) {
   let best = null;
   for (const opt of Array.isArray(groupOptions) ? groupOptions : []) {
-    const variantId = String(opt?.variantId || "").trim();
+    const ref = String(opt?.variantId || "").trim();
     const quantity = Math.max(1, Math.floor(Number(opt?.quantity || 1)));
-    if (!variantId) continue;
-    const have = Math.max(0, Math.floor(Number(availableQtyByVariant.get(variantId) || 0)));
-    if (have < quantity) continue;
-    const line = cartLineByVariantId.get(variantId);
-    if (!line) continue;
-    const unitPrice = Number(line.unitPrice);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) continue;
-    const cost = unitPrice * quantity;
-    if (!best || cost < best.cost) {
-      best = {
-        variantId,
-        quantity,
-        productId: String(line.productId),
-        unitPrice,
-        cost
-      };
-    }
+    if (!ref) continue;
+
+    const productId = parseProductRef(ref);
+    const picked = productId
+      ? pickAllocationForProduct(productId, quantity, availableQtyByVariant, cartLinesByProductId)
+      : pickAllocationForVariant(ref, quantity, availableQtyByVariant, cartLineByVariantId);
+    if (!picked) continue;
+
+    if (!best || picked.cost < best.cost) best = picked;
   }
   return best;
 }
 
-function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLineByVariantId) {
+function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId) {
   const mustIncludeAllGroups = rules.eligibility.mustIncludeAllGroups !== false;
   const entries = Array.from(groupMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   if (!entries.length) return null;
 
   if (!mustIncludeAllGroups) {
-    let bestGroup = null;
+    let best = null;
     for (const [, options] of entries) {
-      const best = pickBestOptionForGroup(options, availableQtyByVariant, cartLineByVariantId);
-      if (!best) continue;
-      if (!bestGroup || best.cost < bestGroup.cost) bestGroup = best;
+      const picked = pickBestOptionForGroup(options, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId);
+      if (!picked) continue;
+      if (!best || picked.cost < best.cost) best = picked;
     }
-    if (!bestGroup) return null;
-    return [bestGroup];
+    if (!best) return null;
+    return best.lines;
   }
 
   const selection = [];
   for (const [, options] of entries) {
-    const best = pickBestOptionForGroup(options, availableQtyByVariant, cartLineByVariantId);
-    if (!best) return null;
-    selection.push(best);
-    availableQtyByVariant.set(best.variantId, Math.max(0, Math.floor(Number(availableQtyByVariant.get(best.variantId) || 0))) - best.quantity);
+    const best = pickBestOptionForGroup(options, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId);
+    if (!best || !best.lines?.length) return null;
+    for (const line of best.lines) {
+      selection.push(line);
+      availableQtyByVariant.set(
+        String(line.variantId),
+        Math.max(0, Math.floor(Number(availableQtyByVariant.get(String(line.variantId)) || 0))) - Math.max(0, Math.floor(Number(line.quantity || 0)))
+      );
+    }
   }
   return selection;
 }
@@ -199,6 +254,14 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
 
   const cartLines = buildCartVariantLines(normalizedCart, variantSnapshotById);
   const cartLineByVariantId = new Map(cartLines.map((l) => [String(l.variantId), l]));
+  const cartLinesByProductId = new Map();
+  for (const l of cartLines) {
+    const pid = String(l?.productId || "").trim();
+    if (!pid) continue;
+    const arr = cartLinesByProductId.get(pid) || [];
+    arr.push(l);
+    cartLinesByProductId.set(pid, arr);
+  }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
   const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
@@ -209,21 +272,21 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
     const groupMap = buildGroupMapForComponents(components, null);
     for (let use = 0; use < maxUses; use += 1) {
       const availableForUse = new Map(availableQtyByVariant);
-      const selection = computeSelectionForUse(groupMap, rules, availableForUse, cartLineByVariantId);
-      if (!selection || !selection.length) break;
+      const selectionLines = computeSelectionForUse(groupMap, rules, availableForUse, cartLineByVariantId, cartLinesByProductId);
+      if (!selectionLines || !selectionLines.length) break;
 
       availableQtyByVariant.clear();
       for (const [k, v] of availableForUse.entries()) availableQtyByVariant.set(k, v);
 
-      const subtotal = selection.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
+      const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
       const discountAmount = calcDiscountAmount(rules, subtotal);
 
-      const matchedVariants = Array.from(new Set(selection.map((s) => String(s.variantId)).filter(Boolean)));
-      const matchedProductIds = Array.from(new Set(selection.map((s) => String(s.productId)).filter(Boolean)));
+      const matchedVariants = Array.from(new Set(selectionLines.map((s) => String(s.variantId)).filter(Boolean)));
+      const matchedProductIds = Array.from(new Set(selectionLines.map((s) => String(s.productId)).filter(Boolean)));
 
       applications.push({
         appliedRule: { type: rules.type, value: rules.value, minQty: rules.eligibility.minCartQty },
-        selection: selection.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
+        selection: selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
         matchedVariants,
         matchedProductIds,
         subtotal,
@@ -250,14 +313,14 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
         eligibility: { ...rules.eligibility, minCartQty: Math.max(1, tier.minQty) }
       };
 
-      const selection = computeSelectionForUse(groupMap, tierRules, availableForUse, cartLineByVariantId);
-      if (!selection || !selection.length) continue;
+      const selectionLines = computeSelectionForUse(groupMap, tierRules, availableForUse, cartLineByVariantId, cartLinesByProductId);
+      if (!selectionLines || !selectionLines.length) continue;
 
-      const subtotal = selection.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
+      const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
       const discountAmount = calcDiscountAmount(tierRules, subtotal);
 
       if (!best || discountAmount > best.discountAmount) {
-        best = { tier, selection, availableForUse, subtotal, discountAmount };
+        best = { tier, selectionLines, availableForUse, subtotal, discountAmount };
       }
     }
 
@@ -266,13 +329,13 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
     availableQtyByVariant.clear();
     for (const [k, v] of best.availableForUse.entries()) availableQtyByVariant.set(k, v);
 
-    const matchedVariants = Array.from(new Set(best.selection.map((s) => String(s.variantId)).filter(Boolean)));
-    const matchedProductIds = Array.from(new Set(best.selection.map((s) => String(s.productId)).filter(Boolean)));
+    const matchedVariants = Array.from(new Set(best.selectionLines.map((s) => String(s.variantId)).filter(Boolean)));
+    const matchedProductIds = Array.from(new Set(best.selectionLines.map((s) => String(s.productId)).filter(Boolean)));
 
             applications.push({
               tier: { minQty: best.tier.minQty, type: best.tier.type, value: best.tier.value },
               appliedRule: { type: best.tier.type, value: best.tier.value, minQty: best.tier.minQty },
-              selection: best.selection.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
+              selection: best.selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
               matchedVariants,
               matchedProductIds,
               subtotal: best.subtotal,
