@@ -40,7 +40,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     const evaluationResult = {
       applied: {
         totalDiscount: 10,
-        matchedProductIds: ["p1", "p2"]
+        matchedProductIds: ["101", "202"]
       }
     };
 
@@ -59,7 +59,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.code.startsWith("BNDL")).toBe(true);
     expect(record.status).toBe("issued");
     expect(record.discountAmount).toBe(10);
-    expect(record.includeProductIds.sort()).toEqual(["p1", "p2"]);
+    expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
