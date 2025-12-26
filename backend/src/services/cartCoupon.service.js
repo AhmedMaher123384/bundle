@@ -100,7 +100,18 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, couponPayload);
     sallaCouponId = createdCouponResponse?.data?.id ?? null;
   } catch (err) {
-    if (!(err instanceof ApiError) || err.statusCode !== 409) throw err;
+    if (err instanceof ApiError && err.statusCode === 422) {
+      const floored = Math.floor(discountAmount);
+      if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
+        const retryPayload = { ...couponPayload, amount: floored };
+        const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, retryPayload);
+        sallaCouponId = createdCouponResponse?.data?.id ?? null;
+      } else {
+        return null;
+      }
+    } else if (!(err instanceof ApiError) || err.statusCode !== 409) {
+      throw err;
+    }
   }
 
   try {
