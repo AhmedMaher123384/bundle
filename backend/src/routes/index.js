@@ -575,7 +575,7 @@ function createApiRouter(config) {
       "async function refreshProduct(){try{var variantId=findVariantId();var productId=findProductId();log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();return}renderProductBanners(bundles)}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}}"
     );
     parts.push(
-      "function initAuto(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct();setInterval(function(){applyPendingCoupon();refreshProduct()},30000);try{window.addEventListener(\"focus\",applyPendingCoupon);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")applyPendingCoupon()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+      "function initOnce(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCoupon();refreshProduct()}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
     );
     parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");
@@ -588,7 +588,7 @@ function createApiRouter(config) {
     parts.push(
       "g.BundleApp.renderTest=function(){renderProductBanners([{bannerColor:\"#16a34a\",title:\"باقة - اختبار (وفر 50%)\",cta:\"أضف الباقة\",components:[{variantId:\"111\",productId:\"154200631\",quantity:1,isBase:true}],offer:{type:\"percentage\",value:10,tiers:[{minQty:2,type:\"percentage\",value:10},{minQty:4,type:\"percentage\",value:30},{minQty:6,type:\"percentage\",value:50}]},pricing:{base:{originalTotal:3000,discountAmount:300,finalTotal:2700},tiers:[{minQty:2,originalTotal:6000,discountAmount:600,finalTotal:5400},{minQty:4,originalTotal:12000,discountAmount:3600,finalTotal:8400},{minQty:6,originalTotal:18000,discountAmount:9000,finalTotal:9000}]}}])};"
     );
-    parts.push("initAuto();");
+    parts.push("initOnce();");
     parts.push("})();");
     return parts.join("");
   }
@@ -822,13 +822,13 @@ function createApiRouter(config) {
       "async function refreshProduct(){var state=null;try{state=(g.BundleApp&&g.BundleApp.__refreshState)?g.BundleApp.__refreshState:(g.BundleApp.__refreshState={busy:false,queued:false,lastKey:\"\",lastSig:\"\"});if(state.busy){state.queued=true;return}state.busy=true;var variantId=findVariantId();var productId=findProductId();var key=variantId?('v:'+String(variantId)):productId?('p:'+String(productId)):\"\";log(\"bundle-app: ids\",{variantId:variantId,productId:productId});var res=null;if(variantId){res=await getProductBundlesByVariantId(variantId)}else if(productId){res=await getProductBundlesByProductId(productId)}else{clearProductBanner();state.lastKey=\"\";state.lastSig=\"\";return}var bundles=(res&&res.bundles)||[];if(!bundles.length){clearProductBanner();state.lastKey=key;state.lastSig=\"\";return}var sig='';for(var i=0;i<bundles.length;i++){var b=bundles[i]||{};sig+=String(b.id||i)+'|'+bundleVariantSig(b)+'|'+String(((b.pricing&&b.pricing.base&&b.pricing.base.finalTotal)!=null)?(b.pricing.base.finalTotal):'')+';'}if(!applying&&key===state.lastKey&&sig===state.lastSig)return;state.lastKey=key;state.lastSig=sig;lastBundles=bundles;renderProductBanners(bundles)}catch(e){warn(\"bundle-app: refresh failed\",e&&((e.details)||e.message||e));clearProductBanner()}finally{if(state){state.busy=false;if(state.queued){state.queued=false;setTimeout(function(){refreshProduct()},0)}}}}"
     );
     parts.push(
-      "function initAuto(){var inited=false;var lastTickAt=0;function tick(){var now=Date.now();if(now-lastTickAt<600)return;lastTickAt=now;applyPendingCouponForCart();refreshProduct()}function start(){if(inited)return;inited=true;tick();setInterval(tick,5000);try{window.addEventListener(\"focus\",tick);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")tick()})}catch(e){}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
+      "function initOnce(){var inited=false;function start(){if(inited)return;inited=true;applyPendingCouponForCart();refreshProduct()}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}"
     );
     parts.push("g.BundleApp.getProductBundlesByVariantId=getProductBundlesByVariantId;");
     parts.push("g.BundleApp.getProductBundlesByProductId=getProductBundlesByProductId;");
     parts.push("g.BundleApp.refreshProduct=refreshProduct;");
     parts.push("g.BundleApp.applyBundleSelection=applyBundleSelection;");
-    parts.push("initAuto();");
+    parts.push("initOnce();");
     parts.push("})();");
     return parts.join("");
   }
