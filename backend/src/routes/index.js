@@ -719,7 +719,7 @@ function createApiRouter(config) {
       "function getPageQty(){try{var selectors=['input[name=\"quantity\"][type=\"number\"]','input[name=\"qty\"][type=\"number\"]','input.qty[type=\"number\"]','select[name=\"quantity\"]','select[name=\"qty\"]'];for(var i=0;i<selectors.length;i++){var el=document.querySelector(selectors[i]);if(!el)continue;var raw=el.value;var n=Math.floor(Number(raw));if(Number.isFinite(n)&&n>0)return n}return 1}catch(e){return 1}}"
     );
     parts.push(
-      "function minRequiredBaseQty(bundle){try{var offer=bundle&&bundle.offer||{};var elig=offer&&offer.eligibility;var eligMin=Math.floor(Number(elig&&elig.minCartQty||0));if(Number.isFinite(eligMin)&&eligMin>1)return eligMin;return 1}catch(e){return 1}}"
+      "function minRequiredBaseQty(bundle){return 1}"
     );
     parts.push(
       "function normalizeItems(bundle){var comps=(bundle&&bundle.components)||[];if(!Array.isArray(comps)||!comps.length){comps=(bundle&&bundle.bundleItems)||[]}var out=[];var baseMin=minRequiredBaseQty(bundle);for(var i=0;i<comps.length;i++){var c=comps[i]||{};var v=String(c.variantId||\"\").trim();var pid=String(c.productId||\"\").trim();var isBase=Boolean(c.isBase);var q=isBase?Math.max(getPageQty(),baseMin):Math.max(1,Math.floor(Number(c.quantity||1)));if(!v)continue;out.push({variantId:v,productId:pid||null,quantity:q,isBase:isBase})}out.sort(function(a,b){return String(a.variantId).localeCompare(String(b.variantId))});return out}"
@@ -792,7 +792,7 @@ function createApiRouter(config) {
     );
     parts.push("function getDefaultMinQty(bundle){return 1}");
     parts.push(
-      "function pickMinQty(bundle){try{var bid=String(bundle&&bundle.id||\"\");var v=Number(selectedTierByBundleId[bid]);if(Number.isFinite(v)&&v>=1)return Math.floor(v);return getDefaultMinQty(bundle)}catch(e){return 1}}"
+      "function pickMinQty(bundle){try{return Math.max(1,Math.floor(Number(getPageQty()))) }catch(e){return 1}}"
     );
     parts.push(
       "function pickPricingForQty(bundle,qty){try{var base=(bundle&&bundle.pricing&&bundle.pricing.base)||null;var tiers=(bundle&&bundle.pricing&&bundle.pricing.tiers)||[];var q=Math.max(1,Math.floor(Number(qty||1)));if(Array.isArray(tiers)&&tiers.length){var best=null;for(var i=0;i<tiers.length;i++){var t=tiers[i]||{};var mq=Math.max(1,Math.floor(Number(t.minQty||1)));if(mq===q)return t;if(mq<=q&&(best==null||mq>best.minQty))best=t}if(best)return best}return base}catch(e){return (bundle&&bundle.pricing&&bundle.pricing.base)||null}}"
@@ -848,7 +848,7 @@ function createApiRouter(config) {
 
       res.type("js");
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-      res.setHeader("Cache-Control", "public, max-age=300");
+      res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
 
