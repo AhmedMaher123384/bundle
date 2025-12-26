@@ -120,26 +120,102 @@ function createApiRouter(config) {
     return { bundles: sortBundlesNewestFirst(Array.from(byId.values())), coverReport };
   }
 
-  function normalizeComponentsForStorefront(bundle, variantSnapshots) {
-    const baseVariantId = resolveBaseVariantIdFromBundle(bundle);
+  function parseProductRefVariantId(variantId) {
+    const s = String(variantId || "").trim();
+    if (!s.startsWith("product:")) return null;
+    const pid = s.slice("product:".length).trim();
+    return pid ? pid : null;
+  }
+
+  async function mapWithConcurrency(items, concurrency, mapper) {
+    const list = Array.isArray(items) ? items : [];
+    const limit = Math.max(1, Math.floor(Number(concurrency || 1)));
+    const results = new Array(list.length);
+    let idx = 0;
+    async function worker() {
+      while (idx < list.length) {
+        const i = idx;
+        idx += 1;
+        results[i] = await mapper(list[i], i);
+      }
+    }
+    const runners = Array.from({ length: Math.min(limit, list.length) }, () => worker());
+    await Promise.allSettled(runners);
+    return results;
+  }
+
+  async function fetchSingleVariantSnapshotsByProductId(sallaConfig, accessToken, productIds) {
+    const uniqProductIds = uniqStrings(productIds);
+    const variantIdByProductId = new Map();
+
+    await mapWithConcurrency(uniqProductIds, 4, async (productId) => {
+      try {
+        const productResp = await getProductById(sallaConfig, accessToken, productId, {});
+        const variantIds = extractVariantIdsFromProductPayload(productResp);
+        const uniqVariantIds = uniqStrings(variantIds);
+        if (uniqVariantIds.length === 1) variantIdByProductId.set(productId, uniqVariantIds[0]);
+      } catch (err) {
+        void err;
+      }
+    });
+
+    const variantIds = uniqStrings(Array.from(variantIdByProductId.values()));
+    const report = variantIds.length
+      ? await fetchVariantsSnapshotReport(sallaConfig, accessToken, variantIds, { concurrency: 6, maxAttempts: 3 })
+      : { snapshots: new Map(), missing: [] };
+
+    const snapshotByProductId = new Map();
+    for (const [productId, variantId] of variantIdByProductId.entries()) {
+      const snap = report.snapshots.get(String(variantId));
+      if (!snap || snap.isActive !== true) continue;
+      snapshotByProductId.set(String(productId), snap);
+    }
+
+    return { snapshotByProductId, report };
+  }
+
+  function normalizeComponentsForStorefront(bundle, variantSnapshots, ctx) {
+    const baseRefVariantId = resolveBaseVariantIdFromBundle(bundle);
     const components = Array.isArray(bundle?.components) ? bundle.components : [];
     return components
       .map((c) => {
         const variantId = String(c?.variantId || "").trim();
         const quantity = Math.max(1, Math.floor(Number(c?.quantity || 1)));
         if (!variantId) return null;
+        const isBase = baseRefVariantId ? variantId === baseRefVariantId : false;
+
         const isProductRef = variantId.startsWith("product:");
         const refProductId = isProductRef ? String(variantId.slice("product:".length) || "").trim() : "";
-        const snap = !isProductRef && variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
-        const productId = isProductRef ? (refProductId || null) : String(snap?.productId || "").trim() || null;
-        const imageUrl = isProductRef ? null : snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
-        const price = isProductRef ? null : snap?.price != null ? Number(snap.price) : null;
+
+        let outVariantId = variantId;
+        let snap = !isProductRef && variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
+        if (isProductRef) {
+          const triggerProductId = String(ctx?.triggerProductId || "").trim();
+          const triggerVariantId = String(ctx?.triggerVariantId || "").trim();
+          if (isBase && triggerVariantId && refProductId && triggerProductId && refProductId === triggerProductId) {
+            const s = variantSnapshots?.get ? variantSnapshots.get(triggerVariantId) : null;
+            if (s && String(s?.productId || "").trim() === triggerProductId) {
+              outVariantId = triggerVariantId;
+              snap = s;
+            }
+          } else if (refProductId) {
+            const resolved = ctx?.singleVariantSnapshotByProductId?.get ? ctx.singleVariantSnapshotByProductId.get(refProductId) : null;
+            if (resolved) {
+              outVariantId = String(resolved.variantId);
+              snap = resolved;
+            }
+          }
+        }
+
+        const productId = String(snap?.productId || "").trim() || (isProductRef ? (refProductId || null) : null);
+        const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
+        const price = snap?.price != null ? Number(snap.price) : null;
         return {
-          variantId,
+          variantId: outVariantId,
           productId,
           quantity,
           group: String(c?.group || "").trim() || null,
-          isBase: baseVariantId ? variantId === baseVariantId : false,
+          isBase,
           imageUrl,
           price: Number.isFinite(price) ? price : null
         };
@@ -185,23 +261,29 @@ function createApiRouter(config) {
   function computePricing(bundle, components) {
     const offer = bundle?.rules || {};
     const missingPriceVariantIds = [];
+    let baseMissing = false;
     const baseSubtotal = (Array.isArray(components) ? components : []).reduce((acc, c) => {
       const unit = Number(c?.price);
       const qty = Math.max(1, Math.floor(Number(c?.quantity || 1)));
       if (!Number.isFinite(unit) || unit < 0) {
         missingPriceVariantIds.push(String(c?.variantId || "").trim());
+        baseMissing = true;
         return acc;
       }
       return acc + unit * qty;
     }, 0);
-    const baseDiscount = calcDiscountAmount(offer, baseSubtotal);
-    const base = {
-      originalTotal: Number(baseSubtotal.toFixed(2)),
-      discountAmount: Number(Math.max(0, baseDiscount).toFixed(2)),
-      finalTotal: Number(Math.max(0, baseSubtotal - baseDiscount).toFixed(2))
-    };
+    const baseDiscount = baseMissing ? null : calcDiscountAmount(offer, baseSubtotal);
+    const base = baseMissing
+      ? { originalTotal: null, discountAmount: null, finalTotal: null }
+      : {
+          originalTotal: Number(baseSubtotal.toFixed(2)),
+          discountAmount: Number(Math.max(0, baseDiscount).toFixed(2)),
+          finalTotal: Number(Math.max(0, baseSubtotal - baseDiscount).toFixed(2))
+        };
 
-    const baseVariantId = resolveBaseVariantIdFromBundle(bundle);
+    const baseVariantId =
+      (Array.isArray(components) ? components : []).find((c) => c && c.isBase === true)?.variantId ??
+      resolveBaseVariantIdFromBundle(bundle);
     const tiers = (Array.isArray(offer?.tiers) ? offer.tiers : [])
       .map((t) => ({
         minQty: Math.max(1, Math.floor(Number(t?.minQty ?? 1))),
@@ -212,24 +294,26 @@ function createApiRouter(config) {
       .sort((a, b) => a.minQty - b.minQty)
       .map((tier) => {
         const missingTier = [];
+        let tierMissing = false;
         const tierSubtotal = (Array.isArray(components) ? components : []).reduce((acc, c) => {
           const unit = Number(c?.price);
           const qtyRaw = Math.max(1, Math.floor(Number(c?.quantity || 1)));
           const qty = baseVariantId && String(c?.variantId) === String(baseVariantId) ? tier.minQty : qtyRaw;
           if (!Number.isFinite(unit) || unit < 0) {
             missingTier.push(String(c?.variantId || "").trim());
+            tierMissing = true;
             return acc;
           }
           return acc + unit * qty;
         }, 0);
-        const discount = calcDiscountAmount(tier, tierSubtotal);
+        const discount = tierMissing ? null : calcDiscountAmount(tier, tierSubtotal);
         return {
           minQty: tier.minQty,
           type: tier.type,
           value: tier.value,
-          originalTotal: Number(tierSubtotal.toFixed(2)),
-          discountAmount: Number(Math.max(0, discount).toFixed(2)),
-          finalTotal: Number(Math.max(0, tierSubtotal - discount).toFixed(2)),
+          originalTotal: tierMissing ? null : Number(tierSubtotal.toFixed(2)),
+          discountAmount: tierMissing ? null : Number(Math.max(0, discount).toFixed(2)),
+          finalTotal: tierMissing ? null : Number(Math.max(0, tierSubtotal - discount).toFixed(2)),
           missingPriceVariantIds: Array.from(new Set(missingTier)).filter(Boolean)
         };
       });
@@ -260,8 +344,8 @@ function createApiRouter(config) {
     return { title, cta, bannerColor, badgeColor };
   }
 
-  function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId) {
-    const components = normalizeComponentsForStorefront(bundle, variantSnapshots);
+  function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId, ctx) {
+    const components = normalizeComponentsForStorefront(bundle, variantSnapshots, ctx);
     const rules = bundle?.rules || {};
     const offer = {
       type: String(rules?.type || "").trim() || null,
@@ -858,9 +942,26 @@ function createApiRouter(config) {
 
       const combinedSnapshots = new Map(componentReport.snapshots);
       if (snap) combinedSnapshots.set(String(value.variantId), snap);
-      const combinedMissing = [...(variantReport.missing || []), ...(componentReport.missing || []), ...(coverReport?.missing || [])];
+      const productRefProductIds = uniqStrings(
+        bundles
+          .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+          .map((c) => parseProductRefVariantId(String(c?.variantId || "").trim()))
+          .filter(Boolean)
+      );
+      const singleVariant = productRefProductIds.length
+        ? await fetchSingleVariantSnapshotsByProductId(config.salla, merchant.accessToken, productRefProductIds)
+        : { snapshotByProductId: new Map(), report: { snapshots: new Map(), missing: [] } };
+      for (const s of singleVariant.snapshotByProductId.values()) combinedSnapshots.set(String(s.variantId), s);
 
-      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, productId));
+      const combinedMissing = [
+        ...(variantReport.missing || []),
+        ...(componentReport.missing || []),
+        ...(coverReport?.missing || []),
+        ...(singleVariant?.report?.missing || [])
+      ];
+
+      const ctx = { triggerProductId: productId, triggerVariantId: String(value.variantId), singleVariantSnapshotByProductId: singleVariant.snapshotByProductId };
+      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, productId, ctx));
 
       const inactiveVariantIds = Array.from(combinedSnapshots.values())
         .filter((s) => s?.isActive !== true)
@@ -929,9 +1030,23 @@ function createApiRouter(config) {
         ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, componentVariantIds, { concurrency: 4, maxAttempts: 3 })
         : { snapshots: new Map(), missing: [] };
 
-      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, componentReport.snapshots, triggerProductId));
+      const productRefProductIds = uniqStrings(
+        bundles
+          .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+          .map((c) => parseProductRefVariantId(String(c?.variantId || "").trim()))
+          .filter(Boolean)
+      );
+      const singleVariant = productRefProductIds.length
+        ? await fetchSingleVariantSnapshotsByProductId(config.salla, merchant.accessToken, productRefProductIds)
+        : { snapshotByProductId: new Map(), report: { snapshots: new Map(), missing: [] } };
 
-      const inactiveVariantIds = Array.from(componentReport.snapshots.values())
+      const combinedSnapshots = new Map(componentReport.snapshots);
+      for (const s of singleVariant.snapshotByProductId.values()) combinedSnapshots.set(String(s.variantId), s);
+
+      const ctx = { triggerProductId, triggerVariantId: null, singleVariantSnapshotByProductId: singleVariant.snapshotByProductId };
+      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, triggerProductId, ctx));
+
+      const inactiveVariantIds = Array.from(combinedSnapshots.values())
         .filter((s) => s?.isActive !== true)
         .map((s) => String(s?.variantId || "").trim())
         .filter(Boolean);
@@ -943,7 +1058,7 @@ function createApiRouter(config) {
         triggerProductId,
         bundles: safeBundles,
         validation: {
-          missing: [...(componentReport.missing || []), ...(coverReport?.missing || [])],
+          missing: [...(componentReport.missing || []), ...(coverReport?.missing || []), ...(singleVariant?.report?.missing || [])],
           inactive: inactiveVariantIds
         }
       });
@@ -1029,8 +1144,25 @@ function createApiRouter(config) {
         root?.defaultVariantId ??
         root?.variant_id ??
         root?.variantId ??
+        root?.default_sku_id ??
+        root?.defaultSkuId ??
+        root?.sku_id ??
+        root?.skuId ??
+        (root?.default_sku && typeof root.default_sku === "object" ? root.default_sku.id ?? root.default_sku.sku_id ?? null : null) ??
+        (root?.sku && typeof root.sku === "object" ? root.sku.id ?? root.sku.sku_id ?? null : null) ??
         (root?.data && typeof root.data === "object"
-          ? root.data.default_variant_id ?? root.data.defaultVariantId ?? root.data.variant_id ?? root.data.variantId
+          ? root.data.default_variant_id ??
+            root.data.defaultVariantId ??
+            root.data.variant_id ??
+            root.data.variantId ??
+            root.data.default_sku_id ??
+            root.data.defaultSkuId ??
+            root.data.sku_id ??
+            root.data.skuId ??
+            (root.data.default_sku && typeof root.data.default_sku === "object"
+              ? root.data.default_sku.id ?? root.data.default_sku.sku_id ?? null
+              : null) ??
+            (root.data.sku && typeof root.data.sku === "object" ? root.data.sku.id ?? root.data.sku.sku_id ?? null : null)
           : null);
       const s = String(direct ?? "").trim();
       if (s) fallback.push(s);
@@ -1223,9 +1355,23 @@ function createApiRouter(config) {
         ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, componentVariantIds, { concurrency: 4, maxAttempts: 3 })
         : { snapshots: new Map(), missing: [] };
 
-      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, componentReport.snapshots, triggerProductId));
+      const productRefProductIds = uniqStrings(
+        bundles
+          .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+          .map((c) => parseProductRefVariantId(String(c?.variantId || "").trim()))
+          .filter(Boolean)
+      );
+      const singleVariant = productRefProductIds.length
+        ? await fetchSingleVariantSnapshotsByProductId(config.salla, merchant.accessToken, productRefProductIds)
+        : { snapshotByProductId: new Map(), report: { snapshots: new Map(), missing: [] } };
 
-      const inactiveVariantIds = Array.from(componentReport.snapshots.values())
+      const combinedSnapshots = new Map(componentReport.snapshots);
+      for (const s of singleVariant.snapshotByProductId.values()) combinedSnapshots.set(String(s.variantId), s);
+
+      const ctx = { triggerProductId, triggerVariantId: null, singleVariantSnapshotByProductId: singleVariant.snapshotByProductId };
+      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, triggerProductId, ctx));
+
+      const inactiveVariantIds = Array.from(combinedSnapshots.values())
         .filter((s) => s?.isActive !== true)
         .map((s) => String(s?.variantId || "").trim())
         .filter(Boolean);
@@ -1237,7 +1383,7 @@ function createApiRouter(config) {
         triggerProductId,
         bundles: safeBundles,
         validation: {
-          missing: [...(componentReport.missing || []), ...(coverReport?.missing || [])],
+          missing: [...(componentReport.missing || []), ...(coverReport?.missing || []), ...(singleVariant?.report?.missing || [])],
           inactive: inactiveVariantIds
         }
       });
