@@ -865,6 +865,30 @@ function createApiRouter(config) {
     return map;
   }
 
+  function extractOptionValueLabelByValueIdFromProductPayload(data) {
+    const roots = [];
+    if (data && typeof data === "object") roots.push(data);
+    if (data?.data && typeof data.data === "object") roots.push(data.data);
+
+    const map = new Map();
+    for (const root of roots) {
+      const options = normalizeMaybeArray(root?.options ?? null);
+      for (const opt of options) {
+        const optId = String(opt?.id ?? opt?.option_id ?? opt?.optionId ?? "").trim();
+        if (!optId) continue;
+        const optName = String(opt?.name ?? opt?.title ?? opt?.label ?? "").trim();
+        const values = normalizeMaybeArray(opt?.values ?? opt?.option_values ?? opt?.optionValues ?? null);
+        for (const val of values) {
+          const valId = String(val?.id ?? val?.value_id ?? val?.valueId ?? "").trim();
+          if (!valId) continue;
+          const valName = String(val?.name ?? val?.value ?? val?.label ?? val?.title ?? "").trim();
+          map.set(valId, { optionId: optId, optionName: optName || null, valueName: valName || null });
+        }
+      }
+    }
+    return map;
+  }
+
   function extractSkuRecordsFromProductPayload(data) {
     const roots = [];
     if (data && typeof data === "object") roots.push(data);
@@ -934,6 +958,7 @@ function createApiRouter(config) {
       const productId = String(value.productId || "").trim();
       const productResp = await getProductById(config.salla, merchant.accessToken, productId, {});
       const cartOptionsByVariantId = extractCartOptionsByVariantIdFromProductPayload(productResp);
+      const optionValueLabelByValueId = extractOptionValueLabelByValueIdFromProductPayload(productResp);
       const variantIds = extractVariantIdsFromProductPayload(productResp);
       const report = variantIds.length
         ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, variantIds, { concurrency: 6, maxAttempts: 3 })
@@ -941,17 +966,32 @@ function createApiRouter(config) {
 
       const variants = Array.from(report.snapshots.values())
         .filter((s) => String(s?.productId || "").trim() === productId)
-        .map((s) => ({
-          variantId: String(s.variantId),
-          productId: String(s.productId),
-          name: s.name || null,
-          attributes: s.attributes || {},
-          imageUrl: s.imageUrl || null,
-          price: s.price != null ? Number(s.price) : null,
-          cartProductId: productId,
-          cartOptions: cartOptionsByVariantId.get(String(s.variantId)) || null,
-          isActive: s.isActive === true
-        }))
+        .map((s) => {
+          const variantId = String(s.variantId);
+          const cartOptions = cartOptionsByVariantId.get(String(variantId)) || null;
+          const resolvedAttrs = {};
+          if (cartOptions && typeof cartOptions === "object") {
+            for (const [optId, valId] of Object.entries(cartOptions)) {
+              const meta = optionValueLabelByValueId.get(String(valId)) || null;
+              const key = String(meta?.optionName || optId).trim();
+              const val = String(meta?.valueName || valId).trim();
+              if (key && val) resolvedAttrs[key] = val;
+            }
+          }
+          const snapAttrs = s.attributes && typeof s.attributes === "object" ? s.attributes : {};
+          const attrs = Object.keys(resolvedAttrs).length ? resolvedAttrs : snapAttrs;
+          return {
+            variantId,
+            productId: String(s.productId),
+            name: s.name || null,
+            attributes: attrs,
+            imageUrl: s.imageUrl || null,
+            price: s.price != null ? Number(s.price) : null,
+            cartProductId: productId,
+            cartOptions,
+            isActive: s.isActive === true
+          };
+        })
         .sort((a, b) => Number(Boolean(b.isActive)) - Number(Boolean(a.isActive)));
 
       return res.json({
