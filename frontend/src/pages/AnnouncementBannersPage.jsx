@@ -27,7 +27,14 @@ function emptyForm() {
     status: 'draft',
     priority: 100,
     content: { title: '', message: '', linkUrl: '', linkText: '' },
-    presentation: { backgroundColor: '#0f172a', textColor: '#ffffff', linkColor: '#38bdf8', accentColor: '', sticky: true },
+    presentation: {
+      backgroundColor: '#0f172a',
+      textColor: '#ffffff',
+      linkColor: '#38bdf8',
+      accentColor: '',
+      sticky: true,
+      motion: { enabled: false, durationSec: 18 },
+    },
     behavior: { dismissible: true, selectable: true, dismissTtlHours: 72 },
     targeting: { showOn: 'all' },
     scheduling: { startAt: null, endAt: null },
@@ -53,6 +60,10 @@ function normalizePayload(form) {
       linkColor: String(f.presentation?.linkColor || '').trim() || null,
       accentColor: String(f.presentation?.accentColor || '').trim() || null,
       sticky: f.presentation?.sticky !== false,
+      motion: {
+        enabled: f.presentation?.motion?.enabled === true,
+        durationSec: Math.max(6, Math.min(60, Number(f.presentation?.motion?.durationSec ?? 18))),
+      },
     },
     behavior: {
       dismissible: f.behavior?.dismissible !== false,
@@ -134,6 +145,10 @@ export function AnnouncementBannersPage() {
         linkColor: String(b?.presentation?.linkColor || b?.linkColor || '#38bdf8'),
         accentColor: String(b?.presentation?.accentColor || b?.accentColor || ''),
         sticky: b?.presentation?.sticky !== false,
+        motion: {
+          enabled: b?.presentation?.motion?.enabled === true,
+          durationSec: Number(b?.presentation?.motion?.durationSec ?? 18),
+        },
       },
       behavior: {
         dismissible: b?.behavior?.dismissible !== false,
@@ -358,6 +373,38 @@ export function AnnouncementBannersPage() {
                     onChange={(e) => setForm((prev) => ({ ...prev, presentation: { ...prev.presentation, sticky: e.target.checked } }))}
                   />
                   <div className="text-sm font-semibold text-slate-700">Sticky top</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    checked={form.presentation.motion.enabled}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        presentation: { ...prev.presentation, motion: { ...prev.presentation.motion, enabled: e.target.checked } },
+                      }))
+                    }
+                  />
+                  <div className="text-sm font-semibold text-slate-700">Marquee</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">Motion speed</div>
+                  <input
+                    value={String(form.presentation.motion.durationSec)}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        presentation: { ...prev.presentation, motion: { ...prev.presentation.motion, durationSec: e.target.value } },
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                    inputMode="numeric"
+                    disabled={!form.presentation.motion.enabled}
+                  />
+                  <div className="mt-1 text-xs text-slate-500">Seconds per loop (6–60). Lower = faster.</div>
                 </div>
               </div>
 

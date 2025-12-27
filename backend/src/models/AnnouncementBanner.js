@@ -17,7 +17,11 @@ const AnnouncementBannerSchema = new mongoose.Schema(
       textColor: { type: String, default: null },
       linkColor: { type: String, default: null },
       accentColor: { type: String, default: null },
-      sticky: { type: Boolean, default: true }
+      sticky: { type: Boolean, default: true },
+      motion: {
+        enabled: { type: Boolean, default: false },
+        durationSec: { type: Number, default: 18 }
+      }
     },
     behavior: {
       dismissible: { type: Boolean, default: true },

@@ -25,6 +25,19 @@ function sanitizePayload(payload) {
   delete p.storeId;
   delete p.deletedAt;
 
+  if (p.presentation && typeof p.presentation === "object") {
+    const motion = p.presentation.motion && typeof p.presentation.motion === "object" ? { ...p.presentation.motion } : {};
+    const durationSec = Number(motion.durationSec);
+    p.presentation = {
+      ...p.presentation,
+      motion: {
+        ...motion,
+        enabled: motion.enabled === true,
+        durationSec: Number.isFinite(durationSec) ? Math.max(6, Math.min(60, durationSec)) : 18
+      }
+    };
+  }
+
   if (p.targeting && typeof p.targeting === "object") {
     p.targeting = { ...p.targeting, showOn: normalizeShowOn(p.targeting.showOn) };
   }
@@ -142,6 +155,10 @@ function serializeAnnouncementBannerForStorefront(banner) {
     linkColor: banner?.presentation?.linkColor != null ? String(banner.presentation.linkColor) : null,
     accentColor: banner?.presentation?.accentColor != null ? String(banner.presentation.accentColor) : null,
     sticky: banner?.presentation?.sticky !== false,
+    motionEnabled: banner?.presentation?.motion?.enabled === true,
+    motionDurationSec: Number.isFinite(Number(banner?.presentation?.motion?.durationSec))
+      ? Math.max(6, Math.min(60, Number(banner.presentation.motion.durationSec)))
+      : 18,
     dismissible: banner?.behavior?.dismissible !== false,
     selectable: banner?.behavior?.selectable !== false,
     dismissTtlHours: Number.isFinite(Number(banner?.behavior?.dismissTtlHours)) ? Number(banner.behavior.dismissTtlHours) : 72,
