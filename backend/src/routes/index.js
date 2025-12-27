@@ -340,16 +340,53 @@ function createApiRouter(config) {
     const presentation = bundle?.presentation || {};
 
     const rawTitle = String(presentation?.title || "").trim();
+    const rawSubtitle = String(presentation?.subtitle || "").trim();
+    const rawLabel = String(presentation?.label || "").trim();
+    const rawLabelSub = String(presentation?.labelSub || "").trim();
     const rawCta = String(presentation?.cta || "").trim();
     const rawBannerColor = String(presentation?.bannerColor || "").trim();
     const rawBadgeColor = String(presentation?.badgeColor || "").trim();
+    const rawTextColor = String(presentation?.textColor || "").trim();
+    const rawCtaBgColor = String(presentation?.ctaBgColor || "").trim();
+    const rawCtaTextColor = String(presentation?.ctaTextColor || "").trim();
+    const rawLabelBgColor = String(presentation?.labelBgColor || "").trim();
+    const rawLabelTextColor = String(presentation?.labelTextColor || "").trim();
 
     const defaultBannerColor = type === "percentage" ? "#16a34a" : type === "bundle_price" ? "#7c3aed" : "#0ea5e9";
     const bannerColor = rawBannerColor || defaultBannerColor;
     const badgeColor = rawBadgeColor || bannerColor;
     const title = rawTitle || (badge ? `${name} - وفر ${badge}` : name);
+    const subtitle = rawSubtitle || null;
+    const label = rawLabel || null;
+    const labelSub = rawLabelSub || null;
     const cta = rawCta || "أضف الباقة";
-    return { title, cta, bannerColor, badgeColor };
+    const textColor = rawTextColor || "#ffffff";
+    const ctaBgColor = rawCtaBgColor || null;
+    const ctaTextColor = rawCtaTextColor || null;
+    const labelBgColor = rawLabelBgColor || null;
+    const labelTextColor = rawLabelTextColor || null;
+
+    const showItems = typeof presentation?.showItems === "boolean" ? presentation.showItems : true;
+    const showPrice = typeof presentation?.showPrice === "boolean" ? presentation.showPrice : true;
+    const showTiers = typeof presentation?.showTiers === "boolean" ? presentation.showTiers : true;
+
+    return {
+      title,
+      subtitle,
+      label,
+      labelSub,
+      cta,
+      bannerColor,
+      badgeColor,
+      textColor,
+      ctaBgColor,
+      ctaTextColor,
+      labelBgColor,
+      labelTextColor,
+      showItems,
+      showPrice,
+      showTiers
+    };
   }
 
   function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId, ctx) {
@@ -368,9 +405,20 @@ function createApiRouter(config) {
       id: String(bundle?._id),
       triggerProductId: String(triggerProductId || bundle?.triggerProductId || "").trim(),
       title: display.title,
+      subtitle: display.subtitle,
+      label: display.label,
+      labelSub: display.labelSub,
       cta: display.cta,
       bannerColor: display.bannerColor,
       badgeColor: display.badgeColor,
+      textColor: display.textColor,
+      ctaBgColor: display.ctaBgColor,
+      ctaTextColor: display.ctaTextColor,
+      labelBgColor: display.labelBgColor,
+      labelTextColor: display.labelTextColor,
+      showItems: display.showItems,
+      showPrice: display.showPrice,
+      showTiers: display.showTiers,
       bundleItems: buildBundleItemsFromComponents(components),
       components: (Array.isArray(components) ? components : [])
         .slice()
@@ -679,7 +727,7 @@ function createApiRouter(config) {
       "function getBundleVariantSelectionMap(bundleId){var bid=String(bundleId||\"\").trim();if(!bid)return null;var m=variantSelectionsByBundleId[bid];if(!m||typeof m!==\"object\")m={};variantSelectionsByBundleId[bid]=m;return m}"
     );
     parts.push(
-      "function ensurePickerStyles(){if(document.getElementById(\"bundle-app-pickers-style\"))return;var s=document.createElement(\"style\");s.id=\"bundle-app-pickers-style\";s.textContent='.bundle-app-pickers{margin-top:10px;display:none;background:rgba(255,255,255,.14);border-radius:12px;padding:10px}.bundle-app-card--selected .bundle-app-pickers{display:block}.bundle-app-pickers-title{font-weight:900;font-size:12px;margin-bottom:8px}.bundle-app-picker-row{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.bundle-app-picker-label{font-weight:900;font-size:12px}.bundle-app-picker-hint{font-size:12px;opacity:.95}.bundle-app-picker-status{font-size:12px;opacity:.95;margin-top:6px}.bundle-app-variant-options{display:flex;flex-wrap:wrap;gap:8px}.bundle-app-variant-btn{appearance:none;border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.14);color:#fff;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;cursor:pointer;line-height:1;display:inline-flex;align-items:center;gap:8px}.bundle-app-variant-btn.is-selected{background:rgba(255,255,255,.95);color:#111827;border-color:rgba(255,255,255,.95)}.bundle-app-variant-btn:disabled{opacity:.75;cursor:not-allowed}.bundle-app-variant-swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.25);background-size:cover;background-position:center}.bundle-app-variant-text{line-height:1.15}';document.head.appendChild(s)}"
+      "function ensurePickerStyles(){if(document.getElementById(\"bundle-app-pickers-style\"))return;var s=document.createElement(\"style\");s.id=\"bundle-app-pickers-style\";s.textContent='.bundle-app-pickers{margin-top:12px;display:none;background:rgba(255,255,255,.14);border-radius:14px;padding:10px}.bundle-app-card--selected .bundle-app-pickers{display:block}.bundle-app-pickers-title{font-weight:900;font-size:12px;margin-bottom:8px}.bundle-app-picker-row{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.bundle-app-picker-label{font-weight:900;font-size:12px}.bundle-app-picker-hint{font-size:12px;opacity:.95}.bundle-app-picker-status{font-size:12px;opacity:.95;margin-top:6px}.bundle-app-variant-options{display:flex;flex-wrap:wrap;gap:8px}.bundle-app-variant-btn{appearance:none;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;cursor:pointer;line-height:1;display:inline-flex;align-items:center;gap:8px}.bundle-app-variant-btn.is-selected{background:rgba(255,255,255,.95);color:#111827;border-color:rgba(255,255,255,.95)}.bundle-app-variant-btn:disabled{opacity:.75;cursor:not-allowed}.bundle-app-variant-swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.25)}.bundle-app-variant-swatch.is-image{background-size:cover;background-position:center}.bundle-app-variant-text{line-height:1.15}@media (max-width:480px){.bundle-app-variant-btn{width:100%;justify-content:flex-start}}';document.head.appendChild(s)}"
     );
     parts.push(
       "function bundleVariantSig(bundle){try{var items=normalizeItems(bundle);var parts=[];for(var i=0;i<items.length;i++){var it=items[i]||{};var v=String(it.variantId||\"\").trim();if(!isProductRef(v))continue;var pid=String(it.productId||\"\").trim();if(!pid)continue;var qty=Math.max(1,Math.floor(Number(it.quantity||1)));parts.push(pid+\"x\"+qty)}parts.sort();return parts.join(\"|\")}catch(e){return\"\"}}"
@@ -826,6 +874,14 @@ function createApiRouter(config) {
     parts.push(
       "async function applyBundleSelection(bundle){var bid=String(bundle&&bundle.id||\"\");var trigger=String(bundle&&bundle.triggerProductId||\"\");if(!bid||!trigger)return;if(storeClosedNow()){messageByBundleId[bid]='لم يتم إضافة الباقة (المتجر مغلق حالياً)';applying=false;try{renderProductBanners(lastBundles||[])}catch(e0){}return}selectedBundleId=bid;applying=true;try{messageByBundleId[bid]='جاري إضافة الباقة...';renderProductBanners(lastBundles||[])}catch(e){}try{var rawItems=normalizeItems(bundle);var items=await resolveProductRefItems(rawItems,bid);if(!items||!items.length){messageByBundleId[bid]='لازم تختار الفاريانت قبل إضافة الباقة';applying=false;try{renderProductBanners(lastBundles||[])}catch(e0){}return}var prev=loadSelection(trigger);await tryClearCoupon();if(storeClosedNow()){messageByBundleId[bid]='لم يتم إضافة الباقة (المتجر مغلق حالياً)';applying=false;try{renderProductBanners(lastBundles||[])}catch(e0){}return}if(prev&&prev.bundleId&&String(prev.bundleId)!==bid&&Array.isArray(prev.items)&&prev.items.length){await removeItemsFromCart(prev.items)}if(storeClosedNow()){messageByBundleId[bid]='لم يتم إضافة الباقة (المتجر مغلق حالياً)';applying=false;try{renderProductBanners(lastBundles||[])}catch(e0){}return}try{await addItemsToCart(items)}catch(addErr){markStoreClosed(addErr);var hm=humanizeCartError(addErr);messageByBundleId[bid]=hm?('لم يتم إضافة الباقة ('+hm+')'):'لم يتم إضافة الباقة';applying=false;try{renderProductBanners(lastBundles||[])}catch(e9){}return}messageByBundleId[bid]='جاري تجهيز الخصم...';try{renderProductBanners(lastBundles||[])}catch(e2){}var res=await requestApplyBundle(bid,items.map(function(it){return{variantId:it.variantId,quantity:it.quantity}}));var hasDiscount=Boolean(res&&res.hasDiscount&&res.couponCode);var issueFailed=Boolean(res&&res.couponIssueFailed);if(hasDiscount){saveSelection(trigger,{bundleId:bid,triggerProductId:trigger,items:items,ts:Date.now()});savePendingCoupon(trigger,{code:String(res.couponCode),ts:Date.now()});var ok=await tryApplyCoupon(String(res.couponCode));if(ok){clearPendingCoupon(trigger);messageByBundleId[bid]='تم تطبيق الخصم على السلة'}else{var st=null;var msg=\"\";try{st=g.BundleApp&&g.BundleApp._lastCouponApplyStatus}catch(x0){}try{msg=g.BundleApp&&g.BundleApp._lastCouponApplyMessage}catch(x1){}var stN=Number(st);var showErr=Number.isFinite(stN)&&(stN===410||stN===401||stN===403||stN===404);if(!showErr){var m0=String(msg||\"\");showErr=(m0==='timeout'||m0.indexOf('ERR_NAME_NOT_RESOLVED')!==-1||m0.indexOf('لم يعد متاحا')!==-1||m0.toLowerCase().indexOf('no longer available')!==-1)}var hm2=humanizeCartError({status:st,message:msg});if(showErr&&hm2){messageByBundleId[bid]='تمت إضافة الباقة لكن تعذر تطبيق الخصم ('+hm2+')'}else{messageByBundleId[bid]='تم تجهيز الكوبون، افتح السلة وسيتم تطبيقه تلقائيًا'}}}else if(issueFailed){messageByBundleId[bid]='تمت إضافة الباقة لكن تعذر إنشاء كوبون الخصم. حاول مرة أخرى.';clearPendingCoupon(trigger)}else{messageByBundleId[bid]='تمت إضافة الباقة. لا يوجد خصم لهذه الباقة.';clearPendingCoupon(trigger)}selectedBundleId=bid}catch(e){warn(\"bundle-app: apply bundle failed\",e&&((e.details)||e.message||e));var em=String((e&&e.message)||\"\").trim();if(em&&em.length>160)em=em.slice(0,160);messageByBundleId[bid]='حصل خطأ أثناء إضافة الباقة أو تطبيق الخصم'+(em?(' ('+em+')'):'')}applying=false;try{renderProductBanners(lastBundles||[])}catch(e){} }"
     );
+    parts.push(
+      "function ensureStyles(){if(document.getElementById(\"bundle-app-style\"))return;var s=document.createElement(\"style\");s.id=\"bundle-app-style\";s.textContent='.bundle-app-container{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}.bundle-app-banner--inline{position:relative;display:block;width:100%;margin:12px 0;z-index:10}.bundle-app-banner--fixed{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999}.bundle-app-card{border-radius:16px;padding:14px 14px;box-shadow:0 14px 40px rgba(2,6,23,.18);overflow:hidden}.bundle-app-card--selected{outline:2px solid rgba(255,255,255,.7)}.bundle-app-card+.bundle-app-card{margin-top:10px}.bundle-app-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.bundle-app-choice{display:flex;gap:10px;align-items:flex-start;min-width:0;flex:1}.bundle-app-radio{margin-top:4px;accent-color:rgba(255,255,255,.95)}.bundle-app-content{min-width:0;flex:1}.bundle-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.bundle-app-title{font-size:15px;font-weight:900;line-height:1.25;letter-spacing:.1px}.bundle-app-subtitle{font-size:12px;opacity:.95;margin-top:6px;line-height:1.35}.bundle-app-label{font-size:12px;font-weight:900;line-height:1;white-space:nowrap;border-radius:999px;padding:7px 10px}.bundle-app-label-sub{font-size:12px;opacity:.92;margin-top:8px;line-height:1.35}.bundle-app-muted{opacity:.9}.bundle-app-btn{border:0;border-radius:14px;padding:11px 12px;font-size:13px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.18);color:inherit;white-space:nowrap}.bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}.bundle-app-items{margin-top:10px;font-size:12px;opacity:.95;line-height:1.35}.bundle-app-price{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}.bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}.bundle-app-tiers{margin-top:12px;display:flex;flex-direction:column;gap:8px}.bundle-app-tier{display:flex;justify-content:space-between;gap:10px;background:rgba(255,255,255,.14);border-radius:14px;padding:9px 10px;font-size:12px;line-height:1.25;cursor:pointer;user-select:none;transition:background .12s ease,transform .12s ease;color:inherit}.bundle-app-tier:hover{background:rgba(255,255,255,.2)}.bundle-app-tier--selected{background:rgba(255,255,255,.26);outline:2px solid rgba(255,255,255,.65)}.bundle-app-tier:active{transform:scale(.99)}.bundle-app-tier strong{font-weight:900}.bundle-app-pickers{margin-top:12px}@media (max-width:480px){.bundle-app-row{flex-direction:column;align-items:stretch}.bundle-app-btn{width:100%;white-space:normal}.bundle-app-choice{width:100%}.bundle-app-label{padding:6px 9px}}';document.head.appendChild(s)}"
+    );
+
+    parts.push(
+      "function renderProductBanners(bundles){ensureStyles();var id=\"bundle-app-banner\";var root=document.getElementById(id);if(!root){root=document.createElement(\"div\");root.id=id}mountBanner(root);var arr=Array.isArray(bundles)?bundles:[];if(!arr.length){clearProductBanner();return}var trigger=String(arr[0]&&arr[0].triggerProductId||\"\");lastTriggerProductId=trigger||lastTriggerProductId;if(!selectedBundleId&&trigger){var prev=loadSelection(trigger);if(prev&&prev.bundleId)selectedBundleId=String(prev.bundleId||\"\")}if(selectedBundleId){var ok=false;for(var z0=0;z0<arr.length;z0++){if(String(arr[z0]&&arr[z0].id||\"\")===String(selectedBundleId||\"\")){ok=true;break}}if(!ok)selectedBundleId=null}var html='';for(var i=0;i<arr.length;i++){var b=arr[i]||{};var bid=String(b.id||\"\");var color=String(b.bannerColor||\"#0ea5e9\");var textColor=String(b.textColor||\"#ffffff\");var title=normalizeTitle(b.title);var subtitle=String(b.subtitle||\"\");var label=String(b.label||\"\");var labelSub=String(b.labelSub||\"\");var labelBg=String(b.labelBgColor||b.badgeColor||\"\");var labelText=String(b.labelTextColor||textColor||\"\");var ctaBg=String(b.ctaBgColor||\"\");var ctaText=String(b.ctaTextColor||\"\");var showItems=(b&&b.showItems===false)?false:true;var showPrice=(b&&b.showPrice===false)?false:true;var showTiers=(b&&b.showTiers===false)?false:true;var selectedMinQty=pickMinQty(b);var items=normalizeItems(b);var itemsText=(showItems&&items.length)?buildItemsText(items):'';var priceText=showPrice?buildPriceText(b):'';var tiersHtml=showTiers?buildTierRows(b,bid,selectedMinQty):'';var msg=String(messageByBundleId[bid]||\"\");var checked=bid===String(selectedBundleId||\"\");var cls='bundle-app-card'+(checked?' bundle-app-card--selected':'');var btnLabel=String(b.cta||\"أضف الباقة\");if(tiersHtml){btnLabel=btnLabel+' ('+fmtNum(Math.max(getPageQty(),Math.max(minRequiredBaseQty(b),selectedMinQty)))+' قطع)'}var cardStyle='background:'+escHtml(color)+';color:'+escHtml(textColor)+';';var btnStyle='';if(ctaBg)btnStyle+='background:'+escHtml(ctaBg)+';';if(ctaText)btnStyle+='color:'+escHtml(ctaText)+';';var labelStyle='';if(labelBg)labelStyle+='background:'+escHtml(labelBg)+';';else labelStyle+='background:rgba(255,255,255,.18);';if(labelText)labelStyle+='color:'+escHtml(labelText)+';';html+='<div class=\"'+cls+'\" style=\"'+cardStyle+'\" data-bundle-id=\"'+escHtml(bid)+'\"><div class=\"bundle-app-row\"><label class=\"bundle-app-choice\"><input class=\"bundle-app-radio\" type=\"radio\" name=\"bundle_app_choice\" value=\"'+escHtml(bid)+'\" '+(checked?'checked':'')+' /><div class=\"bundle-app-content\"><div class=\"bundle-app-head\"><div style=\"min-width:0\"><div class=\"bundle-app-title\">'+escHtml(title)+'</div>'+(subtitle?('<div class=\"bundle-app-subtitle\">'+escHtml(subtitle)+'</div>'):'')+(labelSub?('<div class=\"bundle-app-label-sub\">'+escHtml(labelSub)+'</div>'):'')+'</div>'+(label?('<div class=\"bundle-app-label\" style=\"'+labelStyle+'\">'+escHtml(label)+'</div>'):'')+'</div>'+(itemsText?('<div class=\"bundle-app-items\">'+escHtml(itemsText)+'</div>'):'')+(priceText?('<div class=\"bundle-app-price\">'+escHtml(priceText)+'</div>'):'')+(msg?('<div class=\"bundle-app-msg\">'+escHtml(msg)+'</div>'):'')+'</div></label><button class=\"bundle-app-btn\" type=\"button\" data-action=\"apply-one\" data-bundle-id=\"'+escHtml(bid)+'\" '+(applying?'disabled':'')+(btnStyle?(' style=\"'+btnStyle+'\"'):'')+'>'+escHtml(btnLabel)+'</button></div>'+(tiersHtml?('<div class=\"bundle-app-tiers\">'+tiersHtml+'</div>'):'')+'<div class=\"bundle-app-pickers\" data-bundle-id=\"'+escHtml(bid)+'\"></div></div>'}root.innerHTML=html;var tierEls=root.querySelectorAll('.bundle-app-tier[data-tier-minqty][data-bundle-id]');for(var t=0;t<tierEls.length;t++){(function(el){el.onclick=function(){var bid=String(el.getAttribute('data-bundle-id')||\"\");var mq=Number(el.getAttribute('data-tier-minqty'));if(bid&&Number.isFinite(mq)&&mq>=1){selectedTierByBundleId[bid]=Math.floor(mq);messageByBundleId[bid]='';renderProductBanners(arr)}}})(tierEls[t])}var radios=root.querySelectorAll('input.bundle-app-radio[name=\"bundle_app_choice\"]');for(var r=0;r<radios.length;r++){(function(el){el.onchange=function(){selectedBundleId=String(el.value||\"\");renderProductBanners(arr)}})(radios[r])}var btns=root.querySelectorAll('button.bundle-app-btn[data-action=\"apply-one\"][data-bundle-id]');for(var k=0;k<btns.length;k++){(function(btn){btn.onclick=function(){var bid=String(btn.getAttribute('data-bundle-id')||\"\");if(!bid||applying)return;var bundle=null;for(var i=0;i<arr.length;i++){if(String(arr[i]&&arr[i].id||\"\")===bid){bundle=arr[i];break}}if(!bundle)return;applyBundleSelection(bundle)}})(btns[k])}if(selectedBundleId){var selCard=null;var cards=root.querySelectorAll('.bundle-app-card[data-bundle-id]');for(var ci=0;ci<cards.length;ci++){var c=cards[ci];if(String(c.getAttribute('data-bundle-id')||\"\")===String(selectedBundleId||\"\")){selCard=c;break}}var selBundle=null;for(var s0=0;s0<arr.length;s0++){if(String(arr[s0]&&arr[s0].id||\"\")===String(selectedBundleId||\"\")){selBundle=arr[s0];break}}if(selCard&&selBundle){ensureVariantPickersForCard(selCard,selBundle)}}}"
+    );
+
     parts.push("var lastBundles=null;");
     parts.push("function clearProductBanner(){var root=document.getElementById(\"bundle-app-banner\");if(root)root.remove()}");
     parts.push(

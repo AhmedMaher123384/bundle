@@ -83,9 +83,20 @@ export function BundleEditorPage({ mode }) {
   const [qtyTiers, setQtyTiers] = useState([{ minQty: 2, type: 'percentage', value: 10 }])
 
   const [presentationTitle, setPresentationTitle] = useState('')
+  const [presentationSubtitle, setPresentationSubtitle] = useState('')
+  const [presentationLabel, setPresentationLabel] = useState('')
+  const [presentationLabelSub, setPresentationLabelSub] = useState('')
   const [presentationCta, setPresentationCta] = useState('')
   const [presentationBannerColor, setPresentationBannerColor] = useState('')
   const [presentationBadgeColor, setPresentationBadgeColor] = useState('')
+  const [presentationTextColor, setPresentationTextColor] = useState('')
+  const [presentationCtaBgColor, setPresentationCtaBgColor] = useState('')
+  const [presentationCtaTextColor, setPresentationCtaTextColor] = useState('')
+  const [presentationLabelBgColor, setPresentationLabelBgColor] = useState('')
+  const [presentationLabelTextColor, setPresentationLabelTextColor] = useState('')
+  const [presentationShowItems, setPresentationShowItems] = useState(true)
+  const [presentationShowPrice, setPresentationShowPrice] = useState(true)
+  const [presentationShowTiers, setPresentationShowTiers] = useState(true)
 
   const [addons, setAddons] = useState([])
   const [variantMetaById, setVariantMetaById] = useState({})
@@ -120,9 +131,20 @@ export function BundleEditorPage({ mode }) {
         setBaseVariantId(cover)
         setBaseRefMode(isProductRef(cover) ? 'product' : 'variant')
         setPresentationTitle(String(found?.presentation?.title || '').trim())
+        setPresentationSubtitle(String(found?.presentation?.subtitle || '').trim())
+        setPresentationLabel(String(found?.presentation?.label || '').trim())
+        setPresentationLabelSub(String(found?.presentation?.labelSub || '').trim())
         setPresentationCta(String(found?.presentation?.cta || '').trim())
         setPresentationBannerColor(String(found?.presentation?.bannerColor || '').trim())
         setPresentationBadgeColor(String(found?.presentation?.badgeColor || '').trim())
+        setPresentationTextColor(String(found?.presentation?.textColor || '').trim())
+        setPresentationCtaBgColor(String(found?.presentation?.ctaBgColor || '').trim())
+        setPresentationCtaTextColor(String(found?.presentation?.ctaTextColor || '').trim())
+        setPresentationLabelBgColor(String(found?.presentation?.labelBgColor || '').trim())
+        setPresentationLabelTextColor(String(found?.presentation?.labelTextColor || '').trim())
+        setPresentationShowItems(typeof found?.presentation?.showItems === 'boolean' ? found.presentation.showItems : true)
+        setPresentationShowPrice(typeof found?.presentation?.showPrice === 'boolean' ? found.presentation.showPrice : true)
+        setPresentationShowTiers(typeof found?.presentation?.showTiers === 'boolean' ? found.presentation.showTiers : true)
 
         if (rest.length) {
           setOfferType('bundle')
@@ -280,9 +302,20 @@ export function BundleEditorPage({ mode }) {
     const presentation = {}
     if (baseId) presentation.coverVariantId = baseId
     if (String(presentationTitle || '').trim()) presentation.title = String(presentationTitle || '').trim()
+    if (String(presentationSubtitle || '').trim()) presentation.subtitle = String(presentationSubtitle || '').trim()
+    if (String(presentationLabel || '').trim()) presentation.label = String(presentationLabel || '').trim()
+    if (String(presentationLabelSub || '').trim()) presentation.labelSub = String(presentationLabelSub || '').trim()
     if (String(presentationCta || '').trim()) presentation.cta = String(presentationCta || '').trim()
     if (String(presentationBannerColor || '').trim()) presentation.bannerColor = String(presentationBannerColor || '').trim()
     if (String(presentationBadgeColor || '').trim()) presentation.badgeColor = String(presentationBadgeColor || '').trim()
+    if (String(presentationTextColor || '').trim()) presentation.textColor = String(presentationTextColor || '').trim()
+    if (String(presentationCtaBgColor || '').trim()) presentation.ctaBgColor = String(presentationCtaBgColor || '').trim()
+    if (String(presentationCtaTextColor || '').trim()) presentation.ctaTextColor = String(presentationCtaTextColor || '').trim()
+    if (String(presentationLabelBgColor || '').trim()) presentation.labelBgColor = String(presentationLabelBgColor || '').trim()
+    if (String(presentationLabelTextColor || '').trim()) presentation.labelTextColor = String(presentationLabelTextColor || '').trim()
+    presentation.showItems = Boolean(presentationShowItems)
+    presentation.showPrice = Boolean(presentationShowPrice)
+    presentation.showTiers = Boolean(presentationShowTiers)
 
     return {
       version: 1,
@@ -309,6 +342,17 @@ export function BundleEditorPage({ mode }) {
     presentationBadgeColor,
     presentationBannerColor,
     presentationCta,
+    presentationCtaBgColor,
+    presentationCtaTextColor,
+    presentationLabel,
+    presentationLabelBgColor,
+    presentationLabelSub,
+    presentationLabelTextColor,
+    presentationShowItems,
+    presentationShowPrice,
+    presentationShowTiers,
+    presentationSubtitle,
+    presentationTextColor,
     presentationTitle,
     qtyTiersNormalized,
   ])
@@ -326,6 +370,81 @@ export function BundleEditorPage({ mode }) {
     }
     return true
   }, [draft.components.length, draft.name, effectiveProductId, offerType, qtyTiersNormalized])
+
+  function defaultBannerColorByRuleType(ruleType) {
+    const t = String(ruleType || '').trim()
+    if (t === 'percentage') return '#16a34a'
+    if (t === 'bundle_price') return '#7c3aed'
+    return '#0ea5e9'
+  }
+
+  const cardPreview = useMemo(() => {
+    const ruleType = String(draft?.rules?.type || '').trim()
+    const bannerColor = String(presentationBannerColor || '').trim() || defaultBannerColorByRuleType(ruleType)
+    const textColor = String(presentationTextColor || '').trim() || '#ffffff'
+
+    let badge = null
+    if (offerType === 'quantity') {
+      const bestTier = qtyTiersNormalized.length ? qtyTiersNormalized[qtyTiersNormalized.length - 1] : null
+      if (bestTier) badge = bestTier.type === 'percentage' ? `${bestTier.value}%` : `${bestTier.value}`
+    } else if (ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
+    else if (ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
+
+    const title = String(presentationTitle || '').trim() || (badge ? `${String(draft?.name || 'باقة')} - وفر ${badge}` : String(draft?.name || 'باقة'))
+    const subtitle = String(presentationSubtitle || '').trim() || ''
+    const label = String(presentationLabel || '').trim() || ''
+    const labelSub = String(presentationLabelSub || '').trim() || ''
+    const cta = String(presentationCta || '').trim() || 'أضف الباقة'
+
+    const ctaBgColor = String(presentationCtaBgColor || '').trim() || null
+    const ctaTextColor = String(presentationCtaTextColor || '').trim() || null
+    const labelBgColor = String(presentationLabelBgColor || '').trim() || null
+    const labelTextColor = String(presentationLabelTextColor || '').trim() || null
+
+    const itemCount = Array.isArray(draft?.components) ? draft.components.length : 0
+    const itemsText = itemCount ? `يشمل ${itemCount} منتج` : ''
+
+    const tierLines =
+      offerType === 'quantity' && Array.isArray(qtyTiersNormalized) && qtyTiersNormalized.length
+        ? qtyTiersNormalized
+            .slice(0, 3)
+            .map((t) => `عند ${t.minQty} قطع: ${t.type === 'percentage' ? `وفر ${t.value}%` : `وفر ${t.value}`}`)
+        : []
+
+    const discountText = badge ? `وفر حتى ${badge}` : ''
+
+    return {
+      bannerColor,
+      textColor,
+      title,
+      subtitle,
+      label,
+      labelSub,
+      cta,
+      ctaBgColor,
+      ctaTextColor,
+      labelBgColor,
+      labelTextColor,
+      itemsText,
+      tierLines,
+      discountText,
+    }
+  }, [
+    draft,
+    offerType,
+    presentationBannerColor,
+    presentationCta,
+    presentationCtaBgColor,
+    presentationCtaTextColor,
+    presentationLabel,
+    presentationLabelBgColor,
+    presentationLabelSub,
+    presentationLabelTextColor,
+    presentationSubtitle,
+    presentationTextColor,
+    presentationTitle,
+    qtyTiersNormalized,
+  ])
 
   const addAddon = useCallback(
     (item) => {
@@ -475,6 +594,36 @@ export function BundleEditorPage({ mode }) {
               </div>
 
               <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-slate-600">سطر إضافي تحت العنوان (اختياري)</label>
+                <input
+                  value={presentationSubtitle}
+                  onChange={(e) => setPresentationSubtitle(e.target.value)}
+                  placeholder="مثال: الأكثر اختيارًا"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">الملصق العلوي (اختياري)</label>
+                <input
+                  value={presentationLabel}
+                  onChange={(e) => setPresentationLabel(e.target.value)}
+                  placeholder="مثال: الأكثر اختيارًا"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">سطر تحت الملصق (اختياري)</label>
+                <input
+                  value={presentationLabelSub}
+                  onChange={(e) => setPresentationLabelSub(e.target.value)}
+                  placeholder="مثال: خصم لفترة محدودة"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                />
+              </div>
+
+              <div className="md:col-span-2">
                 <label className="text-xs font-semibold text-slate-600">نص زر الإضافة (اختياري)</label>
                 <input
                   value={presentationCta}
@@ -482,6 +631,24 @@ export function BundleEditorPage({ mode }) {
                   placeholder="مثال: أضف الباقة"
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون النص (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationTextColor) ? presentationTextColor : '#ffffff'}
+                    onChange={(e) => setPresentationTextColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationTextColor}
+                    onChange={(e) => setPresentationTextColor(e.target.value)}
+                    placeholder="#ffffff"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
               </div>
 
               <div>
@@ -517,6 +684,145 @@ export function BundleEditorPage({ mode }) {
                     placeholder="#0ea5e9"
                     className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون زر الإضافة (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationCtaBgColor) ? presentationCtaBgColor : '#111827'}
+                    onChange={(e) => setPresentationCtaBgColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationCtaBgColor}
+                    onChange={(e) => setPresentationCtaBgColor(e.target.value)}
+                    placeholder="#111827"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون نص الزر (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationCtaTextColor) ? presentationCtaTextColor : '#ffffff'}
+                    onChange={(e) => setPresentationCtaTextColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationCtaTextColor}
+                    onChange={(e) => setPresentationCtaTextColor(e.target.value)}
+                    placeholder="#ffffff"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون خلفية الملصق (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationLabelBgColor) ? presentationLabelBgColor : '#ffffff'}
+                    onChange={(e) => setPresentationLabelBgColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationLabelBgColor}
+                    onChange={(e) => setPresentationLabelBgColor(e.target.value)}
+                    placeholder="#ffffff"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون نص الملصق (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationLabelTextColor) ? presentationLabelTextColor : '#111827'}
+                    onChange={(e) => setPresentationLabelTextColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationLabelTextColor}
+                    onChange={(e) => setPresentationLabelTextColor(e.target.value)}
+                    placeholder="#111827"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="mt-1 flex flex-wrap gap-4 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" checked={presentationShowItems} onChange={(e) => setPresentationShowItems(e.target.checked)} />
+                    <span className="text-slate-700">إظهار المنتجات</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" checked={presentationShowPrice} onChange={(e) => setPresentationShowPrice(e.target.checked)} />
+                    <span className="text-slate-700">إظهار السعر/الخصم</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" checked={presentationShowTiers} onChange={(e) => setPresentationShowTiers(e.target.checked)} />
+                    <span className="text-slate-700">إظهار الشرائح</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-medium text-slate-700">معاينة كارت الباندل قبل التفعيل</div>
+                  <div className="mt-3 max-w-xl">
+                    <div className="rounded-2xl p-4 shadow-sm" style={{ background: cardPreview.bannerColor, color: cardPreview.textColor }}>
+                      {(cardPreview.label || cardPreview.labelSub) && (
+                        <div
+                          className="inline-flex flex-col rounded-full px-3 py-2 text-xs font-extrabold"
+                          style={{
+                            backgroundColor: cardPreview.labelBgColor || 'rgba(255,255,255,.14)',
+                            color: cardPreview.labelTextColor || cardPreview.textColor,
+                          }}
+                        >
+                          {cardPreview.label ? <div>{cardPreview.label}</div> : null}
+                          {cardPreview.labelSub ? <div className="text-[11px] font-bold opacity-90">{cardPreview.labelSub}</div> : null}
+                        </div>
+                      )}
+
+                      <div className="mt-3 text-base font-extrabold leading-snug">{cardPreview.title}</div>
+                      {cardPreview.subtitle ? <div className="mt-1 text-sm opacity-95">{cardPreview.subtitle}</div> : null}
+
+                      {presentationShowItems && cardPreview.itemsText ? <div className="mt-3 text-sm opacity-95">{cardPreview.itemsText}</div> : null}
+                      {presentationShowPrice && cardPreview.discountText ? <div className="mt-2 text-sm opacity-95">{cardPreview.discountText}</div> : null}
+
+                      {presentationShowTiers && cardPreview.tierLines.length ? (
+                        <div className="mt-3 space-y-1">
+                          {cardPreview.tierLines.map((line) => (
+                            <div key={line} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold">
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        className="mt-4 w-full rounded-xl px-3 py-2.5 text-sm font-extrabold"
+                        style={{
+                          backgroundColor: cardPreview.ctaBgColor || 'rgba(255,255,255,.18)',
+                          color: cardPreview.ctaTextColor || cardPreview.textColor,
+                        }}
+                      >
+                        {cardPreview.cta}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-600">المعاينة دي للستايل فقط (مش إضافة فعلية للسلة).</div>
                 </div>
               </div>
             </div>

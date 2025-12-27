@@ -44,9 +44,20 @@ const BundleSchema = new mongoose.Schema(
     presentation: {
       coverVariantId: { type: String, default: null },
       title: { type: String, default: null },
+      subtitle: { type: String, default: null },
+      label: { type: String, default: null },
+      labelSub: { type: String, default: null },
       cta: { type: String, default: null },
       bannerColor: { type: String, default: null },
-      badgeColor: { type: String, default: null }
+      badgeColor: { type: String, default: null },
+      textColor: { type: String, default: null },
+      ctaBgColor: { type: String, default: null },
+      ctaTextColor: { type: String, default: null },
+      labelBgColor: { type: String, default: null },
+      labelTextColor: { type: String, default: null },
+      showItems: { type: Boolean, default: null },
+      showPrice: { type: Boolean, default: null },
+      showTiers: { type: Boolean, default: null }
     },
     triggerProductId: { type: String, default: null, index: true },
     deletedAt: { type: Date, default: null, index: true }
