@@ -1,11 +1,12 @@
 {
   "version": 2,
-  "builds": [{ "src": "api/index.js", "use": "@vercel/node" }],
-  "functions": {
-    "api/index.js": {
-      "includeFiles": "src/storefront/snippet/styles/*.css"
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["src/storefront/snippet/styles/*.css"] }
     }
-  },
+  ],
   "routes": [
     { "src": "/(.*)", "dest": "/api/index.js" }
   ]
