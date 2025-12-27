@@ -82,6 +82,11 @@ export function BundleEditorPage({ mode }) {
   const [baseQty, setBaseQty] = useState(1)
   const [qtyTiers, setQtyTiers] = useState([{ minQty: 2, type: 'percentage', value: 10 }])
 
+  const [presentationTitle, setPresentationTitle] = useState('')
+  const [presentationCta, setPresentationCta] = useState('')
+  const [presentationBannerColor, setPresentationBannerColor] = useState('')
+  const [presentationBadgeColor, setPresentationBadgeColor] = useState('')
+
   const [addons, setAddons] = useState([])
   const [variantMetaById, setVariantMetaById] = useState({})
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -114,6 +119,10 @@ export function BundleEditorPage({ mode }) {
         setDiscountValue(Number(found?.rules?.value || 0))
         setBaseVariantId(cover)
         setBaseRefMode(isProductRef(cover) ? 'product' : 'variant')
+        setPresentationTitle(String(found?.presentation?.title || '').trim())
+        setPresentationCta(String(found?.presentation?.cta || '').trim())
+        setPresentationBannerColor(String(found?.presentation?.bannerColor || '').trim())
+        setPresentationBadgeColor(String(found?.presentation?.badgeColor || '').trim())
 
         if (rest.length) {
           setOfferType('bundle')
@@ -268,6 +277,13 @@ export function BundleEditorPage({ mode }) {
     const requiredQty = offerType === 'quantity' ? Math.max(1, Math.floor(Number(qtyTiersNormalized[0]?.minQty || 1))) : Math.max(1, sumQty(components))
     const primaryTier = offerType === 'quantity' ? qtyTiersNormalized[0] : null
 
+    const presentation = {}
+    if (baseId) presentation.coverVariantId = baseId
+    if (String(presentationTitle || '').trim()) presentation.title = String(presentationTitle || '').trim()
+    if (String(presentationCta || '').trim()) presentation.cta = String(presentationCta || '').trim()
+    if (String(presentationBannerColor || '').trim()) presentation.bannerColor = String(presentationBannerColor || '').trim()
+    if (String(presentationBadgeColor || '').trim()) presentation.badgeColor = String(presentationBadgeColor || '').trim()
+
     return {
       version: 1,
       name: String(name || '').trim(),
@@ -280,9 +296,22 @@ export function BundleEditorPage({ mode }) {
         eligibility: { mustIncludeAllGroups: true, minCartQty: requiredQty },
         limits: { maxUsesPerOrder: 50 },
       },
-      presentation: baseId ? { coverVariantId: baseId } : {},
+      presentation,
     }
-  }, [addonsWithMeta, baseQty, baseVariantId, discountType, discountValue, name, offerType, qtyTiersNormalized])
+  }, [
+    addonsWithMeta,
+    baseQty,
+    baseVariantId,
+    discountType,
+    discountValue,
+    name,
+    offerType,
+    presentationBadgeColor,
+    presentationBannerColor,
+    presentationCta,
+    presentationTitle,
+    qtyTiersNormalized,
+  ])
 
   const canSubmit = useMemo(() => {
     if (!effectiveProductId) return false
@@ -430,6 +459,67 @@ export function BundleEditorPage({ mode }) {
               onChange={(e) => setName(e.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
             />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="text-sm font-medium text-slate-700">شكل البانر في صفحة المنتج</div>
+            <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-slate-600">عنوان البانر (اختياري)</label>
+                <input
+                  value={presentationTitle}
+                  onChange={(e) => setPresentationTitle(e.target.value)}
+                  placeholder="لو فاضي هيكون العنوان تلقائي حسب الخصم"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-slate-600">نص زر الإضافة (اختياري)</label>
+                <input
+                  value={presentationCta}
+                  onChange={(e) => setPresentationCta(e.target.value)}
+                  placeholder="مثال: أضف الباقة"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون البانر (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationBannerColor) ? presentationBannerColor : '#0ea5e9'}
+                    onChange={(e) => setPresentationBannerColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationBannerColor}
+                    onChange={(e) => setPresentationBannerColor(e.target.value)}
+                    placeholder="#0ea5e9"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600">لون الشارة (اختياري)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#([0-9a-fA-F]{6})$/.test(presentationBadgeColor) ? presentationBadgeColor : '#0ea5e9'}
+                    onChange={(e) => setPresentationBadgeColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 bg-white p-1"
+                  />
+                  <input
+                    value={presentationBadgeColor}
+                    onChange={(e) => setPresentationBadgeColor(e.target.value)}
+                    placeholder="#0ea5e9"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="md:col-span-2">

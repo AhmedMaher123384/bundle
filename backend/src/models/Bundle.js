@@ -42,7 +42,11 @@ const BundleSchema = new mongoose.Schema(
       }
     },
     presentation: {
-      coverVariantId: { type: String, default: null }
+      coverVariantId: { type: String, default: null },
+      title: { type: String, default: null },
+      cta: { type: String, default: null },
+      bannerColor: { type: String, default: null },
+      badgeColor: { type: String, default: null }
     },
     triggerProductId: { type: String, default: null, index: true },
     deletedAt: { type: Date, default: null, index: true }

@@ -29,7 +29,11 @@ const rulesSchema = Joi.object({
 });
 
 const presentationSchema = Joi.object({
-  coverVariantId: Joi.string().trim().min(1).max(120).allow(null, "")
+  coverVariantId: Joi.string().trim().min(1).max(120).allow(null, ""),
+  title: Joi.string().trim().min(1).max(140).allow(null, ""),
+  cta: Joi.string().trim().min(1).max(60).allow(null, ""),
+  bannerColor: Joi.string().trim().min(1).max(40).allow(null, ""),
+  badgeColor: Joi.string().trim().min(1).max(40).allow(null, "")
 }).default({});
 
 const createBundleSchema = Joi.object({
