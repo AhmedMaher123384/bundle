@@ -10,7 +10,7 @@ module.exports = [
       globals: {
         console: "readonly",
         __dirname: "readonly",
-        __filename: "readonly",
+        __filename: "readonly" ,
         process: "readonly",
         URLSearchParams: "readonly"
       }
