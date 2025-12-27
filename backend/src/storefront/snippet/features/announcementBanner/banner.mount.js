@@ -1,5 +1,5 @@
 const bannerLogicParts = require("./banner.logic");
-const { buildStylesJs } = require("../core/stylesJs");
+const { buildStylesJs } = require("../../core/stylesJs");
 
 module.exports = function mountAnnouncementBanner(context) {
   const parts = context.parts;
