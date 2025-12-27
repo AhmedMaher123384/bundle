@@ -19,7 +19,7 @@ const presentationSchema = Joi.object({
   sticky: Joi.boolean().default(true),
   motion: Joi.object({
     enabled: Joi.boolean().default(false),
-    durationSec: Joi.number().min(3).max(30).default(12)
+    durationSec: Joi.number().min(1).max(20).default(8)
   }).default({})
 });
 

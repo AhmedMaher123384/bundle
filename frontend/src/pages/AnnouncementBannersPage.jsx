@@ -34,7 +34,7 @@ function emptyForm() {
       accentColor: '',
       fontFamily: '',
       sticky: true,
-      motion: { enabled: false, durationSec: 12 },
+      motion: { enabled: false, durationSec: 8 },
     },
     behavior: { dismissible: true, selectable: true, dismissTtlHours: 72 },
     targeting: { showOn: 'all' },
@@ -64,7 +64,7 @@ function normalizePayload(form) {
       sticky: f.presentation?.sticky !== false,
       motion: {
         enabled: f.presentation?.motion?.enabled === true,
-        durationSec: Math.max(3, Math.min(30, Number(f.presentation?.motion?.durationSec ?? 12))),
+        durationSec: Math.max(1, Math.min(20, Number(f.presentation?.motion?.durationSec ?? 8))),
       },
     },
     behavior: {
@@ -150,7 +150,7 @@ export function AnnouncementBannersPage() {
         sticky: b?.presentation?.sticky !== false,
         motion: {
           enabled: b?.presentation?.motion?.enabled === true,
-          durationSec: Number(b?.presentation?.motion?.durationSec ?? 12),
+          durationSec: Number(b?.presentation?.motion?.durationSec ?? 8),
         },
       },
       behavior: {
@@ -397,8 +397,8 @@ export function AnnouncementBannersPage() {
                   <div className="text-xs font-semibold text-slate-600">Motion speed</div>
                   <input
                     type="range"
-                    min="3"
-                    max="30"
+                    min="1"
+                    max="20"
                     step="1"
                     value={String(form.presentation.motion.durationSec)}
                     onChange={(e) =>
@@ -412,7 +412,7 @@ export function AnnouncementBannersPage() {
                   />
                   <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
                     <span>Faster</span>
-                    <span>{Math.max(3, Math.min(30, Number(form.presentation.motion.durationSec || 18)))}s</span>
+                    <span>{Math.max(1, Math.min(20, Number(form.presentation.motion.durationSec || 8)))}s</span>
                     <span>Slower</span>
                   </div>
                 </div>

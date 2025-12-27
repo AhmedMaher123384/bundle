@@ -21,7 +21,7 @@ const AnnouncementBannerSchema = new mongoose.Schema(
       sticky: { type: Boolean, default: true },
       motion: {
         enabled: { type: Boolean, default: false },
-        durationSec: { type: Number, default: 12 }
+        durationSec: { type: Number, default: 8 }
       }
     },
     behavior: {

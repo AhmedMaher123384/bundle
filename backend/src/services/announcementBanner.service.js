@@ -36,7 +36,7 @@ function sanitizePayload(payload) {
       motion: {
         ...motion,
         enabled: motion.enabled === true,
-        durationSec: Number.isFinite(durationSec) ? Math.max(3, Math.min(30, durationSec)) : 12
+        durationSec: Number.isFinite(durationSec) ? Math.max(1, Math.min(20, durationSec)) : 8
       }
     };
   }
@@ -161,8 +161,8 @@ function serializeAnnouncementBannerForStorefront(banner) {
     sticky: banner?.presentation?.sticky !== false,
     motionEnabled: banner?.presentation?.motion?.enabled === true,
     motionDurationSec: Number.isFinite(Number(banner?.presentation?.motion?.durationSec))
-      ? Math.max(3, Math.min(30, Number(banner.presentation.motion.durationSec)))
-      : 12,
+      ? Math.max(1, Math.min(20, Number(banner.presentation.motion.durationSec)))
+      : 8,
     dismissible: banner?.behavior?.dismissible !== false,
     selectable: banner?.behavior?.selectable !== false,
     dismissTtlHours: Number.isFinite(Number(banner?.behavior?.dismissTtlHours)) ? Number(banner.behavior.dismissTtlHours) : 72,
