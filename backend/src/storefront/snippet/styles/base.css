@@ -1,0 +1,16 @@
+.bundle-app-container{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.bundle-app-banner--inline{position:relative;display:block;width:100%;max-width:100%;margin:12px 0;z-index:10;box-sizing:border-box;grid-column:1 / -1;justify-self:stretch;align-self:stretch;flex:0 0 100%;flex-basis:100%;min-width:0;clear:both}
+.bundle-app-banner--fixed{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999}
+.bundle-app-card{border-radius:14px;padding:12px 14px;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,.18)}
+.bundle-app-card+.bundle-app-card{margin-top:10px}
+.bundle-app-row{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.bundle-app-title{font-size:14px;font-weight:800;line-height:1.2}
+.bundle-app-sub{font-size:12px;opacity:.95;margin-top:6px;line-height:1.3}
+.bundle-app-muted{opacity:.9}
+.bundle-app-choice{display:flex;gap:10px;align-items:flex-start}
+.bundle-app-radio{margin-top:3px}
+.bundle-app-btn{border:0;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:800;cursor:pointer;background:rgba(255,255,255,.18);color:#fff}
+.bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}
+.bundle-app-items{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
+.bundle-app-price{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
+.bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
