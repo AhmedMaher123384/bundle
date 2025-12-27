@@ -9,6 +9,8 @@ module.exports = [
       sourceType: "commonjs",
       globals: {
         console: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
         process: "readonly",
         URLSearchParams: "readonly"
       }
