@@ -21,6 +21,7 @@ const AnnouncementBannerSchema = new mongoose.Schema(
     },
     behavior: {
       dismissible: { type: Boolean, default: true },
+      selectable: { type: Boolean, default: true },
       dismissTtlHours: { type: Number, default: 72 }
     },
     targeting: {
@@ -40,4 +41,3 @@ AnnouncementBannerSchema.index({ storeId: 1, status: 1, deletedAt: 1, updatedAt:
 AnnouncementBannerSchema.index({ storeId: 1, status: 1, "targeting.showOn": 1, deletedAt: 1, priority: 1, updatedAt: -1 });
 
 module.exports = mongoose.model("AnnouncementBanner", AnnouncementBannerSchema);
-

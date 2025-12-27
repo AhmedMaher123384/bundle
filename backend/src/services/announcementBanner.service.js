@@ -31,8 +31,10 @@ function sanitizePayload(payload) {
 
   if (p.behavior && typeof p.behavior === "object") {
     const ttl = Number(p.behavior.dismissTtlHours);
+    const selectable = p.behavior.selectable;
     p.behavior = {
       ...p.behavior,
+      selectable: selectable !== false,
       dismissTtlHours: Number.isFinite(ttl) ? Math.max(0, Math.min(24 * 365, ttl)) : 72
     };
   }
@@ -141,6 +143,7 @@ function serializeAnnouncementBannerForStorefront(banner) {
     accentColor: banner?.presentation?.accentColor != null ? String(banner.presentation.accentColor) : null,
     sticky: banner?.presentation?.sticky !== false,
     dismissible: banner?.behavior?.dismissible !== false,
+    selectable: banner?.behavior?.selectable !== false,
     dismissTtlHours: Number.isFinite(Number(banner?.behavior?.dismissTtlHours)) ? Number(banner.behavior.dismissTtlHours) : 72,
     showOn: normalizeShowOn(banner?.targeting?.showOn),
     startAt: banner?.scheduling?.startAt ? new Date(banner.scheduling.startAt).toISOString() : null,
@@ -158,4 +161,3 @@ module.exports = {
   getActiveAnnouncementBannerForStore,
   serializeAnnouncementBannerForStorefront
 };
-

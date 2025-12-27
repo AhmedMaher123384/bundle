@@ -28,7 +28,7 @@ function emptyForm() {
     priority: 100,
     content: { title: '', message: '', linkUrl: '', linkText: '' },
     presentation: { backgroundColor: '#0f172a', textColor: '#ffffff', linkColor: '#38bdf8', accentColor: '', sticky: true },
-    behavior: { dismissible: true, dismissTtlHours: 72 },
+    behavior: { dismissible: true, selectable: true, dismissTtlHours: 72 },
     targeting: { showOn: 'all' },
     scheduling: { startAt: null, endAt: null },
   }
@@ -56,6 +56,7 @@ function normalizePayload(form) {
     },
     behavior: {
       dismissible: f.behavior?.dismissible !== false,
+      selectable: f.behavior?.selectable !== false,
       dismissTtlHours: Math.max(0, Math.min(24 * 365, Number(f.behavior?.dismissTtlHours ?? 72))),
     },
     targeting: { showOn: String(f.targeting?.showOn || 'all') },
@@ -136,6 +137,7 @@ export function AnnouncementBannersPage() {
       },
       behavior: {
         dismissible: b?.behavior?.dismissible !== false,
+        selectable: b?.behavior?.selectable !== false,
         dismissTtlHours: Number(b?.behavior?.dismissTtlHours ?? 72),
       },
       targeting: { showOn: String(b?.targeting?.showOn || b?.showOn || 'all') },
@@ -314,7 +316,7 @@ export function AnnouncementBannersPage() {
                   placeholder="e.g. New Year Sale"
                 />
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <div className="text-xs font-semibold text-slate-600">Status</div>
                   <select
@@ -467,6 +469,14 @@ export function AnnouncementBannersPage() {
                     onChange={(e) => setForm((prev) => ({ ...prev, behavior: { ...prev.behavior, dismissible: e.target.checked } }))}
                   />
                   <div className="text-sm font-semibold text-slate-700">Dismissible</div>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    checked={form.behavior.selectable}
+                    onChange={(e) => setForm((prev) => ({ ...prev, behavior: { ...prev.behavior, selectable: e.target.checked } }))}
+                  />
+                  <div className="text-sm font-semibold text-slate-700">Selectable text</div>
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-600">Dismiss TTL (hours)</div>

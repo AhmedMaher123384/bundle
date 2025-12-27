@@ -20,6 +20,7 @@ const presentationSchema = Joi.object({
 
 const behaviorSchema = Joi.object({
   dismissible: Joi.boolean().default(true),
+  selectable: Joi.boolean().default(true),
   dismissTtlHours: Joi.number().min(0).max(24 * 365).default(72)
 });
 
