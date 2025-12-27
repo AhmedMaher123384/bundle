@@ -35,14 +35,11 @@
 .bundle-app-check:checked + .bundle-app-checkmark{background:#fff;border-color:#fff}
 .bundle-app-check:checked + .bundle-app-checkmark:after{content:"";width:7px;height:12px;border:3px solid #0f172a;border-top:0;border-left:0;transform:rotate(45deg);margin-top:-1px}
 .bundle-app-tiers{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.bundle-app-tier{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:rgba(255,255,255,.14);border-radius:14px;padding:9px 10px;font-size:12px;line-height:1.25;cursor:pointer;user-select:none;transition:background .12s ease,transform .12s ease;color:inherit}
+.bundle-app-tier{display:flex;justify-content:space-between;gap:10px;background:rgba(255,255,255,.14);border-radius:14px;padding:9px 10px;font-size:12px;line-height:1.25;cursor:pointer;user-select:none;transition:background .12s ease,transform .12s ease;color:inherit}
 .bundle-app-tier:hover{background:rgba(255,255,255,.2)}
 .bundle-app-tier--selected{background:rgba(255,255,255,.26);outline:2px solid rgba(255,255,255,.65)}
 .bundle-app-tier:active{transform:scale(.99)}
 .bundle-app-tier strong{font-weight:900}
 .bundle-app-pickers{margin-top:12px;padding:12px;background:rgba(255,255,255,.14);border-radius:14px}
-.bundle-app-pickers--inline{margin-top:0}
-.bundle-app-tier-main{min-width:0;flex:1}
-.bundle-app-tier-checkwrap{margin-top:1px}
 .bundle-app-picker-hint{font-size:12px;opacity:.95;line-height:1.35}
 @media (max-width:480px){.bundle-app-row{flex-direction:column;align-items:stretch}.bundle-app-btn{width:100%;white-space:normal}.bundle-app-checkwrap{align-self:flex-start}}
