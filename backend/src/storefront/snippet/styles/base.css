@@ -14,3 +14,7 @@
 .bundle-app-items{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
 .bundle-app-price{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
 .bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
+.bundle-app-choice{position:relative;display:flex;gap:10px;align-items:flex-start}
+.bundle-app-radio{position:absolute;opacity:0;pointer-events:none}
+.bundle-app-dot{width:18px;height:18px;border-radius:999px;border:2px solid rgba(255,255,255,.85);box-sizing:border-box;flex:0 0 18px;margin-top:4px;background:transparent}
+.bundle-app-radio:checked + .bundle-app-dot{background:rgba(255,255,255,.95);box-shadow:inset 0 0 0 4px rgba(17,24,39,.45)}
