@@ -35,6 +35,7 @@ export function AppLayout() {
             <NavItem to="/" label="Dashboard" />
             <NavItem to="/products" label="Products" />
             <NavItem to="/bundles" label="Bundles" />
+            <NavItem to="/announcement-banners" label="Top Banner" />
             <NavItem to="/cart-preview" label="Cart Preview" />
           </div>
         </nav>
@@ -59,6 +60,7 @@ export function AppLayout() {
                 <NavItem to="/" label="Dashboard" />
                 <NavItem to="/products" label="Products" />
                 <NavItem to="/bundles" label="Bundles" />
+                <NavItem to="/announcement-banners" label="Top Banner" />
                 <NavItem to="/cart-preview" label="Cart Preview" />
               </div>
             </nav>
@@ -83,6 +85,8 @@ export function AppLayout() {
                   ? 'Products'
                   : location.pathname.startsWith('/bundles')
                     ? 'Bundles'
+                    : location.pathname.startsWith('/announcement-banners')
+                      ? 'Top Banner'
                     : location.pathname.startsWith('/cart-preview')
                       ? 'Cart Preview'
                       : 'Bundle Manager'}

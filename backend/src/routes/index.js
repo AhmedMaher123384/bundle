@@ -15,6 +15,9 @@ const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
 const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
+const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
+const { createAnnouncementBannerRouter } = require("./announcementBanner.routes");
+const announcementBannerService = require("../services/announcementBanner.service");
 
 function createApiRouter(config) {
   const router = express.Router();
@@ -547,6 +550,7 @@ function createApiRouter(config) {
       const { cssBase, cssPickers } = readSnippetCss();
       const context = { parts: [], merchantId, token, cssBase, cssPickers };
       mountBundle(context);
+      mountAnnouncementBanner(context);
       const js = context.parts.join("");
       return res.send(js);
     } catch (err) {
@@ -556,6 +560,45 @@ function createApiRouter(config) {
 
   router.use("/oauth/salla", createOAuthRouter(config));
   router.use("/bundles", merchantAuth(config), createBundleRouter(config));
+  router.use("/announcement-banners", merchantAuth(config), createAnnouncementBannerRouter(config));
+
+  const proxyAnnouncementBannerQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    page: Joi.string().valid("all", "cart").default("all"),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.get("/proxy/announcement-banner", async (req, res, next) => {
+    try {
+      const { error, value } = proxyAnnouncementBannerQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      const banner = await announcementBannerService.getActiveAnnouncementBannerForStore(String(value.merchantId), { page: value.page });
+      return res.json({
+        ok: true,
+        merchantId: String(value.merchantId),
+        page: String(value.page || "all"),
+        banner: announcementBannerService.serializeAnnouncementBannerForStorefront(banner)
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   const proxyProductBundlesQuerySchema = Joi.object({
     merchantId: Joi.string().trim().min(1).max(80).required(),
