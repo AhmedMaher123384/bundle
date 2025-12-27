@@ -15,10 +15,11 @@ const presentationSchema = Joi.object({
   textColor: Joi.string().trim().min(1).max(40).allow(null, ""),
   linkColor: Joi.string().trim().min(1).max(40).allow(null, ""),
   accentColor: Joi.string().trim().min(1).max(40).allow(null, ""),
+  fontFamily: Joi.string().trim().min(1).max(160).allow(null, ""),
   sticky: Joi.boolean().default(true),
   motion: Joi.object({
     enabled: Joi.boolean().default(false),
-    durationSec: Joi.number().min(6).max(60).default(18)
+    durationSec: Joi.number().min(3).max(30).default(12)
   }).default({})
 });
 

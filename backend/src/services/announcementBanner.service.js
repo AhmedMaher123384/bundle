@@ -28,12 +28,15 @@ function sanitizePayload(payload) {
   if (p.presentation && typeof p.presentation === "object") {
     const motion = p.presentation.motion && typeof p.presentation.motion === "object" ? { ...p.presentation.motion } : {};
     const durationSec = Number(motion.durationSec);
+    const fontFamilyRaw = p.presentation.fontFamily;
+    const fontFamily = fontFamilyRaw == null ? null : String(fontFamilyRaw).trim();
     p.presentation = {
       ...p.presentation,
+      fontFamily: fontFamily || null,
       motion: {
         ...motion,
         enabled: motion.enabled === true,
-        durationSec: Number.isFinite(durationSec) ? Math.max(6, Math.min(60, durationSec)) : 18
+        durationSec: Number.isFinite(durationSec) ? Math.max(3, Math.min(30, durationSec)) : 12
       }
     };
   }
@@ -154,11 +157,12 @@ function serializeAnnouncementBannerForStorefront(banner) {
     textColor: banner?.presentation?.textColor != null ? String(banner.presentation.textColor) : null,
     linkColor: banner?.presentation?.linkColor != null ? String(banner.presentation.linkColor) : null,
     accentColor: banner?.presentation?.accentColor != null ? String(banner.presentation.accentColor) : null,
+    fontFamily: banner?.presentation?.fontFamily != null ? String(banner.presentation.fontFamily) : null,
     sticky: banner?.presentation?.sticky !== false,
     motionEnabled: banner?.presentation?.motion?.enabled === true,
     motionDurationSec: Number.isFinite(Number(banner?.presentation?.motion?.durationSec))
-      ? Math.max(6, Math.min(60, Number(banner.presentation.motion.durationSec)))
-      : 18,
+      ? Math.max(3, Math.min(30, Number(banner.presentation.motion.durationSec)))
+      : 12,
     dismissible: banner?.behavior?.dismissible !== false,
     selectable: banner?.behavior?.selectable !== false,
     dismissTtlHours: Number.isFinite(Number(banner?.behavior?.dismissTtlHours)) ? Number(banner.behavior.dismissTtlHours) : 72,

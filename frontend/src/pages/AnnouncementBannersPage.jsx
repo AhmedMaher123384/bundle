@@ -32,8 +32,9 @@ function emptyForm() {
       textColor: '#ffffff',
       linkColor: '#38bdf8',
       accentColor: '',
+      fontFamily: '',
       sticky: true,
-      motion: { enabled: false, durationSec: 18 },
+      motion: { enabled: false, durationSec: 12 },
     },
     behavior: { dismissible: true, selectable: true, dismissTtlHours: 72 },
     targeting: { showOn: 'all' },
@@ -59,10 +60,11 @@ function normalizePayload(form) {
       textColor: String(f.presentation?.textColor || '').trim() || null,
       linkColor: String(f.presentation?.linkColor || '').trim() || null,
       accentColor: String(f.presentation?.accentColor || '').trim() || null,
+      fontFamily: String(f.presentation?.fontFamily || '').trim() || null,
       sticky: f.presentation?.sticky !== false,
       motion: {
         enabled: f.presentation?.motion?.enabled === true,
-        durationSec: Math.max(6, Math.min(60, Number(f.presentation?.motion?.durationSec ?? 18))),
+        durationSec: Math.max(3, Math.min(30, Number(f.presentation?.motion?.durationSec ?? 12))),
       },
     },
     behavior: {
@@ -144,10 +146,11 @@ export function AnnouncementBannersPage() {
         textColor: String(b?.presentation?.textColor || b?.textColor || '#ffffff'),
         linkColor: String(b?.presentation?.linkColor || b?.linkColor || '#38bdf8'),
         accentColor: String(b?.presentation?.accentColor || b?.accentColor || ''),
+        fontFamily: String(b?.presentation?.fontFamily || ''),
         sticky: b?.presentation?.sticky !== false,
         motion: {
           enabled: b?.presentation?.motion?.enabled === true,
-          durationSec: Number(b?.presentation?.motion?.durationSec ?? 18),
+          durationSec: Number(b?.presentation?.motion?.durationSec ?? 12),
         },
       },
       behavior: {
@@ -393,18 +396,25 @@ export function AnnouncementBannersPage() {
                 <div>
                   <div className="text-xs font-semibold text-slate-600">Motion speed</div>
                   <input
+                    type="range"
+                    min="3"
+                    max="30"
+                    step="1"
                     value={String(form.presentation.motion.durationSec)}
                     onChange={(e) =>
                       setForm((prev) => ({
                         ...prev,
-                        presentation: { ...prev.presentation, motion: { ...prev.presentation.motion, durationSec: e.target.value } },
+                        presentation: { ...prev.presentation, motion: { ...prev.presentation.motion, durationSec: Number(e.target.value) } },
                       }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
-                    inputMode="numeric"
+                    className="mt-2 w-full"
                     disabled={!form.presentation.motion.enabled}
                   />
-                  <div className="mt-1 text-xs text-slate-500">Seconds per loop (6–60). Lower = faster.</div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Faster</span>
+                    <span>{Math.max(3, Math.min(30, Number(form.presentation.motion.durationSec || 18)))}s</span>
+                    <span>Slower</span>
+                  </div>
                 </div>
               </div>
 
@@ -468,6 +478,27 @@ export function AnnouncementBannersPage() {
                     placeholder="اعرف أكثر"
                   />
                 </div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-600">Font</div>
+                <select
+                  value={form.presentation.fontFamily}
+                  onChange={(e) => setForm((prev) => ({ ...prev, presentation: { ...prev.presentation, fontFamily: e.target.value } }))}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                >
+                  <option value="">Default</option>
+                  <option value="system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">System</option>
+                  <option value="Tajawal,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">Tajawal</option>
+                  <option value="Cairo,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">Cairo</option>
+                  <option value="Almarai,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">Almarai</option>
+                  <option value="Noto Kufi Arabic,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">Noto Kufi Arabic</option>
+                </select>
+                <input
+                  value={form.presentation.fontFamily}
+                  onChange={(e) => setForm((prev) => ({ ...prev, presentation: { ...prev.presentation, fontFamily: e.target.value } }))}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                  placeholder="Custom font-family (optional)"
+                />
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -543,6 +574,7 @@ export function AnnouncementBannersPage() {
                   style={{
                     background: form.presentation.backgroundColor || '#0f172a',
                     color: form.presentation.textColor || '#ffffff',
+                    fontFamily: String(form.presentation.fontFamily || '').trim() || undefined,
                   }}
                 >
                   <span className="font-extrabold">{String(form.content.title || '').trim() ? `${form.content.title} ` : ''}</span>
