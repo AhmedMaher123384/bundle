@@ -21,6 +21,20 @@ function parseDateInput(value) {
   return d.toISOString()
 }
 
+function clampNum(n, min, max, fallback) {
+  const x = Number(n)
+  if (!Number.isFinite(x)) return fallback
+  return Math.max(min, Math.min(max, x))
+}
+
+function resolveCtaHref(mode, href) {
+  const m = String(mode || 'custom')
+  if (m === 'home') return '/'
+  if (m === 'products') return '/products'
+  if (m === 'cart') return '/cart'
+  return String(href || '').trim()
+}
+
 function emptyForm() {
   return {
     name: '',
@@ -33,6 +47,9 @@ function emptyForm() {
       linkColor: '#38bdf8',
       accentColor: '',
       fontFamily: '',
+      shape: { radiusPx: 0, skewDeg: 0 },
+      enterAnimation: 'none',
+      cta: { enabled: false, text: '', mode: 'custom', href: '', variant: 'solid', animation: 'none' },
       sticky: true,
       motion: { enabled: false, durationSec: 8 },
     },
@@ -61,6 +78,19 @@ function normalizePayload(form) {
       linkColor: String(f.presentation?.linkColor || '').trim() || null,
       accentColor: String(f.presentation?.accentColor || '').trim() || null,
       fontFamily: String(f.presentation?.fontFamily || '').trim() || null,
+      shape: {
+        radiusPx: clampNum(f.presentation?.shape?.radiusPx, 0, 40, 0),
+        skewDeg: clampNum(f.presentation?.shape?.skewDeg, -12, 12, 0),
+      },
+      enterAnimation: String(f.presentation?.enterAnimation || 'none').trim() || 'none',
+      cta: {
+        enabled: f.presentation?.cta?.enabled === true,
+        text: String(f.presentation?.cta?.text || '').trim() || null,
+        mode: String(f.presentation?.cta?.mode || 'custom').trim() || 'custom',
+        href: String(f.presentation?.cta?.href || '').trim() || null,
+        variant: String(f.presentation?.cta?.variant || 'solid').trim() || 'solid',
+        animation: String(f.presentation?.cta?.animation || 'none').trim() || 'none',
+      },
       sticky: f.presentation?.sticky !== false,
       motion: {
         enabled: f.presentation?.motion?.enabled === true,
@@ -91,6 +121,12 @@ export function AnnouncementBannersPage() {
   const [form, setForm] = useState(() => emptyForm())
 
   const [confirmDelete, setConfirmDelete] = useState({ open: false, banner: null })
+  const [previewKey, setPreviewKey] = useState(0)
+
+  useEffect(() => {
+    if (!editing.open) return
+    setPreviewKey((k) => k + 1)
+  }, [editing.open, form.presentation?.enterAnimation])
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -147,6 +183,19 @@ export function AnnouncementBannersPage() {
         linkColor: String(b?.presentation?.linkColor || b?.linkColor || '#38bdf8'),
         accentColor: String(b?.presentation?.accentColor || b?.accentColor || ''),
         fontFamily: String(b?.presentation?.fontFamily || ''),
+        shape: {
+          radiusPx: clampNum(b?.presentation?.shape?.radiusPx ?? b?.shapeRadiusPx, 0, 40, 0),
+          skewDeg: clampNum(b?.presentation?.shape?.skewDeg ?? b?.shapeSkewDeg, -12, 12, 0),
+        },
+        enterAnimation: String(b?.presentation?.enterAnimation ?? b?.enterAnimation ?? 'none'),
+        cta: {
+          enabled: b?.presentation?.cta?.enabled === true || b?.ctaEnabled === true,
+          text: String(b?.presentation?.cta?.text ?? b?.ctaText ?? ''),
+          mode: String(b?.presentation?.cta?.mode ?? b?.ctaMode ?? 'custom'),
+          href: String(b?.presentation?.cta?.href ?? b?.ctaHref ?? ''),
+          variant: String(b?.presentation?.cta?.variant ?? b?.ctaVariant ?? 'solid'),
+          animation: String(b?.presentation?.cta?.animation ?? b?.ctaAnimation ?? 'none'),
+        },
         sticky: b?.presentation?.sticky !== false,
         motion: {
           enabled: b?.presentation?.motion?.enabled === true,
@@ -418,6 +467,182 @@ export function AnnouncementBannersPage() {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold text-slate-700">Banner Shape</div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Corner radius</div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="40"
+                      step="1"
+                      value={String(form.presentation.shape.radiusPx)}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: {
+                            ...prev.presentation,
+                            shape: { ...prev.presentation.shape, radiusPx: Number(e.target.value) },
+                          },
+                        }))
+                      }
+                      className="mt-2 w-full"
+                    />
+                    <div className="mt-1 text-xs text-slate-500">{clampNum(form.presentation.shape.radiusPx, 0, 40, 0)}px</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Skew</div>
+                    <input
+                      type="range"
+                      min="-12"
+                      max="12"
+                      step="1"
+                      value={String(form.presentation.shape.skewDeg)}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: {
+                            ...prev.presentation,
+                            shape: { ...prev.presentation.shape, skewDeg: Number(e.target.value) },
+                          },
+                        }))
+                      }
+                      className="mt-2 w-full"
+                    />
+                    <div className="mt-1 text-xs text-slate-500">{clampNum(form.presentation.shape.skewDeg, -12, 12, 0)}°</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold text-slate-700">Entrance Animation</div>
+                <select
+                  value={form.presentation.enterAnimation}
+                  onChange={(e) => setForm((prev) => ({ ...prev, presentation: { ...prev.presentation, enterAnimation: e.target.value } }))}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                >
+                  <option value="none">none</option>
+                  <option value="slide">slide</option>
+                  <option value="fade">fade</option>
+                  <option value="pop">pop</option>
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-700">CTA Button</div>
+                    <div className="mt-1 text-xs text-slate-500">Add a button at the end of the banner.</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.presentation.cta.enabled}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, enabled: e.target.checked } },
+                        }))
+                      }
+                    />
+                    <div className="text-sm font-semibold text-slate-700">Enabled</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Text</div>
+                    <input
+                      value={form.presentation.cta.text}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, text: e.target.value } },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      placeholder="Shop now"
+                      disabled={!form.presentation.cta.enabled}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Destination</div>
+                    <select
+                      value={form.presentation.cta.mode}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, mode: e.target.value } },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      disabled={!form.presentation.cta.enabled}
+                    >
+                      <option value="custom">custom URL</option>
+                      <option value="home">home</option>
+                      <option value="products">products</option>
+                      <option value="cart">cart</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <div className="text-xs font-semibold text-slate-600">URL</div>
+                    <input
+                      value={form.presentation.cta.href}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, href: e.target.value } },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      placeholder={resolveCtaHref(form.presentation.cta.mode, form.presentation.cta.href) || 'https://…'}
+                      disabled={!form.presentation.cta.enabled || form.presentation.cta.mode !== 'custom'}
+                    />
+                    {form.presentation.cta.enabled && form.presentation.cta.mode !== 'custom' ? (
+                      <div className="mt-1 text-xs text-slate-500">Resolved to: {resolveCtaHref(form.presentation.cta.mode, form.presentation.cta.href)}</div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Style</div>
+                    <select
+                      value={form.presentation.cta.variant}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, variant: e.target.value } },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      disabled={!form.presentation.cta.enabled}
+                    >
+                      <option value="solid">solid</option>
+                      <option value="outline">outline</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">Animation</div>
+                    <select
+                      value={form.presentation.cta.animation}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          presentation: { ...prev.presentation, cta: { ...prev.presentation.cta, animation: e.target.value } },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      disabled={!form.presentation.cta.enabled}
+                    >
+                      <option value="none">none</option>
+                      <option value="pulse">pulse</option>
+                      <option value="bounce">bounce</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <div className="text-xs font-semibold text-slate-600">Start At</div>
@@ -569,20 +794,7 @@ export function AnnouncementBannersPage() {
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold text-slate-600">Preview</div>
-                <div
-                  className="mt-2 rounded-lg px-3 py-2 text-center text-sm font-semibold"
-                  style={{
-                    background: form.presentation.backgroundColor || '#0f172a',
-                    color: form.presentation.textColor || '#ffffff',
-                    fontFamily: String(form.presentation.fontFamily || '').trim() || undefined,
-                  }}
-                >
-                  <span className="font-extrabold">{String(form.content.title || '').trim() ? `${form.content.title} ` : ''}</span>
-                  <span className="opacity-95">{String(form.content.message || '').trim() ? `${form.content.message} ` : ''}</span>
-                  {String(form.content.linkUrl || '').trim() && String(form.content.linkText || '').trim() ? (
-                    <span style={{ color: form.presentation.linkColor || '#38bdf8', textDecoration: 'underline' }}>{form.content.linkText}</span>
-                  ) : null}
-                </div>
+                <PreviewBar key={previewKey} form={form} />
               </div>
             </div>
           </div>
@@ -597,6 +809,80 @@ export function AnnouncementBannersPage() {
         onCancel={() => setConfirmDelete({ open: false, banner: null })}
         onConfirm={() => remove(confirmDelete.banner)}
       />
+    </div>
+  )
+}
+
+function PreviewBar({ form }) {
+  const [entered, setEntered] = useState(false)
+
+  useEffect(() => {
+    let raf = 0
+    raf = window.requestAnimationFrame(() => setEntered(true))
+    return () => window.cancelAnimationFrame(raf)
+  }, [])
+
+  const radiusPx = clampNum(form.presentation?.shape?.radiusPx, 0, 40, 0)
+  const skewDeg = clampNum(form.presentation?.shape?.skewDeg, -12, 12, 0)
+  const enterAnimation = String(form.presentation?.enterAnimation || 'none')
+  const ctaEnabled = form.presentation?.cta?.enabled === true
+  const ctaVariant = String(form.presentation?.cta?.variant || 'solid')
+  const ctaAnimation = String(form.presentation?.cta?.animation || 'none')
+  const accent = String(form.presentation?.accentColor || '').trim() || String(form.presentation?.linkColor || '').trim() || '#38bdf8'
+
+  const baseTransform = skewDeg ? `skewX(${skewDeg}deg)` : undefined
+  const innerTransform = skewDeg ? `skewX(${-skewDeg}deg)` : undefined
+
+  let fromOpacity = 1
+  let fromTransform = innerTransform || ''
+  if (enterAnimation === 'fade') fromOpacity = 0
+  if (enterAnimation === 'slide') fromTransform = `${innerTransform ? `${innerTransform} ` : ''}translateY(-10px)`
+  if (enterAnimation === 'pop') fromTransform = `${innerTransform ? `${innerTransform} ` : ''}scale(0.97)`
+
+  const resolvedHref = resolveCtaHref(form.presentation?.cta?.mode, form.presentation?.cta?.href)
+  const ctaText = String(form.presentation?.cta?.text || '').trim() || 'Shop now'
+  const ctaAnimClass = ctaAnimation === 'pulse' ? 'animate-pulse' : ctaAnimation === 'bounce' ? 'animate-bounce' : ''
+
+  return (
+    <div
+      className="mt-2 overflow-hidden px-3 py-2 text-sm font-semibold"
+      style={{
+        background: form.presentation?.backgroundColor || '#0f172a',
+        color: form.presentation?.textColor || '#ffffff',
+        fontFamily: String(form.presentation?.fontFamily || '').trim() || undefined,
+        borderRadius: `${radiusPx}px`,
+        transform: baseTransform,
+      }}
+    >
+      <div
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center"
+        style={{
+          transform: entered ? innerTransform : fromTransform || undefined,
+          opacity: entered ? 1 : fromOpacity,
+          transition: enterAnimation === 'none' ? undefined : 'transform 420ms ease, opacity 420ms ease',
+        }}
+      >
+        <span className="font-extrabold">{String(form.content?.title || '').trim() ? `${form.content.title} ` : ''}</span>
+        <span className="opacity-95">{String(form.content?.message || '').trim() ? `${form.content.message} ` : ''}</span>
+        {String(form.content?.linkUrl || '').trim() && String(form.content?.linkText || '').trim() ? (
+          <span style={{ color: form.presentation?.linkColor || '#38bdf8', textDecoration: 'underline' }}>{form.content.linkText}</span>
+        ) : null}
+        {ctaEnabled ? (
+          <span
+            className={[
+              'inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-extrabold',
+              ctaVariant === 'outline' ? 'border-2 border-white/50 bg-transparent text-white' : 'border border-white/20 text-slate-900',
+              ctaAnimClass,
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={ctaVariant === 'outline' ? undefined : { background: accent }}
+            title={resolvedHref || undefined}
+          >
+            {ctaText}
+          </span>
+        ) : null}
+      </div>
     </div>
   )
 }

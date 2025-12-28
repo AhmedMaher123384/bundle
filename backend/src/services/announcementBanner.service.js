@@ -30,9 +30,40 @@ function sanitizePayload(payload) {
     const durationSec = Number(motion.durationSec);
     const fontFamilyRaw = p.presentation.fontFamily;
     const fontFamily = fontFamilyRaw == null ? null : String(fontFamilyRaw).trim();
+    const shapeRaw = p.presentation.shape && typeof p.presentation.shape === "object" ? { ...p.presentation.shape } : {};
+    const radiusPxRaw = Number(shapeRaw.radiusPx);
+    const skewDegRaw = Number(shapeRaw.skewDeg);
+    const enterAnimation = String(p.presentation.enterAnimation || "none").trim();
+    const ctaRaw = p.presentation.cta && typeof p.presentation.cta === "object" ? { ...p.presentation.cta } : {};
+    const ctaMode = String(ctaRaw.mode || "custom").trim();
+    const ctaTextRaw = ctaRaw.text;
+    const ctaText = ctaTextRaw == null ? null : String(ctaTextRaw).trim();
+    const ctaHrefRaw = ctaRaw.href;
+    const ctaHref = ctaHrefRaw == null ? null : String(ctaHrefRaw).trim();
+    const ctaVariant = String(ctaRaw.variant || "solid").trim();
+    const ctaAnimation = String(ctaRaw.animation || "none").trim();
+
+    let resolvedCtaHref = ctaHref || null;
+    if (ctaMode === "home") resolvedCtaHref = "/";
+    else if (ctaMode === "products") resolvedCtaHref = "/products";
+    else if (ctaMode === "cart") resolvedCtaHref = "/cart";
+
     p.presentation = {
       ...p.presentation,
       fontFamily: fontFamily || null,
+      shape: {
+        radiusPx: Number.isFinite(radiusPxRaw) ? Math.max(0, Math.min(40, radiusPxRaw)) : 0,
+        skewDeg: Number.isFinite(skewDegRaw) ? Math.max(-12, Math.min(12, skewDegRaw)) : 0
+      },
+      enterAnimation: ["none", "slide", "fade", "pop"].includes(enterAnimation) ? enterAnimation : "none",
+      cta: {
+        enabled: ctaRaw.enabled === true,
+        text: ctaText || null,
+        mode: ["custom", "home", "products", "cart"].includes(ctaMode) ? ctaMode : "custom",
+        href: resolvedCtaHref || null,
+        variant: ["solid", "outline"].includes(ctaVariant) ? ctaVariant : "solid",
+        animation: ["none", "pulse", "bounce"].includes(ctaAnimation) ? ctaAnimation : "none"
+      },
       motion: {
         ...motion,
         enabled: motion.enabled === true,
@@ -158,6 +189,19 @@ function serializeAnnouncementBannerForStorefront(banner) {
     linkColor: banner?.presentation?.linkColor != null ? String(banner.presentation.linkColor) : null,
     accentColor: banner?.presentation?.accentColor != null ? String(banner.presentation.accentColor) : null,
     fontFamily: banner?.presentation?.fontFamily != null ? String(banner.presentation.fontFamily) : null,
+    shapeRadiusPx: Number.isFinite(Number(banner?.presentation?.shape?.radiusPx))
+      ? Math.max(0, Math.min(40, Number(banner.presentation.shape.radiusPx)))
+      : 0,
+    shapeSkewDeg: Number.isFinite(Number(banner?.presentation?.shape?.skewDeg))
+      ? Math.max(-12, Math.min(12, Number(banner.presentation.shape.skewDeg)))
+      : 0,
+    enterAnimation: banner?.presentation?.enterAnimation != null ? String(banner.presentation.enterAnimation) : "none",
+    ctaEnabled: banner?.presentation?.cta?.enabled === true,
+    ctaText: banner?.presentation?.cta?.text != null ? String(banner.presentation.cta.text) : null,
+    ctaMode: banner?.presentation?.cta?.mode != null ? String(banner.presentation.cta.mode) : "custom",
+    ctaHref: banner?.presentation?.cta?.href != null ? String(banner.presentation.cta.href) : null,
+    ctaVariant: banner?.presentation?.cta?.variant != null ? String(banner.presentation.cta.variant) : "solid",
+    ctaAnimation: banner?.presentation?.cta?.animation != null ? String(banner.presentation.cta.animation) : "none",
     sticky: banner?.presentation?.sticky !== false,
     motionEnabled: banner?.presentation?.motion?.enabled === true,
     motionDurationSec: Number.isFinite(Number(banner?.presentation?.motion?.durationSec))

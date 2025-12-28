@@ -18,6 +18,19 @@ const AnnouncementBannerSchema = new mongoose.Schema(
       linkColor: { type: String, default: null },
       accentColor: { type: String, default: null },
       fontFamily: { type: String, default: null },
+      shape: {
+        radiusPx: { type: Number, default: 0 },
+        skewDeg: { type: Number, default: 0 }
+      },
+      enterAnimation: { type: String, default: "none" },
+      cta: {
+        enabled: { type: Boolean, default: false },
+        text: { type: String, default: null },
+        mode: { type: String, default: "custom" },
+        href: { type: String, default: null },
+        variant: { type: String, default: "solid" },
+        animation: { type: String, default: "none" }
+      },
       sticky: { type: Boolean, default: true },
       motion: {
         enabled: { type: Boolean, default: false },

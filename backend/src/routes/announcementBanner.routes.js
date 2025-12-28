@@ -16,12 +16,25 @@ const presentationSchema = Joi.object({
   linkColor: Joi.string().trim().min(1).max(40).allow(null, ""),
   accentColor: Joi.string().trim().min(1).max(40).allow(null, ""),
   fontFamily: Joi.string().trim().min(1).max(160).allow(null, ""),
+  shape: Joi.object({
+    radiusPx: Joi.number().min(0).max(40).default(0),
+    skewDeg: Joi.number().min(-12).max(12).default(0)
+  }).default({}),
+  enterAnimation: Joi.string().valid("none", "slide", "fade", "pop").default("none"),
+  cta: Joi.object({
+    enabled: Joi.boolean().default(false),
+    text: Joi.string().trim().min(1).max(40).allow(null, ""),
+    mode: Joi.string().valid("custom", "home", "products", "cart").default("custom"),
+    href: Joi.string().trim().min(1).max(400).allow(null, ""),
+    variant: Joi.string().valid("solid", "outline").default("solid"),
+    animation: Joi.string().valid("none", "pulse", "bounce").default("none")
+  }).default({}),
   sticky: Joi.boolean().default(true),
   motion: Joi.object({
     enabled: Joi.boolean().default(false),
     durationSec: Joi.number().min(1).max(20).default(8)
   }).default({})
-});
+}).default({})
 
 const behaviorSchema = Joi.object({
   dismissible: Joi.boolean().default(true),
