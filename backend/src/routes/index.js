@@ -394,6 +394,22 @@ function createApiRouter(config) {
     };
   }
 
+  function normalizeBundleKind(value) {
+    const v = String(value || "").trim();
+    if (v === "quantity_discount" || v === "product_discount" || v === "often_bought_together") return v;
+    return null;
+  }
+
+  function inferBundleKind(bundleLike) {
+    const tiers = Array.isArray(bundleLike?.rules?.tiers) ? bundleLike.rules.tiers : [];
+    if (tiers.length) return "quantity_discount";
+
+    const type = String(bundleLike?.rules?.type || "").trim();
+    const value = Number(bundleLike?.rules?.value ?? 0);
+    if (type && Number.isFinite(value) && value > 0) return "product_discount";
+    return "often_bought_together";
+  }
+
   function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId, ctx) {
     const components = normalizeComponentsForStorefront(bundle, variantSnapshots, ctx);
     const rules = bundle?.rules || {};
@@ -408,6 +424,7 @@ function createApiRouter(config) {
     const display = computeDisplay(bundle, offer, pricing);
     return {
       id: String(bundle?._id),
+      kind: normalizeBundleKind(bundle?.kind) || inferBundleKind(bundle),
       triggerProductId: String(triggerProductId || bundle?.triggerProductId || "").trim(),
       title: display.title,
       subtitle: display.subtitle,

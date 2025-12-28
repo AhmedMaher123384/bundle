@@ -34,7 +34,9 @@ export function AppLayout() {
           <div className="space-y-1">
             <NavItem to="/" label="Dashboard" />
             <NavItem to="/products" label="Products" />
-            <NavItem to="/bundles" label="Bundles" />
+            <NavItem to="/bundles/quantity" label="خصومات الكميه" />
+            <NavItem to="/bundles/product-discounts" label="خصومات المنتج" />
+            <NavItem to="/bundles/often-bought-together" label="منتجات تباع معا" />
             <NavItem to="/announcement-banners" label="Top Banner" />
             <NavItem to="/cart-preview" label="Cart Preview" />
           </div>
@@ -59,7 +61,9 @@ export function AppLayout() {
               <div className="space-y-1">
                 <NavItem to="/" label="Dashboard" />
                 <NavItem to="/products" label="Products" />
-                <NavItem to="/bundles" label="Bundles" />
+                <NavItem to="/bundles/quantity" label="خصومات الكميه" />
+                <NavItem to="/bundles/product-discounts" label="خصومات المنتج" />
+                <NavItem to="/bundles/often-bought-together" label="منتجات تباع معا" />
                 <NavItem to="/announcement-banners" label="Top Banner" />
                 <NavItem to="/cart-preview" label="Cart Preview" />
               </div>
@@ -83,8 +87,14 @@ export function AppLayout() {
                 ? 'Dashboard'
                 : location.pathname.startsWith('/products')
                   ? 'Products'
-                  : location.pathname.startsWith('/bundles')
-                    ? 'Bundles'
+                  : location.pathname.startsWith('/bundles/quantity')
+                    ? 'خصومات الكميه'
+                    : location.pathname.startsWith('/bundles/product-discounts')
+                      ? 'خصومات المنتج'
+                      : location.pathname.startsWith('/bundles/often-bought-together')
+                        ? 'منتجات تباع معا'
+                        : location.pathname.startsWith('/bundles')
+                          ? 'Bundles'
                     : location.pathname.startsWith('/announcement-banners')
                       ? 'Top Banner'
                     : location.pathname.startsWith('/cart-preview')

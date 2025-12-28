@@ -126,8 +126,10 @@ export function BundleEditorPage({ mode }) {
         const rest = cover ? comps.filter((c) => String(c?.variantId) !== String(cover)) : comps.slice(1)
 
         setName(String(found?.name || '').trim())
-        setDiscountType(String(found?.rules?.type || 'percentage'))
-        setDiscountValue(Number(found?.rules?.value || 0))
+        const foundKind = String(found?.kind || '').trim()
+        const isTogether = foundKind === 'often_bought_together'
+        setDiscountType(isTogether ? 'fixed' : String(found?.rules?.type || 'percentage'))
+        setDiscountValue(isTogether ? 0 : Number(found?.rules?.value || 0))
         setBaseVariantId(cover)
         setBaseRefMode(isProductRef(cover) ? 'product' : 'variant')
         setPresentationTitle(String(found?.presentation?.title || '').trim())
@@ -147,7 +149,7 @@ export function BundleEditorPage({ mode }) {
         setPresentationShowTiers(typeof found?.presentation?.showTiers === 'boolean' ? found.presentation.showTiers : true)
 
         if (rest.length) {
-          setOfferType('bundle')
+          setOfferType(foundKind === 'often_bought_together' ? 'together' : 'bundle')
           setBaseQty(Math.max(1, Math.min(999, toInt(coverQty, 1))))
           setAddons(
             rest.map((c) => ({
@@ -290,7 +292,7 @@ export function BundleEditorPage({ mode }) {
       const qty = offerType === 'quantity' ? 1 : Math.max(1, Math.min(999, toInt(baseQty, 1)))
       components.push({ variantId: baseId, quantity: qty, group: groupFromVariantId(baseId) })
     }
-    if (offerType === 'bundle') {
+    if (offerType === 'bundle' || offerType === 'together') {
       for (const a of safeAddons) {
         components.push({ variantId: a.variantId, quantity: a.quantity, group: groupFromVariantId(a.variantId) })
       }
@@ -319,12 +321,24 @@ export function BundleEditorPage({ mode }) {
 
     return {
       version: 1,
+      kind: offerType === 'quantity' ? 'quantity_discount' : offerType === 'together' ? 'often_bought_together' : 'product_discount',
       name: String(name || '').trim(),
       status: 'draft',
       components,
       rules: {
-        type: offerType === 'quantity' ? (primaryTier?.type === 'fixed' ? 'fixed' : 'percentage') : discountType === 'fixed' ? 'fixed' : discountType === 'bundle_price' ? 'bundle_price' : 'percentage',
-        value: offerType === 'quantity' ? Number(primaryTier?.value || 0) : Number(discountValue || 0),
+        type:
+          offerType === 'quantity'
+            ? primaryTier?.type === 'fixed'
+              ? 'fixed'
+              : 'percentage'
+            : offerType === 'together'
+              ? 'fixed'
+              : discountType === 'fixed'
+                ? 'fixed'
+                : discountType === 'bundle_price'
+                  ? 'bundle_price'
+                  : 'percentage',
+        value: offerType === 'quantity' ? Number(primaryTier?.value || 0) : offerType === 'together' ? 0 : Number(discountValue || 0),
         ...(offerType === 'quantity' ? { tiers: qtyTiersNormalized } : {}),
         eligibility: { mustIncludeAllGroups: true, minCartQty: requiredQty },
         limits: { maxUsesPerOrder: 50 },
@@ -361,15 +375,19 @@ export function BundleEditorPage({ mode }) {
     if (!effectiveProductId) return false
     if (!draft.name.trim()) return false
     if (!draft.components.length) return false
-    if (offerType === 'bundle' && draft.components.length < 2) return false
+    if ((offerType === 'bundle' || offerType === 'together') && draft.components.length < 2) return false
     if (offerType === 'quantity') {
       if (!qtyTiersNormalized.length) return false
       if (qtyTiersNormalized.some((t) => !Number.isFinite(Number(t?.minQty)) || Number(t.minQty) < 1)) return false
       if (qtyTiersNormalized.some((t) => (t.type !== 'percentage' && t.type !== 'fixed') || !Number.isFinite(Number(t?.value)) || Number(t.value) < 0))
         return false
     }
+    if (offerType === 'bundle') {
+      const v = Number(discountValue)
+      if (!Number.isFinite(v) || v <= 0) return false
+    }
     return true
-  }, [draft.components.length, draft.name, effectiveProductId, offerType, qtyTiersNormalized])
+  }, [discountValue, draft.components.length, draft.name, effectiveProductId, offerType, qtyTiersNormalized])
 
   function defaultBannerColorByRuleType(ruleType) {
     const t = String(ruleType || '').trim()
@@ -387,8 +405,8 @@ export function BundleEditorPage({ mode }) {
     if (offerType === 'quantity') {
       const bestTier = qtyTiersNormalized.length ? qtyTiersNormalized[qtyTiersNormalized.length - 1] : null
       if (bestTier) badge = bestTier.type === 'percentage' ? `${bestTier.value}%` : `${bestTier.value}`
-    } else if (ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
-    else if (ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
+    } else if (offerType === 'bundle' && ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
+    else if (offerType === 'bundle' && ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
 
     const title = String(presentationTitle || '').trim() || (badge ? `${String(draft?.name || 'باقة')} - وفر ${badge}` : String(draft?.name || 'باقة'))
     const subtitle = String(presentationSubtitle || '').trim() || ''
@@ -465,7 +483,7 @@ export function BundleEditorPage({ mode }) {
       toasts.error('كمّل البيانات الأول.')
       return
     }
-    if (offerType === 'bundle' && draft.components.length < 2) {
+    if ((offerType === 'bundle' || offerType === 'together') && draft.components.length < 2) {
       toasts.error('اختار منتج/منتجات تانية مع المنتج الأساسي.')
       return
     }
@@ -482,7 +500,7 @@ export function BundleEditorPage({ mode }) {
         token,
         onUnauthorized: logout,
         method: 'PATCH',
-        body: { name: body.name, components: body.components, rules: body.rules, presentation: body.presentation, status },
+        body: { kind: body.kind, name: body.name, components: body.components, rules: body.rules, presentation: body.presentation, status },
       })
       toasts.success(status === 'active' ? 'تم تفعيل الباندل.' : 'تم تحديث الباندل.')
     } catch (err) {
@@ -530,10 +548,28 @@ export function BundleEditorPage({ mode }) {
             <button
               type="button"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
-              onClick={() => setOfferType('bundle')}
+              onClick={() => {
+                setOfferType('bundle')
+                if (offerType === 'together') {
+                  setDiscountType('percentage')
+                  setDiscountValue(10)
+                }
+              }}
               disabled={saving || activating}
             >
-              باندل منتجات
+              خصم منتج
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+              onClick={() => {
+                setOfferType('together')
+                setDiscountType('fixed')
+                setDiscountValue(0)
+              }}
+              disabled={saving || activating}
+            >
+              منتجات تباع معا
             </button>
             <button
               type="button"

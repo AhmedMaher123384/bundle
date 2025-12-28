@@ -33,7 +33,10 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/:productId/bundles/new" element={<BundleEditorPage mode="create" />} />
-        <Route path="bundles" element={<BundlesPage />} />
+        <Route path="bundles" element={<Navigate to="/bundles/quantity" replace />} />
+        <Route path="bundles/quantity" element={<BundlesPage kind="quantity_discount" />} />
+        <Route path="bundles/product-discounts" element={<BundlesPage kind="product_discount" />} />
+        <Route path="bundles/often-bought-together" element={<BundlesPage kind="often_bought_together" />} />
         <Route path="bundles/:id/edit" element={<BundleEditorPage mode="edit" />} />
         <Route path="announcement-banners" element={<AnnouncementBannersPage />} />
         <Route path="cart-preview" element={<CartPreviewPage />} />
