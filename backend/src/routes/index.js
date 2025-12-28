@@ -13,11 +13,15 @@ const bundleService = require("../services/bundle.service");
 const { issueOrReuseCouponForCart } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
+const { URL } = require("url");
 const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
 const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
 const { createAnnouncementBannerRouter } = require("./announcementBanner.routes");
 const announcementBannerService = require("../services/announcementBanner.service");
+const mountStorefrontPopup = require("../storefront/snippet/features/storefrontPopup/popup.mount");
+const { createStorefrontPopupRouter } = require("./storefrontPopup.routes");
+const storefrontPopupService = require("../services/storefrontPopup.service");
 
 function createApiRouter(config) {
   const router = express.Router();
@@ -551,6 +555,7 @@ function createApiRouter(config) {
       const context = { parts: [], merchantId, token, cssBase, cssPickers };
       mountBundle(context);
       mountAnnouncementBanner(context);
+      mountStorefrontPopup(context);
       const js = context.parts.join("");
       return res.send(js);
     } catch (err) {
@@ -561,6 +566,7 @@ function createApiRouter(config) {
   router.use("/oauth/salla", createOAuthRouter(config));
   router.use("/bundles", merchantAuth(config), createBundleRouter(config));
   router.use("/announcement-banners", merchantAuth(config), createAnnouncementBannerRouter(config));
+  router.use("/storefront-popups", merchantAuth(config), createStorefrontPopupRouter(config));
 
   const proxyAnnouncementBannerQuerySchema = Joi.object({
     merchantId: Joi.string().trim().min(1).max(80).required(),
@@ -594,6 +600,119 @@ function createApiRouter(config) {
         merchantId: String(value.merchantId),
         page: String(value.page || "all"),
         banner: announcementBannerService.serializeAnnouncementBannerForStorefront(banner)
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyStorefrontPopupQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    page: Joi.string().valid("all", "home", "cart").default("all"),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.get("/proxy/storefront-popup", async (req, res, next) => {
+    try {
+      const { error, value } = proxyStorefrontPopupQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      const popup = await storefrontPopupService.getActiveStorefrontPopupForStore(String(value.merchantId), { page: value.page });
+      return res.json({
+        ok: true,
+        merchantId: String(value.merchantId),
+        page: String(value.page || "all"),
+        popup: storefrontPopupService.serializeStorefrontPopupForStorefront(popup)
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyPopupLeadQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  const proxyPopupLeadBodySchema = Joi.object({
+    popupId: Joi.string().trim().min(1).max(120).required(),
+    name: Joi.string().trim().min(1).max(120).allow(null, ""),
+    email: Joi.string().trim().email().max(200).allow(null, ""),
+    phone: Joi.string().trim().min(3).max(40).allow(null, ""),
+    consent: Joi.boolean().default(false),
+    pageUrl: Joi.string().trim().uri().max(500).allow(null, "")
+  });
+
+  router.post("/proxy/storefront-popup/lead", async (req, res, next) => {
+    try {
+      const { error: qErr, value: qVal } = proxyPopupLeadQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (qErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: qErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const { error: bErr, value: bVal } = proxyPopupLeadBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (bErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: bErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(qVal, qVal.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(qVal.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      let page = "all";
+      try {
+        const u = new URL(String(bVal.pageUrl || ""), "https://example.com");
+        const path = String(u.pathname || "").toLowerCase();
+        page = path === "/" || path === "/home" ? "home" : path.includes("cart") || path.includes("checkout") ? "cart" : "all";
+      } catch (err) {
+        void err;
+      }
+
+      const popup = await storefrontPopupService.getActiveStorefrontPopupForStore(String(qVal.merchantId), { page });
+      if (!popup || String(popup?._id || "") !== String(bVal.popupId)) {
+        throw new ApiError(404, "Popup not found", { code: "POPUP_NOT_FOUND" });
+      }
+
+      await storefrontPopupService.recordPopupLead(String(qVal.merchantId), String(bVal.popupId), bVal, {
+        pageUrl: bVal.pageUrl || null,
+        userAgent: String(req.headers["user-agent"] || ""),
+        lang: String(req.headers["accept-language"] || "").slice(0, 40),
+        dir: null
+      });
+
+      const serialized = storefrontPopupService.serializeStorefrontPopupForStorefront(popup);
+      return res.json({
+        ok: true,
+        merchantId: String(qVal.merchantId),
+        popupId: String(bVal.popupId),
+        couponCode: serialized?.couponCode || null
       });
     } catch (err) {
       return next(err);
