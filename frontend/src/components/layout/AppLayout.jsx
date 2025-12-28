@@ -36,7 +36,6 @@ export function AppLayout() {
             <NavItem to="/products" label="Products" />
             <NavItem to="/bundles" label="Bundles" />
             <NavItem to="/announcement-banners" label="Top Banner" />
-            <NavItem to="/storefront-popups" label="Popup" />
             <NavItem to="/cart-preview" label="Cart Preview" />
           </div>
         </nav>
@@ -62,7 +61,6 @@ export function AppLayout() {
                 <NavItem to="/products" label="Products" />
                 <NavItem to="/bundles" label="Bundles" />
                 <NavItem to="/announcement-banners" label="Top Banner" />
-                <NavItem to="/storefront-popups" label="Popup" />
                 <NavItem to="/cart-preview" label="Cart Preview" />
               </div>
             </nav>
@@ -89,11 +87,9 @@ export function AppLayout() {
                     ? 'Bundles'
                     : location.pathname.startsWith('/announcement-banners')
                       ? 'Top Banner'
-                      : location.pathname.startsWith('/storefront-popups')
-                        ? 'Popup'
-                        : location.pathname.startsWith('/cart-preview')
-                          ? 'Cart Preview'
-                          : 'Bundle Manager'}
+                    : location.pathname.startsWith('/cart-preview')
+                      ? 'Cart Preview'
+                      : 'Bundle Manager'}
             </div>
           </div>
           <div className="flex items-center gap-3">

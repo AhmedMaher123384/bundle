@@ -10,7 +10,6 @@ import { BundlesPage } from './pages/BundlesPage.jsx'
 import { BundleEditorPage } from './pages/BundleEditorPage.jsx'
 import { CartPreviewPage } from './pages/CartPreviewPage.jsx'
 import { AnnouncementBannersPage } from './pages/AnnouncementBannersPage.jsx'
-import { StorefrontPopupsPage } from './pages/StorefrontPopupsPage.jsx'
 
 function Protected({ children }) {
   const { token } = useAuth()
@@ -37,7 +36,6 @@ function AppRoutes() {
         <Route path="bundles" element={<BundlesPage />} />
         <Route path="bundles/:id/edit" element={<BundleEditorPage mode="edit" />} />
         <Route path="announcement-banners" element={<AnnouncementBannersPage />} />
-        <Route path="storefront-popups" element={<StorefrontPopupsPage />} />
         <Route path="cart-preview" element={<CartPreviewPage />} />
       </Route>
 
