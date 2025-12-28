@@ -117,4 +117,5 @@ module.exports = function mountBundle(context) {
   parts.push(buildStylesJs({ cssBase, cssPickers }));
   pushLogic(74);
   pushLogic(75);
+  pushLogic(76);
 };

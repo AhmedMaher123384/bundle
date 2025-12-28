@@ -13,6 +13,7 @@ const bundleService = require("../services/bundle.service");
 const { issueOrReuseCouponForCart } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
+const vm = require("vm");
 const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
 const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
@@ -573,6 +574,20 @@ function createApiRouter(config) {
       mountBundle(context);
       mountAnnouncementBanner(context);
       const js = context.parts.join("");
+      try {
+        new vm.Script(js);
+      } catch (e) {
+        try {
+          console.error("storefront snippet.js generation failed", {
+            merchantId,
+            name: e && e.name,
+            message: e && e.message
+          });
+        } catch (x) {
+          void x;
+        }
+        return res.send('(function(){try{console.warn("BundleApp failed to load.")}catch(e){}})();');
+      }
       return res.send(js);
     } catch (err) {
       return next(err);
