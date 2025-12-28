@@ -214,6 +214,7 @@ function createApiRouter(config) {
 
         const productId = String(snap?.productId || "").trim() || (isProductRef ? (refProductId || null) : null);
         const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
+        const name = snap?.name ? String(snap.name).trim() || null : null;
         const price = snap?.price != null ? Number(snap.price) : null;
         return {
           variantId: outVariantId,
@@ -222,6 +223,7 @@ function createApiRouter(config) {
           group: String(c?.group || "").trim() || null,
           isBase,
           imageUrl,
+          name,
           price: Number.isFinite(price) ? price : null
         };
       })
@@ -451,7 +453,9 @@ function createApiRouter(config) {
           quantity: c.quantity,
           group: String(c?.group || "").trim() || null,
           isBase: Boolean(c.isBase),
-          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null
+          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null,
+          name: c.name ? String(c.name).trim() || null : null,
+          price: c.price != null && Number.isFinite(Number(c.price)) ? Number(c.price) : null
         })),
       offer,
       pricing

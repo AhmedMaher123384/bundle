@@ -84,3 +84,15 @@
 .bundle-app-announcement.is-enter-pop{animation:bundle-app-announcement-enter-pop .22s ease-out both}
 @media (prefers-reduced-motion:reduce){.bundle-app-announcement__track{animation:none;transform:none}}
 @media (max-width:480px){.bundle-app-row{flex-direction:column;align-items:stretch}.bundle-app-btn{width:100%;white-space:normal}.bundle-app-checkwrap{align-self:flex-start}}
+.bundle-app-products{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.bundle-app-product{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.14);border-radius:14px;padding:9px 10px;min-width:0}
+.bundle-app-product__media{width:42px;height:42px;border-radius:12px;overflow:hidden;flex:0 0 42px;background:rgba(255,255,255,.18)}
+.bundle-app-product__img{width:100%;height:100%;object-fit:cover;display:block}
+.bundle-app-product__meta{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+.bundle-app-product__name{font-size:12px;font-weight:900;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bundle-app-product__sub{font-size:12px;opacity:.92;line-height:1.25;display:flex;gap:8px;flex-wrap:wrap}
+.bundle-app-product__qty{opacity:.9}
+.bundle-app-product__price{font-weight:900}
+.bundle-app-product__pick{flex:0 0 auto}
+.bundle-app-product__pick .bundle-app-checkmark{border-radius:10px}
+.bundle-app-product__summary{margin-top:10px;font-size:12px;opacity:.95;line-height:1.35}
