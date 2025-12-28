@@ -16,7 +16,7 @@ function compare(a, b) {
   return String(a).localeCompare(String(b))
 }
 
-export function BundlesPage({ kind }) {
+export function BundlesPage() {
   const { token, logout } = useAuth()
   const toasts = useToasts()
   const navigate = useNavigate()
@@ -35,8 +35,7 @@ export function BundlesPage({ kind }) {
     async function run() {
       setLoading(true)
       try {
-        const query = { ...(status === 'all' ? {} : { status }), ...(kind ? { kind } : {}) }
-        const res = await requestJson('/api/bundles', { token, query })
+        const res = await requestJson('/api/bundles', { token, query: status === 'all' ? {} : { status } })
         if (!cancelled) setBundles(res?.bundles || [])
       } catch (err) {
         if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -49,7 +48,7 @@ export function BundlesPage({ kind }) {
     return () => {
       cancelled = true
     }
-  }, [kind, logout, status, toasts, token])
+  }, [logout, status, toasts, token])
 
   const sorted = useMemo(() => {
     const q = String(search || '').trim().toLowerCase()
@@ -73,15 +72,13 @@ export function BundlesPage({ kind }) {
         version: 1,
         name: `${bundle.name} (Copy)`,
         status: 'draft',
-        kind: bundle.kind || kind || null,
         components: bundle.components || [],
         rules: bundle.rules || { type: 'fixed', value: 0 },
         presentation: bundle.presentation || {},
       }
       await requestJson('/api/bundles', { token, method: 'POST', body: payload })
       toasts.success('Bundle duplicated.')
-      const query = { ...(status === 'all' ? {} : { status }), ...(kind ? { kind } : {}) }
-      const res = await requestJson('/api/bundles', { token, query })
+      const res = await requestJson('/api/bundles', { token, query: status === 'all' ? {} : { status } })
       setBundles(res?.bundles || [])
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -94,8 +91,7 @@ export function BundlesPage({ kind }) {
       await requestJson(`/api/bundles/${encodeURIComponent(bundle._id)}`, { token, method: 'PATCH', body: { status: 'active' } })
       setLastValidatedAtById((prev) => ({ ...prev, [bundle._id]: Date.now() }))
       toasts.success('Bundle activated.')
-      const query = { ...(status === 'all' ? {} : { status }), ...(kind ? { kind } : {}) }
-      const res = await requestJson('/api/bundles', { token, query })
+      const res = await requestJson('/api/bundles', { token, query: status === 'all' ? {} : { status } })
       setBundles(res?.bundles || [])
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -110,8 +106,7 @@ export function BundlesPage({ kind }) {
     try {
       await requestJson(`/api/bundles/${encodeURIComponent(bundle._id)}`, { token, method: 'PATCH', body: { status: 'paused' } })
       toasts.success('Bundle paused.')
-      const query = { ...(status === 'all' ? {} : { status }), ...(kind ? { kind } : {}) }
-      const res = await requestJson('/api/bundles', { token, query })
+      const res = await requestJson('/api/bundles', { token, query: status === 'all' ? {} : { status } })
       setBundles(res?.bundles || [])
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -124,8 +119,7 @@ export function BundlesPage({ kind }) {
       await requestJson(`/api/bundles/${encodeURIComponent(bundle._id)}`, { token, method: 'DELETE' })
       toasts.success('Bundle deleted.')
       setConfirmDelete({ open: false, bundle: null })
-      const query = { ...(status === 'all' ? {} : { status }), ...(kind ? { kind } : {}) }
-      const res = await requestJson('/api/bundles', { token, query })
+      const res = await requestJson('/api/bundles', { token, query: status === 'all' ? {} : { status } })
       setBundles(res?.bundles || [])
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -133,13 +127,11 @@ export function BundlesPage({ kind }) {
     }
   }
 
-  const pageTitle = kind === 'quantity_discount' ? 'خصومات الكميه' : kind === 'product_discount' ? 'خصومات المنتج' : kind === 'often_bought_together' ? 'منتجات تباع معا' : 'Bundles'
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="text-lg font-semibold text-slate-900">{pageTitle}</div>
+          <div className="text-lg font-semibold text-slate-900">Bundles</div>
           <div className="mt-1 text-sm text-slate-600">Create, edit, activate, pause, delete. Activation validates live variants.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

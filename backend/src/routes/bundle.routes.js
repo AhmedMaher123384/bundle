@@ -49,7 +49,6 @@ const presentationSchema = Joi.object({
 
 const createBundleSchema = Joi.object({
   version: Joi.number().integer().valid(1).default(1),
-  kind: Joi.string().valid("quantity_discount", "product_discount", "often_bought_together").allow(null, ""),
   name: Joi.string().trim().min(1).max(200).required(),
   status: Joi.string().valid("draft", "active", "paused").default("draft"),
   components: Joi.array().items(componentSchema).min(1).required(),
@@ -58,7 +57,6 @@ const createBundleSchema = Joi.object({
 });
 
 const updateBundleSchema = Joi.object({
-  kind: Joi.string().valid("quantity_discount", "product_discount", "often_bought_together").allow(null, ""),
   name: Joi.string().trim().min(1).max(200),
   status: Joi.string().valid("draft", "active", "paused"),
   components: Joi.array().items(componentSchema).min(1),
@@ -67,8 +65,7 @@ const updateBundleSchema = Joi.object({
 }).min(1);
 
 const listQuerySchema = Joi.object({
-  status: Joi.string().valid("draft", "active", "paused"),
-  kind: Joi.string().valid("quantity_discount", "product_discount", "often_bought_together")
+  status: Joi.string().valid("draft", "active", "paused")
 });
 
 const evaluateQuerySchema = Joi.object({

@@ -13,7 +13,6 @@ const bundleService = require("../services/bundle.service");
 const { issueOrReuseCouponForCart } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
-const vm = require("vm");
 const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
 const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
@@ -215,7 +214,6 @@ function createApiRouter(config) {
 
         const productId = String(snap?.productId || "").trim() || (isProductRef ? (refProductId || null) : null);
         const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
-        const name = snap?.name ? String(snap.name).trim() || null : null;
         const price = snap?.price != null ? Number(snap.price) : null;
         return {
           variantId: outVariantId,
@@ -224,7 +222,6 @@ function createApiRouter(config) {
           group: String(c?.group || "").trim() || null,
           isBase,
           imageUrl,
-          name,
           price: Number.isFinite(price) ? price : null
         };
       })
@@ -397,22 +394,6 @@ function createApiRouter(config) {
     };
   }
 
-  function normalizeBundleKind(value) {
-    const v = String(value || "").trim();
-    if (v === "quantity_discount" || v === "product_discount" || v === "often_bought_together") return v;
-    return null;
-  }
-
-  function inferBundleKind(bundleLike) {
-    const tiers = Array.isArray(bundleLike?.rules?.tiers) ? bundleLike.rules.tiers : [];
-    if (tiers.length) return "quantity_discount";
-
-    const type = String(bundleLike?.rules?.type || "").trim();
-    const value = Number(bundleLike?.rules?.value ?? 0);
-    if (type && Number.isFinite(value) && value > 0) return "product_discount";
-    return "often_bought_together";
-  }
-
   function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId, ctx) {
     const components = normalizeComponentsForStorefront(bundle, variantSnapshots, ctx);
     const rules = bundle?.rules || {};
@@ -427,7 +408,6 @@ function createApiRouter(config) {
     const display = computeDisplay(bundle, offer, pricing);
     return {
       id: String(bundle?._id),
-      kind: normalizeBundleKind(bundle?.kind) || inferBundleKind(bundle),
       triggerProductId: String(triggerProductId || bundle?.triggerProductId || "").trim(),
       title: display.title,
       subtitle: display.subtitle,
@@ -454,9 +434,7 @@ function createApiRouter(config) {
           quantity: c.quantity,
           group: String(c?.group || "").trim() || null,
           isBase: Boolean(c.isBase),
-          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null,
-          name: c.name ? String(c.name).trim() || null : null,
-          price: c.price != null && Number.isFinite(Number(c.price)) ? Number(c.price) : null
+          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null
         })),
       offer,
       pricing
@@ -574,20 +552,6 @@ function createApiRouter(config) {
       mountBundle(context);
       mountAnnouncementBanner(context);
       const js = context.parts.join("");
-      try {
-        new vm.Script(js);
-      } catch (e) {
-        try {
-          console.error("storefront snippet.js generation failed", {
-            merchantId,
-            name: e && e.name,
-            message: e && e.message
-          });
-        } catch (x) {
-          void x;
-        }
-        return res.send('(function(){try{console.warn("BundleApp failed to load.")}catch(e){}})();');
-      }
       return res.send(js);
     } catch (err) {
       return next(err);

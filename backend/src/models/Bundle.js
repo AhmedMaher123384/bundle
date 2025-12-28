@@ -14,13 +14,6 @@ const BundleSchema = new mongoose.Schema(
     storeId: { type: String, required: true, index: true },
     version: { type: Number, required: true, default: 1 },
     status: { type: String, required: true, enum: ["draft", "active", "paused"], default: "draft", index: true },
-    kind: {
-      type: String,
-      required: false,
-      enum: ["quantity_discount", "product_discount", "often_bought_together"],
-      default: null,
-      index: true
-    },
     name: { type: String, default: "" },
     components: { type: [BundleComponentSchema], required: true, default: [] },
     rules: {

@@ -189,7 +189,7 @@ function pickBestOptionForGroup(groupOptions, availableQtyByVariant, cartLineByV
   return best;
 }
 
-function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId, isOftenBoughtTogether) {
+function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId) {
   const mustIncludeAllGroups = rules.eligibility.mustIncludeAllGroups !== false;
   const entries = Array.from(groupMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   if (!entries.length) return null;
@@ -206,14 +206,9 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
   }
 
   const selection = [];
-  let matchedGroups = 0;
   for (const [, options] of entries) {
     const best = pickBestOptionForGroup(options, availableQtyByVariant, cartLineByVariantId, cartLinesByProductId);
-    if (!best || !best.lines?.length) {
-      if (isOftenBoughtTogether) continue;
-      return null;
-    }
-    matchedGroups++;
+    if (!best || !best.lines?.length) return null;
     for (const line of best.lines) {
       selection.push(line);
       availableQtyByVariant.set(
@@ -222,10 +217,6 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
       );
     }
   }
-
-  if (isOftenBoughtTogether && matchedGroups < 1) return null;
-  if (!isOftenBoughtTogether && matchedGroups < entries.length) return null;
-
   return selection;
 }
 
@@ -274,13 +265,11 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 
-  const isOften = String(bundle?.kind || "") === "often_bought_together";
-
   if (!rules?.tiers?.length) {
     const groupMap = buildGroupMapForComponents(components, null);
     for (let use = 0; use < maxUses; use += 1) {
       const availableForUse = new Map(availableQtyByVariant);
-      const selectionLines = computeSelectionForUse(groupMap, rules, availableForUse, cartLineByVariantId, cartLinesByProductId, isOften);
+      const selectionLines = computeSelectionForUse(groupMap, rules, availableForUse, cartLineByVariantId, cartLinesByProductId);
       if (!selectionLines || !selectionLines.length) break;
 
       availableQtyByVariant.clear();
@@ -328,7 +317,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
         eligibility: { ...rules.eligibility, minCartQty: Math.max(1, Math.floor(Number(cand.minQty || 1))) }
       };
 
-      const selectionLines = computeSelectionForUse(groupMap, candRules, availableForUse, cartLineByVariantId, cartLinesByProductId, isOften);
+      const selectionLines = computeSelectionForUse(groupMap, candRules, availableForUse, cartLineByVariantId, cartLinesByProductId);
       if (!selectionLines || !selectionLines.length) continue;
 
       const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);

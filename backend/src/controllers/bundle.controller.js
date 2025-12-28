@@ -53,29 +53,12 @@ function resolveTriggerProductIdFromReport(report, coverVariantId) {
   return productId || null;
 }
 
-function normalizeBundleKind(value) {
-  const v = String(value || "").trim();
-  if (v === "quantity_discount" || v === "product_discount" || v === "often_bought_together") return v;
-  return null;
-}
-
-function inferBundleKindFromPayload(payload) {
-  const tiers = Array.isArray(payload?.rules?.tiers) ? payload.rules.tiers : [];
-  if (tiers.length) return "quantity_discount";
-
-  const ruleType = String(payload?.rules?.type || "").trim();
-  const ruleValue = Number(payload?.rules?.value ?? 0);
-  if (ruleType && Number.isFinite(ruleValue) && ruleValue > 0) return "product_discount";
-  return "often_bought_together";
-}
-
 function createBundleController(config) {
   const createBundle = asyncHandler(async (req, res) => {
     const storeId = String(req.merchant?.merchantId || "").trim();
     const componentIds = componentsVariantIds(req.body?.components);
     const coverVariantId = resolveCoverVariantId(req.body?.components, req.body?.presentation);
     const idsToValidate = uniqStrings([...componentIds, coverVariantId]);
-    const kind = normalizeBundleKind(req.body?.kind) || inferBundleKindFromPayload(req.body);
     if (idsToValidate.length) {
       const report = await fetchVariantsSnapshotReport(config.salla, req.merchantAccessToken, idsToValidate, { concurrency: 5, maxAttempts: 3 });
       const invalid = computeInvalidComponentVariantIds(report, componentIds);
@@ -84,20 +67,18 @@ function createBundleController(config) {
       }
 
       const triggerProductId = resolveTriggerProductIdFromReport(report, coverVariantId);
-      const bundle = await bundleService.createBundle(storeId, { ...req.body, kind, triggerProductId });
+      const bundle = await bundleService.createBundle(storeId, { ...req.body, triggerProductId });
       return res.status(201).json({ bundle });
     }
 
-    const bundle = await bundleService.createBundle(storeId, { ...req.body, kind, triggerProductId: null });
+    const bundle = await bundleService.createBundle(storeId, { ...req.body, triggerProductId: null });
     res.status(201).json({ bundle });
   });
 
   const listBundles = asyncHandler(async (req, res) => {
     const storeId = String(req.merchant?.merchantId || "").trim();
     const bundles = await bundleService.listBundles(storeId, { status: req.query?.status });
-    const kind = normalizeBundleKind(req.query?.kind);
-    const out = kind ? bundles.filter((b) => (normalizeBundleKind(b?.kind) || inferBundleKindFromPayload(b)) === kind) : bundles;
-    res.json({ bundles: out });
+    res.json({ bundles });
   });
 
   const updateBundle = asyncHandler(async (req, res) => {
@@ -106,7 +87,6 @@ function createBundleController(config) {
     const nextComponents = req.body?.components ?? current.components ?? [];
     const nextPresentation = req.body?.presentation ?? current.presentation ?? {};
     const nextStatus = req.body?.status ?? current.status;
-    const kind = normalizeBundleKind(req.body?.kind) || normalizeBundleKind(current?.kind) || inferBundleKindFromPayload({ ...current, ...req.body, components: nextComponents });
 
     if (nextStatus === "active") {
       const componentIds = componentsVariantIds(nextComponents);
@@ -118,11 +98,11 @@ function createBundleController(config) {
         throw new ApiError(400, "Bundle contains invalid variants", { code: "BUNDLE_VARIANTS_INVALID", details: { invalid } });
       }
       const triggerProductId = resolveTriggerProductIdFromReport(report, coverVariantId);
-      const bundle = await bundleService.updateBundle(storeId, req.params.id, { ...req.body, kind, triggerProductId });
+      const bundle = await bundleService.updateBundle(storeId, req.params.id, { ...req.body, triggerProductId });
       return res.json({ bundle });
     }
 
-    const bundle = await bundleService.updateBundle(storeId, req.params.id, { ...req.body, kind });
+    const bundle = await bundleService.updateBundle(storeId, req.params.id, req.body);
     res.json({ bundle });
   });
 
