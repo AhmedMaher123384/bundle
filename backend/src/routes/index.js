@@ -1260,8 +1260,7 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const couponReport = {};
-      const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, report: couponReport });
+      const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
 
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
@@ -1278,7 +1277,6 @@ function createApiRouter(config) {
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,
         couponIssueFailed,
-        couponIssue: couponIssueFailed ? couponReport : null,
         banner: hasDiscount
           ? {
               title: "خصم الباقة اتفعل",
@@ -1454,9 +1452,8 @@ function createApiRouter(config) {
       }
 
       const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
-      const couponReport = {};
       const coupon = shouldIssueCoupon
-        ? await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, report: couponReport })
+        ? await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
         : null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
       const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
@@ -1470,7 +1467,6 @@ function createApiRouter(config) {
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,
         couponIssueFailed,
-        couponIssue: couponIssueFailed ? couponReport : null,
         applied: evaluation?.applied || null
       });
     } catch (err) {

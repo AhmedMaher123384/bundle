@@ -2,7 +2,6 @@ const CartCoupon = require("../models/CartCoupon");
 const { createCoupon } = require("./sallaApi.service");
 const { ApiError } = require("../utils/apiError");
 const { sha256Hex } = require("../utils/hash");
-const { redact } = require("../utils/redact");
 
 function normalizeCartItems(items) {
   const map = new Map();
@@ -31,30 +30,11 @@ function formatDateOnly(date) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
-function formatDateTimeEndOfDay(date) {
-  return `${formatDateOnly(date)} 23:59:59`;
-}
-
 function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   const ids = evaluationResult?.applied?.matchedProductIds || [];
   return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
     /^\d+$/.test(v)
   );
-}
-
-function setReport(report, patch) {
-  if (!report || typeof report !== "object") return;
-  Object.assign(report, patch);
-}
-
-function sanitizeSallaErrorDetails(details) {
-  const d = redact(details);
-  if (!d || typeof d !== "object") return d;
-  const errors = d?.errors ?? d?.data?.errors ?? d?.error?.errors ?? null;
-  if (Array.isArray(errors)) return { errors };
-  const message = d?.message ?? d?.error?.message ?? null;
-  if (message) return { message };
-  return d;
 }
 
 async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
@@ -79,31 +59,26 @@ async function markOtherIssuedCouponsSuperseded(merchantObjectId, currentCartHas
 }
 
 async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
-  const report = options?.report && typeof options.report === "object" ? options.report : null;
   const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
   const { cartHash } = computeCartHash(cartItems);
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-    setReport(report, { ok: true, reused: true, cartHash });
     return existing;
   }
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
-  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    setReport(report, { ok: false, cartHash, reason: "NO_DISCOUNT" });
-    return null;
-  }
+  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  if (!includeProductIds.length) {
-    setReport(report, { ok: false, cartHash, reason: "NO_MATCHED_PRODUCTS" });
-    return null;
-  }
-  const includeProductIdsForApi = includeProductIds;
+  if (!includeProductIds.length) return null;
+  const includeProductIdsNumeric = includeProductIds
+    .map((v) => Number.parseInt(String(v), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
   const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
@@ -118,11 +93,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
-    is_sale_products_exclude: false,
     is_apply_with_offer: true,
-    is_group: false,
-    start_date: null,
-    expiry_date: formatDateTimeEndOfDay(expiresAt),
+    start_date: formatDateOnly(now),
+    expiry_date: formatDateOnly(expiresAt),
     usage_limit: 1,
     usage_limit_per_user: 1,
     include_product_ids: includeProductIdsForApi
@@ -146,14 +119,6 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        setReport(report, {
-          ok: false,
-          cartHash,
-          reason: "SALLA_REJECTED",
-          statusCode: err.statusCode,
-          code: err.code,
-          details: sanitizeSallaErrorDetails(err.details)
-        });
         let created = false;
 
         if (firstPayload.type === "fixed") {
@@ -191,17 +156,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
                     created = true;
                   } catch (e4) {
                     if (e4 instanceof ApiError && e4.statusCode === 409) continue;
-                    if (e4 instanceof ApiError && e4.statusCode === 422) {
-                      setReport(report, {
-                        ok: false,
-                        cartHash,
-                        reason: "SALLA_REJECTED",
-                        statusCode: e4.statusCode,
-                        code: e4.code,
-                        details: sanitizeSallaErrorDetails(e4.details)
-                      });
-                      return null;
-                    }
+                    if (e4 instanceof ApiError && e4.statusCode === 422) return null;
                     throw e4;
                   }
                 } else {
@@ -241,7 +196,6 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
       );
 
       await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      setReport(report, { ok: true, reused: false, cartHash, couponCode: record?.code || null });
       return record;
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
@@ -249,7 +203,6 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     }
   }
 
-  setReport(report, { ok: false, cartHash, reason: "RETRY_EXHAUSTED" });
   return null;
 }
 

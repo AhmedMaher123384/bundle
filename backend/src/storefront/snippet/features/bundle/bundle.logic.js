@@ -409,36 +409,98 @@ async function tryApplyCoupon(code) {
       ]);
     }
 
-    var fn = null;
-    if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
-    else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
-    else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
-    else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
-    else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
-    else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
-    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
-
-    if (!fn) return false;
-
-    let res = null;
-    try {
-      res = await withTimeout(Promise.resolve(fn(c)), 12_000);
-    } catch (e0) {
-      res = await withTimeout(Promise.resolve(fn({ code: c })), 12_000);
+    function runAndAssertOk(p) {
+      return withTimeout(
+        Promise.resolve(p).then(function (res) {
+          if (res && typeof res === "object") {
+            const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
+            if (ok === false) {
+              const m = String(res.message || res.error || res.title || "").trim();
+              const e0 = new Error(m || "coupon_apply_failed");
+              e0.details = res;
+              throw e0;
+            }
+          }
+          return res;
+        }),
+        12_000
+      );
     }
-    if (res && typeof res === "object") {
-      const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
-      if (ok === false) {
-        const m = String(res.message || res.error || res.title || "").trim();
-        const e0 = new Error(m || "coupon_apply_failed");
-        e0.details = res;
-        throw e0;
+
+    function sleep(ms) {
+      return new Promise(function (r) {
+        setTimeout(r, Math.max(0, Number(ms || 0)));
+      });
+    }
+
+    function buildCandidates() {
+      var fns = [];
+      if (cart) {
+        if (typeof cart.applyCoupon === "function") fns.push(function () { return cart.applyCoupon(c); });
+        if (typeof cart.addCoupon === "function") {
+          fns.push(function () { return cart.addCoupon({ code: c }); });
+          fns.push(function () { return cart.addCoupon({ coupon_code: c }); });
+          fns.push(function () { return cart.addCoupon(c); });
+        }
+        if (cart.coupon && typeof cart.coupon.apply === "function") {
+          fns.push(function () { return cart.coupon.apply(c); });
+          fns.push(function () { return cart.coupon.apply({ code: c }); });
+          fns.push(function () { return cart.coupon.apply({ coupon_code: c }); });
+        }
+        if (cart.coupon && typeof cart.coupon.set === "function") {
+          fns.push(function () { return cart.coupon.set(c); });
+          fns.push(function () { return cart.coupon.set({ code: c }); });
+          fns.push(function () { return cart.coupon.set({ coupon_code: c }); });
+        }
+        if (typeof cart.setCoupon === "function") {
+          fns.push(function () { return cart.setCoupon(c); });
+          fns.push(function () { return cart.setCoupon({ code: c }); });
+          fns.push(function () { return cart.setCoupon({ coupon_code: c }); });
+        }
+      }
+      if (window.salla) {
+        if (typeof window.salla.applyCoupon === "function") fns.push(function () { return window.salla.applyCoupon(c); });
+        if (window.salla.coupon && typeof window.salla.coupon.apply === "function") {
+          fns.push(function () { return window.salla.coupon.apply(c); });
+          fns.push(function () { return window.salla.coupon.apply({ code: c }); });
+          fns.push(function () { return window.salla.coupon.apply({ coupon_code: c }); });
+        }
+      }
+      return fns;
+    }
+
+    var lastErr = null;
+    var attempts = 0;
+    for (var pass = 0; pass < 3; pass += 1) {
+      if (pass > 0) await sleep(450 * pass);
+      var fns = buildCandidates();
+      if (!fns.length) return false;
+      for (var i = 0; i < fns.length; i += 1) {
+        attempts += 1;
+        try {
+          await runAndAssertOk(fns[i]());
+        try {
+          g.BundleApp._lastCouponApplyStatus = null;
+          g.BundleApp._lastCouponApplyMessage = "";
+          g.BundleApp._lastCouponApplyDetails = "";
+        } catch (x0) {}
+        return true;
+      } catch (eTry) {
+        lastErr = eTry;
+        var stTry = extractHttpStatus(eTry);
+          var msgTry = extractHttpMessage(eTry);
+          markStoreClosed({ status: stTry, message: msgTry });
+          if (storeClosedNow()) return false;
+        }
       }
     }
+
+    if (lastErr) throw lastErr;
 
     try {
       g.BundleApp._lastCouponApplyStatus = null;
       g.BundleApp._lastCouponApplyMessage = "";
+      g.BundleApp._lastCouponApplyDetails = "";
     } catch (x0) {}
     return true;
   } catch (e) {
@@ -447,6 +509,14 @@ async function tryApplyCoupon(code) {
     try {
       g.BundleApp._lastCouponApplyStatus = st;
       g.BundleApp._lastCouponApplyMessage = String(msg || "");
+      g.BundleApp._lastCouponApplyDetails = safeDebugStringify(
+        {
+          status: st,
+          message: msg,
+          details: (e && (e.details || (e.response && e.response.data) || e)) || null
+        },
+        12000
+      );
     } catch (x1) {}
     markStoreClosed({ status: st, message: msg });
     if (storeClosedNow()) return false;
@@ -498,6 +568,72 @@ function extractHttpMessage(e) {
   }
 }
 
+function safeDebugStringify(value, maxLen) {
+  const seen = typeof WeakSet !== "undefined" ? new WeakSet() : null;
+  function looksSensitiveKey(k) {
+    const s = String(k || "").toLowerCase();
+    return (
+      s.indexOf("token") !== -1 ||
+      s.indexOf("authorization") !== -1 ||
+      s.indexOf("cookie") !== -1 ||
+      s.indexOf("password") !== -1 ||
+      s.indexOf("secret") !== -1 ||
+      (s.length >= 3 && s.indexOf("key") !== -1)
+    );
+  }
+  function looksSensitiveValue(v) {
+    const s = String(v || "");
+    if (s.length >= 24 && (s.indexOf("Bearer ") === 0 || s.indexOf("eyJ") === 0)) return true;
+    return s.length >= 64;
+  }
+  function cleanse(v, k) {
+    try {
+      if (v == null) return v;
+      if (typeof v === "string") {
+        if (looksSensitiveKey(k) || looksSensitiveValue(v)) return "[REDACTED]";
+        return v;
+      }
+      if (typeof v === "number" || typeof v === "boolean") return v;
+      if (typeof v !== "object") return String(v);
+      if (seen) {
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
+      }
+      if (Array.isArray(v)) return v.map(function (x) { return cleanse(x, k); });
+      const out = {};
+      for (const kk in v) {
+        if (!Object.prototype.hasOwnProperty.call(v, kk)) continue;
+        out[kk] = cleanse(v[kk], kk);
+      }
+      return out;
+    } catch (e0) {
+      try {
+        return String(v);
+      } catch (e1) {
+        return "[Unserializable]";
+      }
+    }
+  }
+  try {
+    const clean = cleanse(value, "");
+    let s = "";
+    try {
+      s = JSON.stringify(clean);
+    } catch (e0) {
+      s = String(clean);
+    }
+    const lim = Math.max(200, Math.min(20000, Number(maxLen || 6000)));
+    if (s.length > lim) return s.slice(0, lim) + "...(truncated)";
+    return s;
+  } catch (e) {
+    try {
+      return String(value);
+    } catch (e2) {
+      return "";
+    }
+  }
+}
+
 function storeClosedNow() {
   try {
     const until = Number((g.BundleApp && g.BundleApp._storeClosedUntil) || 0);
@@ -529,15 +665,41 @@ function humanizeCartError(e) {
   try {
     const st = extractHttpStatus(e);
     const msg = extractHttpMessage(e);
+    const dbg = (function () {
+      try {
+        return Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
+      } catch (x0) {
+        return false;
+      }
+    })();
+    const extra = dbg
+      ? (function () {
+          try {
+            const last = g && g.BundleApp ? g.BundleApp._lastCouponApplyDetails : "";
+            const packed = { status: st, message: msg, lastCoupon: last || undefined };
+            return safeDebugStringify(packed, 8000);
+          } catch (x) {
+            return safeDebugStringify({ status: st, message: msg }, 8000);
+          }
+        })()
+      : "";
+    function withExtra(base) {
+      if (!dbg) return base;
+      const b = String(base || "").trim();
+      const ex = String(extra || "").trim();
+      if (!ex) return b || null;
+      if (!b) return ex;
+      return b + " | " + ex;
+    }
     if (Number(st) === 410) {
       const m = String(msg || "").toLowerCase();
-      if (m.indexOf("مغلق") !== -1) return "المتجر مغلق";
-      if (m.indexOf("closed") !== -1) return "المتجر مغلق";
+      if (m.indexOf("مغلق") !== -1) return withExtra("المتجر مغلق");
+      if (m.indexOf("closed") !== -1) return withExtra("المتجر مغلق");
     }
-    if (Number(st) === 429) return "تم حظرك مؤقتاً";
-    if (Number(st) === 404) return "المنتج غير موجود";
-    if (Number(st) === 401) return "غير مصرح";
-    if (Number(st) === 403) return "غير مصرح";
+    if (Number(st) === 429) return withExtra("تم حظرك مؤقتاً");
+    if (Number(st) === 404) return withExtra("المنتج غير موجود");
+    if (Number(st) === 401) return withExtra("غير مصرح");
+    if (Number(st) === 403) return withExtra("غير مصرح");
     if (Number(st) === 400) {
       const m2 = String(msg || "");
       const ml2 = m2.toLowerCase();
@@ -548,7 +710,7 @@ function humanizeCartError(e) {
         ml2.indexOf("invalid") !== -1 ||
         ml2.indexOf("not valid") !== -1
       ) {
-        return "الكود غير صحيح أو منتهي";
+        return withExtra("الكود غير صحيح أو منتهي");
       }
       if (
         m2.indexOf("لا يشمل") !== -1 ||
@@ -557,16 +719,16 @@ function humanizeCartError(e) {
         ml2.indexOf("eligible") !== -1 ||
         ml2.indexOf("not applicable") !== -1
       ) {
-        return "المنتجات في السلة لا يشملها الكوبون";
+        return withExtra("المنتجات في السلة لا يشملها الكوبون");
       }
-      return "طلب غير صالح";
+      return withExtra("طلب غير صالح");
     }
-    if (Number(st) === 422) return "بيانات غير صالحة";
-    if (Number(st) === 500) return "خطأ في الخادم";
-    if (Number(st) === 503) return "الخدمة غير متاحة";
-    if (Number(st) === 504) return "انتهت مهلة الخادم";
-    if (msg && msg.indexOf("timeout") !== -1) return "انتهت المهلة";
-    return null;
+    if (Number(st) === 422) return withExtra("بيانات غير صالحة");
+    if (Number(st) === 500) return withExtra("خطأ في الخادم");
+    if (Number(st) === 503) return withExtra("الخدمة غير متاحة");
+    if (Number(st) === 504) return withExtra("انتهت مهلة الخادم");
+    if (msg && msg.indexOf("timeout") !== -1) return withExtra("انتهت المهلة");
+    return dbg && (st != null || msg) ? withExtra("") : null;
   } catch (e2) {
     return null;
   }
@@ -631,27 +793,6 @@ async function tryClearCoupon() {
       cleared = true;
     } else if (cart && cart.coupon && typeof cart.coupon.remove === "function") {
       await cart.coupon.remove();
-      cleared = true;
-    } else if (cart && cart.coupon && typeof cart.coupon.set === "function") {
-      try {
-        await cart.coupon.set("");
-      } catch (e0) {
-        await cart.coupon.set({ code: "" });
-      }
-      cleared = true;
-    } else if (cart && typeof cart.applyCoupon === "function") {
-      try {
-        await cart.applyCoupon("");
-      } catch (e1) {
-        await cart.applyCoupon({ code: "" });
-      }
-      cleared = true;
-    } else if (cart && typeof cart.setCoupon === "function") {
-      try {
-        await cart.setCoupon("");
-      } catch (e2) {
-        await cart.setCoupon({ code: "" });
-      }
       cleared = true;
     } else if (cart && typeof cart.removeCoupon === "function") {
       await cart.removeCoupon();
@@ -1279,19 +1420,7 @@ async function applyBundleSelection(bundle) {
         } catch (e0313) {}
       }
       if (res.couponIssueFailed) {
-        var r0 = res && res.couponIssue && res.couponIssue.reason ? String(res.couponIssue.reason) : "";
-        try {
-          if (res && res.couponIssue) warn("bundle-app: coupon issue", res.couponIssue);
-        } catch (e03100bb) {}
-        var hint =
-          r0 === "NO_MATCHED_PRODUCTS"
-            ? " (لم يتم التعرف على منتجات الباقة)"
-            : r0 === "SALLA_REJECTED"
-              ? " (رفضت سلة إنشاء كوبون)"
-              : r0 === "NO_DISCOUNT"
-                ? " (لا يوجد خصم)"
-                : "";
-        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم" + hint;
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
         try {
           clearPendingCoupon(trigger);
         } catch (e03100b) {}
