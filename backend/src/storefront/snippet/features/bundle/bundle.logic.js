@@ -399,27 +399,60 @@ async function tryApplyCoupon(code) {
   try {
     const cart = window.salla && window.salla.cart;
     let applied = false;
+    async function attemptApply(fn) {
+      try {
+        await fn(c);
+        return true;
+      } catch (e1) {
+        const msg1 = extractHttpMessage(e1);
+        const st1 = extractHttpStatus(e1);
+        markStoreClosed({ status: st1, message: msg1 });
+        if (storeClosedNow()) throw e1;
+        try {
+          await fn({ code: c });
+          return true;
+        } catch (e2) {
+          const msg2 = extractHttpMessage(e2);
+          const st2 = extractHttpStatus(e2);
+          markStoreClosed({ status: st2, message: msg2 });
+          if (storeClosedNow()) throw e2;
+          try {
+            await fn({ coupon: c });
+            return true;
+          } catch (e3) {
+            throw e3;
+          }
+        }
+      }
+    }
     if (cart && typeof cart.applyCoupon === "function") {
-      await cart.applyCoupon(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return cart.applyCoupon(payload);
+      });
     } else if (cart && cart.coupon && typeof cart.coupon.apply === "function") {
-      await cart.coupon.apply(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return cart.coupon.apply(payload);
+      });
     } else if (cart && cart.coupon && typeof cart.coupon.set === "function") {
-      await cart.coupon.set(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return cart.coupon.set(payload);
+      });
     } else if (cart && typeof cart.setCoupon === "function") {
-      await cart.setCoupon(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return cart.setCoupon(payload);
+      });
     } else if (cart && typeof cart.addCoupon === "function") {
-      await cart.addCoupon(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return cart.addCoupon(payload);
+      });
     } else if (window.salla && typeof window.salla.applyCoupon === "function") {
-      await window.salla.applyCoupon(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return window.salla.applyCoupon(payload);
+      });
     } else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") {
-      await window.salla.coupon.apply(c);
-      applied = true;
+      applied = await attemptApply(function (payload) {
+        return window.salla.coupon.apply(payload);
+      });
     }
     if (applied) {
       try {
