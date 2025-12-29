@@ -1233,21 +1233,8 @@ async function applyBundleSelection(bundle) {
             try {
               applyPendingCouponForCart();
             } catch (e0312) {}
-          }, 300);
+          }, 800);
         } catch (e0313) {}
-        try {
-          Promise.resolve(tryApplyCoupon(cc)).then(function (ok1) {
-            if (ok1) {
-              try {
-                clearPendingCoupon(trigger);
-              } catch (e0314) {}
-              try {
-                messageByBundleId[bid] = "تم تطبيق الخصم";
-                renderProductBanners(lastBundles || []);
-              } catch (e0315) {}
-            }
-          });
-        } catch (e0316) {}
       }
       if (res.couponIssueFailed) {
         messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
