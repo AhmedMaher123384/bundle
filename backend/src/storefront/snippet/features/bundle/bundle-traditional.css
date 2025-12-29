@@ -1,0 +1,217 @@
+/* Traditional Bundle Styles */
+.bundle-app-traditional {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+}
+
+.bundle-app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bundle-app-title-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.bundle-app-products-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bundle-app-product-item {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.bundle-app-product-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.bundle-app-product-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bundle-app-product-checkwrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bundle-app-product-check {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.bundle-app-product-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bundle-app-product-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: inherit;
+}
+
+.bundle-app-product-qty {
+  font-size: 12px;
+  opacity: 0.8;
+  color: inherit;
+}
+
+.bundle-app-product-variants {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bundle-app-footer {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: center;
+}
+
+.bundle-app-btn {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.bundle-app-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4);
+}
+
+.bundle-app-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bundle-app-price {
+  text-align: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  margin: 12px 0;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.bundle-app-tiers {
+  margin: 12px 0;
+}
+
+.bundle-app-msg {
+  padding: 8px 12px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 6px;
+  color: #ffc107;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.bundle-app-items-summary {
+  font-size: 13px;
+  opacity: 0.9;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+/* Remove old bundle styles */
+.bundle-app-row,
+.bundle-app-content,
+.bundle-app-head,
+.bundle-app-checkwrap {
+  display: none !important;
+}
+
+.bundle-app-card--selected .bundle-app-product-item {
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.bundle-app-card--selected .bundle-app-product-check:checked + .bundle-app-checkmark {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+}
+
+.bundle-app-checkmark {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  position: relative;
+  display: inline-block;
+  margin-left: 8px;
+  transition: all 0.2s ease;
+}
+
+.bundle-app-product-check:checked + .bundle-app-checkmark::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .bundle-app-traditional {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .bundle-app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .bundle-app-product-item {
+    padding: 10px;
+  }
+  
+  .bundle-app-btn {
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+}
