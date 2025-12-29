@@ -422,7 +422,48 @@ async function tryApplyCoupon(code) {
     if (!fns.length) return false;
 
     var payloads = [c, { code: c }, { coupon_code: c }, { couponCode: c }, { coupon: c }];
-    var lastErr = null;
+    function scoreErr(st, msg) {
+      var s = Number(st);
+      var m = String(msg || "");
+      var ml = m.toLowerCase();
+      var invalid =
+        m.indexOf("غير صحيح") !== -1 ||
+        m.indexOf("منتهي") !== -1 ||
+        ml.indexOf("expired") !== -1 ||
+        ml.indexOf("invalid") !== -1 ||
+        ml.indexOf("not valid") !== -1;
+      var ineligible =
+        m.indexOf("لا يشمل") !== -1 ||
+        m.indexOf("لا ينطبق") !== -1 ||
+        ml.indexOf("coupon") !== -1 ||
+        ml.indexOf("eligible") !== -1 ||
+        ml.indexOf("not applicable") !== -1 ||
+        ml.indexOf("not eligible") !== -1;
+      if (s === 400 && invalid) return 100;
+      if (s === 400 && ineligible) return 90;
+      if (s === 429) return 80;
+      if (s === 410 || s === 401 || s === 403 || s === 404) return 70;
+      if (s >= 500 && s < 600) return 60;
+      if (s === 400) return 50;
+      if (m === "timeout") return 40;
+      return 10;
+    }
+    function isHardInvalid400(st, msg) {
+      var s = Number(st);
+      if (s !== 400) return false;
+      var m = String(msg || "");
+      var ml = m.toLowerCase();
+      return (
+        m.indexOf("غير صحيح") !== -1 ||
+        m.indexOf("منتهي") !== -1 ||
+        ml.indexOf("expired") !== -1 ||
+        ml.indexOf("invalid") !== -1 ||
+        ml.indexOf("not valid") !== -1
+      );
+    }
+    var bestScore = -1;
+    var bestSt = null;
+    var bestMsg = "";
     for (var fi = 0; fi < fns.length; fi += 1) {
       var fn = fns[fi];
       for (var pi = 0; pi < payloads.length; pi += 1) {
@@ -444,19 +485,30 @@ async function tryApplyCoupon(code) {
           } catch (x0) {}
           return true;
         } catch (eTry) {
-          lastErr = eTry;
           var stTry = extractHttpStatus(eTry);
           var msgTry = extractHttpMessage(eTry);
-          try {
-            g.BundleApp._lastCouponApplyStatus = stTry;
-            g.BundleApp._lastCouponApplyMessage = String(msgTry || "");
-          } catch (x1) {}
+          var sc = scoreErr(stTry, msgTry);
+          if (sc > bestScore) {
+            bestScore = sc;
+            bestSt = stTry;
+            bestMsg = String(msgTry || "");
+            try {
+              g.BundleApp._lastCouponApplyStatus = bestSt;
+              g.BundleApp._lastCouponApplyMessage = String(bestMsg || "");
+            } catch (x1) {}
+          }
           markStoreClosed({ status: stTry, message: msgTry });
           if (storeClosedNow()) return false;
+          if (Number(stTry) === 429) return false;
+          if (isHardInvalid400(stTry, msgTry)) return false;
         }
       }
     }
-    if (lastErr) throw lastErr;
+    if (bestScore >= 0) {
+      var eBest = new Error(bestMsg || "coupon_apply_failed");
+      eBest.statusCode = bestSt;
+      throw eBest;
+    }
     return false;
   } catch (e) {
     const st = extractHttpStatus(e);
