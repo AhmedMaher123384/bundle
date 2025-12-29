@@ -412,70 +412,29 @@ async function tryApplyCoupon(code) {
     var fn = null;
     if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
     else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
-    else if (cart && cart.coupon && typeof cart.coupon.add === "function") fn = function (payload) { return cart.coupon.add(payload); };
     else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
     else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
     else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
     else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
-    else if (window.salla && typeof window.salla.addCoupon === "function") fn = function (payload) { return window.salla.addCoupon(payload); };
-    else if (window.salla && typeof window.salla.setCoupon === "function") fn = function (payload) { return window.salla.setCoupon(payload); };
     else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
-    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.add === "function") fn = function (payload) { return window.salla.coupon.add(payload); };
-    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.set === "function") fn = function (payload) { return window.salla.coupon.set(payload); };
 
     if (!fn) return false;
 
-    function isFailureResponse(res) {
-      try {
-        if (!res || typeof res !== "object") return false;
-        const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
-        return ok === false;
-      } catch (e) {
-        return false;
+    let res = null;
+    try {
+      res = await withTimeout(Promise.resolve(fn(c)), 12_000);
+    } catch (e0) {
+      res = await withTimeout(Promise.resolve(fn({ code: c })), 12_000);
+    }
+    if (res && typeof res === "object") {
+      const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
+      if (ok === false) {
+        const m = String(res.message || res.error || res.title || "").trim();
+        const e0 = new Error(m || "coupon_apply_failed");
+        e0.details = res;
+        throw e0;
       }
     }
-
-    function responseError(res) {
-      const m = String((res && (res.message || res.error || res.title)) || "").trim();
-      const e0 = new Error(m || "coupon_apply_failed");
-      e0.details = res;
-      return e0;
-    }
-
-    function looksLikeBadPayload(err) {
-      try {
-        const st = extractHttpStatus(err);
-        if (Number(st) !== 400) return false;
-        const msg = extractHttpMessage(err);
-        const m = String(msg || "").toLowerCase();
-        if (m.indexOf("payload") !== -1) return true;
-        if (m.indexOf("request") !== -1) return true;
-        if (m.indexOf("invalid") !== -1) return true;
-        if (m.indexOf("غير صالح") !== -1) return true;
-        if (m.indexOf("not valid") !== -1) return true;
-        return true;
-      } catch (e) {
-        return true;
-      }
-    }
-
-    const payloads = [c, { code: c }, { coupon_code: c }, { couponCode: c }, { coupon: c }];
-    let lastErr = null;
-    for (let i = 0; i < payloads.length; i++) {
-      try {
-        const res = await withTimeout(Promise.resolve(fn(payloads[i])), 8_000);
-        if (isFailureResponse(res)) throw responseError(res);
-        lastErr = null;
-        break;
-      } catch (e) {
-        lastErr = e;
-        const msg = extractHttpMessage(e);
-        if (msg && String(msg).indexOf("timeout") !== -1) throw e;
-        if (i < payloads.length - 1 && looksLikeBadPayload(e)) continue;
-        throw e;
-      }
-    }
-    if (lastErr) throw lastErr;
 
     try {
       g.BundleApp._lastCouponApplyStatus = null;
@@ -673,20 +632,32 @@ async function tryClearCoupon() {
     } else if (cart && cart.coupon && typeof cart.coupon.remove === "function") {
       await cart.coupon.remove();
       cleared = true;
+    } else if (cart && cart.coupon && typeof cart.coupon.set === "function") {
+      try {
+        await cart.coupon.set("");
+      } catch (e0) {
+        await cart.coupon.set({ code: "" });
+      }
+      cleared = true;
+    } else if (cart && typeof cart.applyCoupon === "function") {
+      try {
+        await cart.applyCoupon("");
+      } catch (e1) {
+        await cart.applyCoupon({ code: "" });
+      }
+      cleared = true;
+    } else if (cart && typeof cart.setCoupon === "function") {
+      try {
+        await cart.setCoupon("");
+      } catch (e2) {
+        await cart.setCoupon({ code: "" });
+      }
+      cleared = true;
     } else if (cart && typeof cart.removeCoupon === "function") {
       await cart.removeCoupon();
       cleared = true;
-    } else if (window.salla && window.salla.coupon && typeof window.salla.coupon.clear === "function") {
-      await window.salla.coupon.clear();
-      cleared = true;
-    } else if (window.salla && window.salla.coupon && typeof window.salla.coupon.remove === "function") {
-      await window.salla.coupon.remove();
-      cleared = true;
     } else if (window.salla && typeof window.salla.clearCoupon === "function") {
       await window.salla.clearCoupon();
-      cleared = true;
-    } else if (window.salla && typeof window.salla.removeCoupon === "function") {
-      await window.salla.removeCoupon();
       cleared = true;
     }
     if (cleared) {
