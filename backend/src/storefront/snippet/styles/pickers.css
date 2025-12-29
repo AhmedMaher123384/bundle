@@ -12,4 +12,6 @@
 .bundle-app-container .bundle-app-variant-swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.25)}
 .bundle-app-container .bundle-app-variant-swatch.is-image{background-size:cover;background-position:center}
 .bundle-app-container .bundle-app-variant-text{line-height:1.15}
+.bundle-app-container .bundle-app-variant-select select{appearance:none;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:12px;padding:8px 10px;font-size:12px;font-weight:900;line-height:1;width:100%}
+.bundle-app-container .bundle-app-variant-select select:disabled{opacity:.75;cursor:not-allowed}
 @media (max-width:480px){.bundle-app-container .bundle-app-variant-btn{width:100%;justify-content:flex-start}}
