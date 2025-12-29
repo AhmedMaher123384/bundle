@@ -398,13 +398,6 @@ async function tryApplyCoupon(code) {
   if (storeClosedNow()) return false;
   try {
     const cart = window.salla && window.salla.cart;
-    function sleep(ms) {
-      return new Promise(function (r) {
-        setTimeout(function () {
-          r();
-        }, Math.max(0, Number(ms || 0)));
-      });
-    }
     function withTimeout(p, ms) {
       return Promise.race([
         p,
@@ -416,66 +409,33 @@ async function tryApplyCoupon(code) {
       ]);
     }
 
-    const fns = [];
-    if (cart && typeof cart.applyCoupon === "function") fns.push((p) => cart.applyCoupon(p));
-    if (cart && cart.coupon && typeof cart.coupon.apply === "function") fns.push((p) => cart.coupon.apply(p));
-    if (cart && cart.coupon && typeof cart.coupon.set === "function") fns.push((p) => cart.coupon.set(p));
-    if (cart && typeof cart.setCoupon === "function") fns.push((p) => cart.setCoupon(p));
-    if (cart && typeof cart.addCoupon === "function") fns.push((p) => cart.addCoupon(p));
-    if (window.salla && typeof window.salla.applyCoupon === "function") fns.push((p) => window.salla.applyCoupon(p));
-    if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fns.push((p) => window.salla.coupon.apply(p));
+    var fn = null;
+    if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
+    else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
+    else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
+    else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
+    else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
+    else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
+    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
 
-    if (!fns.length) return false;
+    if (!fn) return false;
 
-    const payloads = [
-      c,
-      { code: c },
-      { coupon: c },
-      { coupon_code: c },
-      { couponCode: c },
-      { coupon: { code: c } }
-    ];
-
-    let lastErr = null;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      for (let fi = 0; fi < fns.length; fi += 1) {
-        const fn = fns[fi];
-        for (let pi = 0; pi < payloads.length; pi += 1) {
-          const payload = payloads[pi];
-          try {
-            const res = await withTimeout(Promise.resolve(fn(payload)), 12_000);
-            if (res && typeof res === "object") {
-              const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
-              if (ok === false) {
-                const m = String(res.message || res.error || res.title || "").trim();
-                const e0 = new Error(m || "coupon_apply_failed");
-                e0.details = res;
-                throw e0;
-              }
-            }
-            try {
-              g.BundleApp._lastCouponApplyStatus = null;
-              g.BundleApp._lastCouponApplyMessage = "";
-            } catch (x0) {}
-            return true;
-          } catch (e) {
-            lastErr = e;
-            const st = extractHttpStatus(e);
-            const msg = extractHttpMessage(e);
-            try {
-              g.BundleApp._lastCouponApplyStatus = st;
-              g.BundleApp._lastCouponApplyMessage = String(msg || "");
-            } catch (x1) {}
-            markStoreClosed({ status: st, message: msg });
-            if (storeClosedNow()) return false;
-          }
-        }
+    const res = await withTimeout(Promise.resolve(fn(c)), 12_000);
+    if (res && typeof res === "object") {
+      const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
+      if (ok === false) {
+        const m = String(res.message || res.error || res.title || "").trim();
+        const e0 = new Error(m || "coupon_apply_failed");
+        e0.details = res;
+        throw e0;
       }
-      await sleep(350 + attempt * 450);
     }
 
-    warn("bundle-app: coupon apply failed", lastErr && (lastErr.details || lastErr.message || lastErr));
-    return false;
+    try {
+      g.BundleApp._lastCouponApplyStatus = null;
+      g.BundleApp._lastCouponApplyMessage = "";
+    } catch (x0) {}
+    return true;
   } catch (e) {
     const st = extractHttpStatus(e);
     const msg = extractHttpMessage(e);
@@ -576,6 +536,15 @@ function humanizeCartError(e) {
     if (Number(st) === 400) {
       const m2 = String(msg || "");
       const ml2 = m2.toLowerCase();
+      if (
+        m2.indexOf("غير صحيح") !== -1 ||
+        m2.indexOf("منتهي") !== -1 ||
+        ml2.indexOf("expired") !== -1 ||
+        ml2.indexOf("invalid") !== -1 ||
+        ml2.indexOf("not valid") !== -1
+      ) {
+        return "الكود غير صحيح أو منتهي";
+      }
       if (
         m2.indexOf("لا يشمل") !== -1 ||
         m2.indexOf("كوبون") !== -1 ||
