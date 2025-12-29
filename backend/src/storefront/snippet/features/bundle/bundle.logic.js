@@ -19,6 +19,19 @@ async function fetchJson(url, opts) {
   return j;
 }
 
+function getBackendOrigin() {
+  try {
+    const src = String(typeof scriptSrc === "string" ? scriptSrc : "").trim();
+    if (src) return new URL(src).origin;
+  } catch (e) {}
+  try {
+    const cs = document.currentScript;
+    const src2 = String((cs && cs.src) || "").trim();
+    if (src2) return new URL(src2).origin;
+  } catch (e2) {}
+  return "";
+}
+
 function buildUrl(path, params) {
   const origin = getBackendOrigin();
   if (!origin) return null;
