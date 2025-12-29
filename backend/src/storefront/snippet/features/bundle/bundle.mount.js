@@ -12,6 +12,7 @@ module.exports = function mountBundle(context) {
   parts.push("(function(){");
   parts.push("var g=null;try{g=globalThis}catch(e){g=window}if(!g)g=window;");
   parts.push("g.BundleApp=g.BundleApp||{};");
+  parts.push("try{if(typeof window!=='undefined'){window.BUNDLE_APP_SNIPPET_MOUNTED=window.BUNDLE_APP_SNIPPET_MOUNTED===true?true:false;window.BUNDLE_APP_SNIPPET_STARTING=false}}catch(e){}");
   parts.push(`var merchantId=${JSON.stringify(merchantId)};`);
   parts.push(`var token=${JSON.stringify(token)};`);
   parts.push('var scriptSrc=(document.currentScript&&document.currentScript.src)||"";');
