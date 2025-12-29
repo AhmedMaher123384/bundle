@@ -1280,6 +1280,9 @@ async function applyBundleSelection(bundle) {
       }
       if (res.couponIssueFailed) {
         var r0 = res && res.couponIssue && res.couponIssue.reason ? String(res.couponIssue.reason) : "";
+        try {
+          if (res && res.couponIssue) warn("bundle-app: coupon issue", res.couponIssue);
+        } catch (e03100bb) {}
         var hint =
           r0 === "NO_MATCHED_PRODUCTS"
             ? " (لم يتم التعرف على منتجات الباقة)"

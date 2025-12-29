@@ -31,6 +31,10 @@ function formatDateOnly(date) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
+function formatDateTimeEndOfDay(date) {
+  return `${formatDateOnly(date)} 23:59:59`;
+}
+
 function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   const ids = evaluationResult?.applied?.matchedProductIds || [];
   return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
@@ -114,10 +118,11 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
+    is_sale_products_exclude: false,
     is_apply_with_offer: true,
     is_group: false,
-    start_date: formatDateOnly(now),
-    expiry_date: formatDateOnly(expiresAt),
+    start_date: null,
+    expiry_date: formatDateTimeEndOfDay(expiresAt),
     usage_limit: 1,
     usage_limit_per_user: 1,
     include_product_ids: includeProductIdsForApi
