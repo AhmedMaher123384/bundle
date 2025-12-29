@@ -10,7 +10,7 @@ const { ApiError } = require("../utils/apiError");
 const { fetchVariantsSnapshotReport } = require("../services/sallaCatalog.service");
 const { findMerchantByMerchantId } = require("../services/merchant.service");
 const bundleService = require("../services/bundle.service");
-const { issueOrReuseCouponForCart } = require("../services/cartCoupon.service");
+const { issueOrReuseCouponForCartVerbose } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
 const { readSnippetCss } = require("../storefront/snippet/styles");
@@ -1260,7 +1260,8 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
+      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
+      const coupon = issued?.coupon || null;
 
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
@@ -1277,6 +1278,7 @@ function createApiRouter(config) {
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,
         couponIssueFailed,
+        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
         banner: hasDiscount
           ? {
               title: "خصم الباقة اتفعل",
@@ -1452,9 +1454,10 @@ function createApiRouter(config) {
       }
 
       const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
-      const coupon = shouldIssueCoupon
-        ? await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
-        : null;
+      const issued = shouldIssueCoupon
+        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
+        : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
+      const coupon = issued?.coupon || null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
       const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
 
@@ -1467,6 +1470,7 @@ function createApiRouter(config) {
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,
         couponIssueFailed,
+        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
         applied: evaluation?.applied || null
       });
     } catch (err) {

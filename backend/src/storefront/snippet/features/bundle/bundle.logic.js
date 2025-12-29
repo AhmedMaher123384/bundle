@@ -1416,7 +1416,26 @@ async function applyBundleSelection(bundle) {
       res = await requestApplyBundle(bid, items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
-      messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل تجهيز الخصم";
+      const hmReq = humanizeCartError(reqErr);
+      var dbgReq = false;
+      try {
+        dbgReq = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
+      } catch (xDbgReq) {}
+      var extraReq = "";
+      if (dbgReq) {
+        try {
+          extraReq = safeDebugStringify(
+            {
+              status: extractHttpStatus(reqErr),
+              message: extractHttpMessage(reqErr),
+              details: (reqErr && (reqErr.details || (reqErr.response && reqErr.response.data) || reqErr)) || null
+            },
+            12000
+          );
+        } catch (xExtraReq) {}
+      }
+      var baseReq = hmReq ? "تمت إضافة الباقة للسلة لكن فشل تجهيز الخصم (" + hmReq + ")" : "تمت إضافة الباقة للسلة لكن فشل تجهيز الخصم";
+      messageByBundleId[bid] = extraReq ? baseReq + " | " + extraReq : baseReq;
       try {
         clearPendingCoupon(trigger);
       } catch (e03100a) {}
@@ -1447,7 +1466,26 @@ async function applyBundleSelection(bundle) {
         } catch (e0313) {}
       }
       if (res.couponIssueFailed) {
-        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
+        var dbgIssue = false;
+        try {
+          dbgIssue = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
+        } catch (xDbgIssue) {}
+        var extraIssue = "";
+        if (dbgIssue) {
+          try {
+            extraIssue = safeDebugStringify(
+              {
+                couponIssueDetails: res.couponIssueDetails || null,
+                applied: res.applied || null,
+                couponCode: res.couponCode || null,
+                discountAmount: res.discountAmount != null ? res.discountAmount : null,
+                kind: res.kind || null
+              },
+              12000
+            );
+          } catch (xExtraIssue) {}
+        }
+        messageByBundleId[bid] = extraIssue ? "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم | " + extraIssue : "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
         try {
           clearPendingCoupon(trigger);
         } catch (e03100b) {}
@@ -1464,7 +1502,17 @@ async function applyBundleSelection(bundle) {
       }
     } else {
       const errMsg = (res && res.message) || "فشلت العملية";
-      messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن " + errMsg;
+      var dbgRes = false;
+      try {
+        dbgRes = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
+      } catch (xDbgRes) {}
+      var extraRes = "";
+      if (dbgRes) {
+        try {
+          extraRes = safeDebugStringify({ response: res || null }, 12000);
+        } catch (xExtraRes) {}
+      }
+      messageByBundleId[bid] = extraRes ? "تمت إضافة الباقة للسلة لكن " + errMsg + " | " + extraRes : "تمت إضافة الباقة للسلة لكن " + errMsg;
       try {
         clearPendingCoupon(trigger);
       } catch (e03100e) {}
