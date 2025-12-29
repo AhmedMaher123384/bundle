@@ -28,6 +28,14 @@ const rulesSchema = Joi.object({
   }).default({ maxUsesPerOrder: 1 })
 });
 
+const settingsSchema = Joi.object({
+  selectionRequired: Joi.boolean().default(false),
+  variantRequired: Joi.boolean().default(true),
+  variantPickerVisible: Joi.boolean().default(true),
+  defaultSelectedProductIds: Joi.array().items(Joi.string().trim().min(1).max(40)).max(80).default([]),
+  productOrder: Joi.array().items(Joi.string().trim().min(1).max(40)).max(120).default([])
+}).default({ selectionRequired: false, variantRequired: true, variantPickerVisible: true, defaultSelectedProductIds: [], productOrder: [] });
+
 const presentationSchema = Joi.object({
   coverVariantId: Joi.string().trim().min(1).max(120).allow(null, ""),
   title: Joi.string().trim().min(1).max(140).allow(null, ""),
@@ -49,18 +57,22 @@ const presentationSchema = Joi.object({
 
 const createBundleSchema = Joi.object({
   version: Joi.number().integer().valid(1).default(1),
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
   name: Joi.string().trim().min(1).max(200).required(),
   status: Joi.string().valid("draft", "active", "paused").default("draft"),
   components: Joi.array().items(componentSchema).min(1).required(),
   rules: rulesSchema.required(),
+  settings: settingsSchema,
   presentation: presentationSchema
 });
 
 const updateBundleSchema = Joi.object({
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
   name: Joi.string().trim().min(1).max(200),
   status: Joi.string().valid("draft", "active", "paused"),
   components: Joi.array().items(componentSchema).min(1),
   rules: rulesSchema,
+  settings: settingsSchema,
   presentation: presentationSchema
 }).min(1);
 
@@ -88,8 +100,10 @@ const evaluateSchema = Joi.object({
 
 const previewSchema = Joi.object({
   name: Joi.string().trim().min(1).max(200).allow(""),
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
   components: Joi.array().items(componentSchema).min(1).required(),
   rules: rulesSchema.required(),
+  settings: settingsSchema,
   presentation: presentationSchema,
   items: cartItemsSchema
 });

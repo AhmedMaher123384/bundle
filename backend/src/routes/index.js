@@ -192,7 +192,6 @@ function createApiRouter(config) {
         const isProductRef = variantId.startsWith("product:");
         const refProductId = isProductRef ? String(variantId.slice("product:".length) || "").trim() : "";
 
-        let outVariantId = variantId;
         let snap = variantSnapshots?.get ? variantSnapshots.get(variantId) : null;
         if (isProductRef) {
           const triggerProductId = String(ctx?.triggerProductId || "").trim();
@@ -200,13 +199,11 @@ function createApiRouter(config) {
           if (isBase && triggerVariantId && refProductId && triggerProductId && refProductId === triggerProductId) {
             const s = variantSnapshots?.get ? variantSnapshots.get(triggerVariantId) : null;
             if (s && String(s?.productId || "").trim() === triggerProductId) {
-              outVariantId = triggerVariantId;
               snap = s;
             }
           } else if (refProductId) {
             const resolved = ctx?.singleVariantSnapshotByProductId?.get ? ctx.singleVariantSnapshotByProductId.get(refProductId) : null;
             if (resolved) {
-              outVariantId = String(resolved.variantId);
               snap = resolved;
             }
           }
@@ -215,14 +212,19 @@ function createApiRouter(config) {
         const productId = String(snap?.productId || "").trim() || (isProductRef ? (refProductId || null) : null);
         const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
         const price = snap?.price != null ? Number(snap.price) : null;
+        const name = snap?.name != null ? String(snap.name).trim() || null : null;
+        const attributes =
+          snap?.attributes && typeof snap.attributes === "object" && !Array.isArray(snap.attributes) ? snap.attributes : null;
         return {
-          variantId: outVariantId,
+          variantId,
           productId,
           quantity,
           group: String(c?.group || "").trim() || null,
           isBase,
           imageUrl,
-          price: Number.isFinite(price) ? price : null
+          price: Number.isFinite(price) ? price : null,
+          name,
+          attributes
         };
       })
       .filter(Boolean);
@@ -343,6 +345,14 @@ function createApiRouter(config) {
               : null;
 
     const presentation = bundle?.presentation || {};
+    const rawKind = String(bundle?.kind || "").trim();
+    const inferredKind = (() => {
+      if (rawKind === "quantity_discount" || rawKind === "products_discount" || rawKind === "products_no_discount" || rawKind === "post_add_upsell") return rawKind;
+      if (Array.isArray(bundle?.rules?.tiers) && bundle.rules.tiers.length) return "quantity_discount";
+      const v = Number(bundle?.rules?.value ?? 0);
+      if (Number.isFinite(v) && v <= 0) return "products_no_discount";
+      return "products_discount";
+    })();
 
     const rawTitle = String(presentation?.title || "").trim();
     const rawSubtitle = String(presentation?.subtitle || "").trim();
@@ -360,11 +370,17 @@ function createApiRouter(config) {
     const defaultBannerColor = type === "percentage" ? "#16a34a" : type === "bundle_price" ? "#7c3aed" : "#0ea5e9";
     const bannerColor = rawBannerColor || defaultBannerColor;
     const badgeColor = rawBadgeColor || bannerColor;
-    const title = rawTitle || (badge ? `${name} - وفر ${badge}` : name);
+    const defaultTitle =
+      inferredKind === "quantity_discount"
+        ? "اشترِ أكثر ووفّر أكثر"
+        : inferredKind === "post_add_upsell"
+          ? "ناس كتير اشتروا كمان"
+          : name;
+    const title = rawTitle || (badge ? `${defaultTitle} - وفر ${badge}` : defaultTitle);
     const subtitle = rawSubtitle || null;
     const label = rawLabel || null;
     const labelSub = rawLabelSub || null;
-    const cta = rawCta || "أضف الباقة";
+    const cta = rawCta || (inferredKind === "post_add_upsell" ? "أضف مع السلة" : "أضف الباقة");
     const textColor = rawTextColor || "#ffffff";
     const ctaBgColor = rawCtaBgColor || null;
     const ctaTextColor = rawCtaTextColor || null;
@@ -397,6 +413,15 @@ function createApiRouter(config) {
   function serializeBundleForStorefront(bundle, variantSnapshots, triggerProductId, ctx) {
     const components = normalizeComponentsForStorefront(bundle, variantSnapshots, ctx);
     const rules = bundle?.rules || {};
+    const rawKind = String(bundle?.kind || "").trim();
+    const kind =
+      rawKind === "quantity_discount" || rawKind === "products_discount" || rawKind === "products_no_discount" || rawKind === "post_add_upsell"
+        ? rawKind
+        : Array.isArray(rules?.tiers) && rules.tiers.length
+          ? "quantity_discount"
+          : Number(rules?.value ?? 0) <= 0
+            ? "products_no_discount"
+            : "products_discount";
     const offer = {
       type: String(rules?.type || "").trim() || null,
       value: Number(rules?.value ?? 0),
@@ -406,8 +431,19 @@ function createApiRouter(config) {
     };
     const pricing = computePricing(bundle, components);
     const display = computeDisplay(bundle, offer, pricing);
+    const settings = bundle?.settings && typeof bundle.settings === "object" ? bundle.settings : {};
     return {
       id: String(bundle?._id),
+      kind,
+      settings: {
+        selectionRequired: settings?.selectionRequired === true,
+        variantRequired: settings?.variantRequired !== false,
+        variantPickerVisible: settings?.variantPickerVisible !== false,
+        defaultSelectedProductIds: Array.isArray(settings?.defaultSelectedProductIds)
+          ? settings.defaultSelectedProductIds.map((x) => String(x || "").trim()).filter(Boolean)
+          : [],
+        productOrder: Array.isArray(settings?.productOrder) ? settings.productOrder.map((x) => String(x || "").trim()).filter(Boolean) : []
+      },
       triggerProductId: String(triggerProductId || bundle?.triggerProductId || "").trim(),
       title: display.title,
       subtitle: display.subtitle,
@@ -434,7 +470,10 @@ function createApiRouter(config) {
           quantity: c.quantity,
           group: String(c?.group || "").trim() || null,
           isBase: Boolean(c.isBase),
-          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null
+          imageUrl: c.imageUrl ? String(c.imageUrl).trim() || null : null,
+          price: c?.price != null && Number.isFinite(Number(c.price)) ? Number(c.price) : null,
+          name: c?.name != null ? String(c.name).trim() || null : null,
+          attributes: c?.attributes && typeof c.attributes === "object" && !Array.isArray(c.attributes) ? c.attributes : null
         })),
       offer,
       pricing
@@ -1322,42 +1361,106 @@ function createApiRouter(config) {
       const combinedSnapshots = new Map(report.snapshots);
       for (const s of singleVariant.snapshotByProductId.values()) combinedSnapshots.set(String(s.variantId), s);
 
-      const draft = bundleService.evaluateBundleDraft(bundle, items, combinedSnapshots);
+      const rawKind = String(bundle?.kind || "").trim();
+      const kind =
+        rawKind === "quantity_discount" || rawKind === "products_discount" || rawKind === "products_no_discount" || rawKind === "post_add_upsell"
+          ? rawKind
+          : Array.isArray(bundle?.rules?.tiers) && bundle.rules.tiers.length
+            ? "quantity_discount"
+            : Number(bundle?.rules?.value ?? 0) <= 0
+              ? "products_no_discount"
+              : "products_discount";
 
-      const appliedRule = (() => {
-        const keys = new Set();
-        const rules = [];
-        for (const app of Array.isArray(draft?.applications) ? draft.applications : []) {
-          const r = app?.appliedRule;
-          if (!r) continue;
-          const type = String(r.type || "").trim();
-          const value = Number(r.value);
-          if (!type || !Number.isFinite(value) || value < 0) continue;
-          const key = `${type}:${value}`;
-          if (keys.has(key)) continue;
-          keys.add(key);
-          rules.push({ type, value });
+      const allowedProductIds = new Set(
+        (Array.isArray(bundle?.components) ? bundle.components : [])
+          .map((c) => String(c?.variantId || "").trim())
+          .map((vid) => {
+            const pid = parseProductRefVariantId(vid);
+            if (pid) return pid;
+            const snap = combinedSnapshots.get(vid);
+            return String(snap?.productId || "").trim() || null;
+          })
+          .filter(Boolean)
+      );
+
+      for (const it of items) {
+        const snap = combinedSnapshots.get(String(it.variantId));
+        const pid = String(snap?.productId || "").trim() || null;
+        if (!pid || !allowedProductIds.has(pid)) {
+          throw new ApiError(400, "Invalid item for bundle", { code: "BUNDLE_ITEM_INVALID" });
         }
-        return rules.length === 1 ? rules[0] : null;
-      })();
+      }
 
-      const evaluation = {
-        applied: {
+      const evaluation = { applied: { totalDiscount: 0, matchedProductIds: [], rule: null } };
+      let discountAmount = 0;
+
+      if (kind === "quantity_discount") {
+        const draft = bundleService.evaluateBundleDraft(bundle, items, combinedSnapshots);
+        const appliedRule = (() => {
+          const keys = new Set();
+          const rules = [];
+          for (const app of Array.isArray(draft?.applications) ? draft.applications : []) {
+            const r = app?.appliedRule;
+            if (!r) continue;
+            const type = String(r.type || "").trim();
+            const value = Number(r.value);
+            if (!type || !Number.isFinite(value) || value < 0) continue;
+            const key = `${type}:${value}`;
+            if (keys.has(key)) continue;
+            keys.add(key);
+            rules.push({ type, value });
+          }
+          return rules.length === 1 ? rules[0] : null;
+        })();
+
+        evaluation.applied = {
           totalDiscount: draft?.applied ? Number(draft.discountAmount || 0) : 0,
           matchedProductIds: Array.isArray(draft?.matchedProductIds) ? draft.matchedProductIds : [],
           rule: appliedRule
-        }
-      };
+        };
+        discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
+      } else {
+        const subtotal = items.reduce((acc, it) => {
+          const snap = combinedSnapshots.get(String(it.variantId));
+          const unit = snap?.price == null ? null : Number(snap.price);
+          const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
+          if (unit == null || !Number.isFinite(unit) || unit < 0) return acc;
+          return acc + unit * qty;
+        }, 0);
+        const offer = bundle?.rules || {};
+        const computedDiscount = kind === "products_no_discount" ? 0 : calcDiscountAmount(offer, subtotal);
+        discountAmount = Number.isFinite(computedDiscount) && computedDiscount > 0 ? Number(computedDiscount) : 0;
+        const matchedProductIds = Array.from(
+          new Set(
+            items
+              .map((it) => {
+                const snap = combinedSnapshots.get(String(it.variantId));
+                return String(snap?.productId || "").trim() || null;
+              })
+              .filter(Boolean)
+          )
+        );
+        const type = String(offer?.type || "").trim() || null;
+        const value = Number(offer?.value ?? 0);
+        evaluation.applied = {
+          totalDiscount: Number(discountAmount.toFixed(2)),
+          matchedProductIds,
+          rule: type && Number.isFinite(value) && value >= 0 ? { type, value } : null
+        };
+      }
 
-      const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
-      const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
+      const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
+      const coupon = shouldIssueCoupon
+        ? await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
+        : null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(!coupon && discountAmount > 0);
+      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
 
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
         bundleId: String(bValue.bundleId),
+        kind,
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,

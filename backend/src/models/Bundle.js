@@ -14,6 +14,13 @@ const BundleSchema = new mongoose.Schema(
     storeId: { type: String, required: true, index: true },
     version: { type: Number, required: true, default: 1 },
     status: { type: String, required: true, enum: ["draft", "active", "paused"], default: "draft", index: true },
+    kind: {
+      type: String,
+      required: false,
+      enum: ["quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"],
+      default: undefined,
+      index: true
+    },
     name: { type: String, default: "" },
     components: { type: [BundleComponentSchema], required: true, default: [] },
     rules: {
@@ -40,6 +47,13 @@ const BundleSchema = new mongoose.Schema(
       limits: {
         maxUsesPerOrder: { type: Number, required: true, min: 1, default: 1 }
       }
+    },
+    settings: {
+      selectionRequired: { type: Boolean, default: false },
+      variantRequired: { type: Boolean, default: true },
+      variantPickerVisible: { type: Boolean, default: true },
+      defaultSelectedProductIds: { type: [String], default: [] },
+      productOrder: { type: [String], default: [] }
     },
     presentation: {
       coverVariantId: { type: String, default: null },

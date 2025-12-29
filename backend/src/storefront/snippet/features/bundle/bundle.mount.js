@@ -1,6 +1,6 @@
-const bundleLogicParts = require('./bundle.logic');
+const bundleLogicParts = require("./bundle.logic");
+const { buildStylesJs } = require("../../core/stylesJs");
 const bundleUiParts = require('./bundle.ui');
-const { buildStylesJs } = require('../../core/stylesJs');
 
 module.exports = function mountBundle(context) {
   const parts = context.parts;
@@ -9,112 +9,23 @@ module.exports = function mountBundle(context) {
   const cssBase = context.cssBase;
   const cssPickers = context.cssPickers;
 
-  function pushLogic(i) {
-    parts.push(bundleLogicParts[i]);
-  }
-
-  function pushUi(i) {
-    parts.push(bundleUiParts[i]);
-  }
-
-  pushLogic(0);
-  pushLogic(1);
-  pushLogic(2);
+  parts.push("(function(){");
+  parts.push("var g=null;try{g=globalThis}catch(e){g=window}if(!g)g=window;");
+  parts.push("g.BundleApp=g.BundleApp||{};");
   parts.push(`var merchantId=${JSON.stringify(merchantId)};`);
   parts.push(`var token=${JSON.stringify(token)};`);
-  pushUi(0);
-  pushUi(1);
-  pushLogic(3);
-  pushLogic(4);
-  pushLogic(5);
-  pushLogic(6);
-  pushUi(2);
-  pushUi(3);
-  pushLogic(7);
-  pushLogic(8);
-  pushLogic(9);
-  pushLogic(10);
-  pushLogic(11);
-  pushLogic(12);
-  pushLogic(13);
-  pushLogic(14);
-  pushLogic(15);
-  pushLogic(16);
-  pushLogic(17);
-  pushLogic(18);
-  pushLogic(19);
-  pushLogic(20);
-  pushLogic(21);
-  pushUi(4);
-  pushUi(5);
-  pushLogic(22);
-  pushLogic(23);
-  pushLogic(24);
-  pushLogic(25);
-  pushLogic(26);
-  pushLogic(27);
-  pushLogic(28);
-  pushLogic(29);
-  pushLogic(30);
-  pushLogic(31);
-  pushLogic(32);
-  pushLogic(33);
-  pushUi(6);
-  pushUi(7);
-  pushUi(8);
-  pushUi(9);
-  pushUi(10);
-  pushUi(11);
-  pushLogic(34);
-  pushLogic(35);
-  pushLogic(36);
-  pushLogic(37);
-  pushUi(12);
-  pushLogic(38);
-  pushLogic(39);
-  pushLogic(40);
-  pushLogic(41);
-  pushLogic(42);
-  pushLogic(43);
-  pushLogic(44);
-  pushLogic(45);
-  pushLogic(46);
-  pushLogic(47);
-  pushLogic(48);
-  pushLogic(49);
-  pushLogic(50);
-  pushLogic(51);
-  pushUi(13);
-  pushLogic(52);
-  pushLogic(53);
-  pushLogic(54);
-  pushLogic(55);
-  pushLogic(56);
-  pushLogic(57);
-  pushLogic(58);
-  pushLogic(59);
-  pushUi(14);
-  pushUi(15);
-  pushLogic(60);
-  pushLogic(61);
-  pushLogic(62);
-  pushLogic(63);
-  pushLogic(64);
-  pushLogic(65);
-  pushLogic(66);
-  pushUi(16);
-  pushLogic(67);
-  pushUi(17);
-  pushUi(18);
-  pushLogic(68);
-  pushUi(19);
-  pushLogic(69);
-  pushUi(20);
-  pushLogic(70);
-  pushLogic(71);
-  pushLogic(72);
-  pushLogic(73);
+  parts.push('var scriptSrc=(document.currentScript&&document.currentScript.src)||"";');
+  parts.push(
+    'if(!scriptSrc){try{var ss=document.getElementsByTagName("script");for(var si=0;si<ss.length;si++){var s=ss[si];var src=(s&&s.src)||"";if(!src)continue;if(src.indexOf("/api/storefront/snippet.js")!==-1&&src.indexOf("merchantId="+encodeURIComponent(merchantId))!==-1){scriptSrc=src;break}}}catch(e){}}'
+  );
+  parts.push('var debug=false;try{debug=new URL(scriptSrc).searchParams.get("debug")==="1"}catch(e){}');
+  parts.push("function log(){if(!debug)return;try{console.log.apply(console,arguments)}catch(e){}}");
+  parts.push("function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}");
+
   parts.push(buildStylesJs({ cssBase, cssPickers }));
-  pushLogic(74);
-  pushLogic(75);
+  parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}');
+
+  for (let i = 0; i < bundleLogicParts.length; i += 1) parts.push(bundleLogicParts[i]);
+  for (let i = 0; i < bundleUiParts.length; i += 1) parts.push(bundleUiParts[i]);
+  parts.push("})();");
 };

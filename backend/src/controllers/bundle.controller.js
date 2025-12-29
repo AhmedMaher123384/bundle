@@ -143,8 +143,10 @@ function createBundleController(config) {
       name: String(req.body?.name || "Preview").trim() || "Preview",
       version: 1,
       status: "draft",
+      kind: req.body?.kind,
       components: req.body?.components || [],
       rules: req.body?.rules || {},
+      settings: req.body?.settings || {},
       presentation: req.body?.presentation || {}
     };
 

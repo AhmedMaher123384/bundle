@@ -37,6 +37,11 @@ function componentsTotalQty(bundle) {
 }
 
 function bundleTypeLabel(bundle) {
+  const rawKind = String(bundle?.kind || '').trim()
+  if (rawKind === 'quantity_discount') return 'Quantity discount'
+  if (rawKind === 'products_discount') return 'Products discount'
+  if (rawKind === 'products_no_discount') return 'Products (no discount)'
+  if (rawKind === 'post_add_upsell') return 'Post-add upsell'
   if (Array.isArray(bundle?.rules?.tiers) && bundle.rules.tiers.length) return 'Quantity'
   const unique = new Set((Array.isArray(bundle?.components) ? bundle.components : []).map((c) => String(c?.variantId || '').trim()).filter(Boolean))
   if (unique.size >= 2) return 'Bundle products'

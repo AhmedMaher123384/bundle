@@ -73,6 +73,7 @@ export function BundleEditorPage({ mode }) {
   const [product, setProduct] = useState(null)
 
   const [name, setName] = useState('')
+  const [kind, setKind] = useState('quantity_discount')
   const [offerType, setOfferType] = useState('quantity')
   const [discountType, setDiscountType] = useState('percentage')
   const [discountValue, setDiscountValue] = useState(10)
@@ -97,6 +98,11 @@ export function BundleEditorPage({ mode }) {
   const [presentationShowItems, setPresentationShowItems] = useState(true)
   const [presentationShowPrice, setPresentationShowPrice] = useState(true)
   const [presentationShowTiers, setPresentationShowTiers] = useState(true)
+
+  const [settingsSelectionRequired, setSettingsSelectionRequired] = useState(false)
+  const [settingsVariantRequired, setSettingsVariantRequired] = useState(true)
+  const [settingsVariantPickerVisible, setSettingsVariantPickerVisible] = useState(true)
+  const [settingsDefaultSelectedProductIds, setSettingsDefaultSelectedProductIds] = useState([])
 
   const [addons, setAddons] = useState([])
   const [variantMetaById, setVariantMetaById] = useState({})
@@ -126,6 +132,16 @@ export function BundleEditorPage({ mode }) {
         const rest = cover ? comps.filter((c) => String(c?.variantId) !== String(cover)) : comps.slice(1)
 
         setName(String(found?.name || '').trim())
+        const rawKind = String(found?.kind || '').trim()
+        const effectiveKind =
+          rawKind === 'quantity_discount' || rawKind === 'products_discount' || rawKind === 'products_no_discount' || rawKind === 'post_add_upsell'
+            ? rawKind
+            : Array.isArray(found?.rules?.tiers) && found.rules.tiers.length
+              ? 'quantity_discount'
+              : Number(found?.rules?.value ?? 0) <= 0
+                ? 'products_no_discount'
+                : 'products_discount'
+        setKind(effectiveKind)
         setDiscountType(String(found?.rules?.type || 'percentage'))
         setDiscountValue(Number(found?.rules?.value || 0))
         setBaseVariantId(cover)
@@ -146,16 +162,17 @@ export function BundleEditorPage({ mode }) {
         setPresentationShowPrice(typeof found?.presentation?.showPrice === 'boolean' ? found.presentation.showPrice : true)
         setPresentationShowTiers(typeof found?.presentation?.showTiers === 'boolean' ? found.presentation.showTiers : true)
 
-        if (rest.length) {
-          setOfferType('bundle')
-          setBaseQty(Math.max(1, Math.min(999, toInt(coverQty, 1))))
-          setAddons(
-            rest.map((c) => ({
-              variantId: normalizeVariantId(c?.variantId),
-              quantity: Math.max(1, Math.min(999, toInt(c?.quantity, 1))),
-            }))
-          )
-        } else {
+        const settings = found?.settings && typeof found.settings === 'object' ? found.settings : {}
+        setSettingsSelectionRequired(settings?.selectionRequired === true)
+        setSettingsVariantRequired(settings?.variantRequired !== false)
+        setSettingsVariantPickerVisible(settings?.variantPickerVisible !== false)
+        setSettingsDefaultSelectedProductIds(
+          Array.isArray(settings?.defaultSelectedProductIds)
+            ? settings.defaultSelectedProductIds.map((x) => String(x || '').trim()).filter(Boolean)
+            : []
+        )
+
+        if (effectiveKind === 'quantity_discount') {
           setOfferType('quantity')
           const tiers = normalizeQtyTiers(found?.rules?.tiers || [])
           if (tiers.length) {
@@ -169,6 +186,16 @@ export function BundleEditorPage({ mode }) {
               },
             ])
           }
+          setAddons([])
+        } else {
+          setOfferType('bundle')
+          setBaseQty(Math.max(1, Math.min(999, toInt(coverQty, 1))))
+          setAddons(
+            rest.map((c) => ({
+              variantId: normalizeVariantId(c?.variantId),
+              quantity: Math.max(1, Math.min(999, toInt(c?.quantity, 1))),
+            }))
+          )
         }
       } catch (err) {
         if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
@@ -182,6 +209,20 @@ export function BundleEditorPage({ mode }) {
       cancelled = true
     }
   }, [bundleId, logout, mode, navigate, toasts, token])
+
+  useEffect(() => {
+    if (kind === 'quantity_discount' && offerType !== 'quantity') {
+      setOfferType('quantity')
+      setAddons([])
+    }
+    if (kind !== 'quantity_discount' && offerType !== 'bundle') {
+      setOfferType('bundle')
+    }
+    if (kind === 'products_no_discount') {
+      setDiscountType('fixed')
+      setDiscountValue(0)
+    }
+  }, [kind, offerType])
 
   const effectiveProductId = useMemo(() => {
     if (routeProductId) return routeProductId
@@ -271,6 +312,45 @@ export function BundleEditorPage({ mode }) {
     })
   }, [addons, variantMetaById])
 
+  const addonProducts = useMemo(() => {
+    const rows = []
+    for (const a of Array.isArray(addonsWithMeta) ? addonsWithMeta : []) {
+      const vid = String(a?.variantId || '').trim()
+      if (!vid) continue
+      if (isProductRef(vid)) {
+        const pid = String(vid.slice('product:'.length) || '').trim()
+        if (pid) rows.push({ variantId: vid, productId: pid })
+        continue
+      }
+      const meta = variantMetaById && typeof variantMetaById === 'object' ? variantMetaById[vid] : null
+      const pid = String(meta?.productId || '').trim()
+      if (pid) rows.push({ variantId: vid, productId: pid })
+    }
+    return rows
+  }, [addonsWithMeta, variantMetaById])
+
+  const settingsProductOrder = useMemo(() => {
+    const seen = new Set()
+    const out = []
+    for (const r of Array.isArray(addonProducts) ? addonProducts : []) {
+      const pid = String(r?.productId || '').trim()
+      if (!pid || seen.has(pid)) continue
+      seen.add(pid)
+      out.push(pid)
+    }
+    return out
+  }, [addonProducts])
+
+  useEffect(() => {
+    const allowed = new Set((Array.isArray(addonProducts) ? addonProducts : []).map((r) => String(r?.productId || '').trim()).filter(Boolean))
+    setSettingsDefaultSelectedProductIds((prev) => {
+      const next = (Array.isArray(prev) ? prev : []).map((x) => String(x || '').trim()).filter(Boolean)
+      const filtered = next.filter((pid) => allowed.has(pid))
+      const same = filtered.length === next.length && filtered.every((v, i) => v === next[i])
+      return same ? prev : filtered
+    })
+  }, [addonProducts])
+
   const qtyTiersNormalized = useMemo(() => {
     const normalized = normalizeQtyTiers(qtyTiers)
     return normalized.length ? normalized : [{ minQty: 1, type: 'percentage', value: 0 }]
@@ -286,7 +366,7 @@ export function BundleEditorPage({ mode }) {
       .filter((a) => a.variantId)
 
     const components = []
-    if (baseId) {
+    if (baseId && kind !== 'post_add_upsell') {
       const qty = offerType === 'quantity' ? 1 : Math.max(1, Math.min(999, toInt(baseQty, 1)))
       components.push({ variantId: baseId, quantity: qty, group: groupFromVariantId(baseId) })
     }
@@ -296,7 +376,12 @@ export function BundleEditorPage({ mode }) {
       }
     }
 
-    const requiredQty = offerType === 'quantity' ? Math.max(1, Math.floor(Number(qtyTiersNormalized[0]?.minQty || 1))) : Math.max(1, sumQty(components))
+    const requiredQty =
+      offerType === 'quantity'
+        ? Math.max(1, Math.floor(Number(qtyTiersNormalized[0]?.minQty || 1)))
+        : kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell'
+          ? 1
+          : Math.max(1, sumQty(components))
     const primaryTier = offerType === 'quantity' ? qtyTiersNormalized[0] : null
 
     const presentation = {}
@@ -317,19 +402,46 @@ export function BundleEditorPage({ mode }) {
     presentation.showPrice = Boolean(presentationShowPrice)
     presentation.showTiers = Boolean(presentationShowTiers)
 
+    if (kind === 'post_add_upsell' && effectiveProductId) {
+      presentation.coverVariantId = toProductRef(effectiveProductId)
+    }
+
+    const mustIncludeAllGroups = !(kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell')
+    const normalizedDiscountType = kind === 'products_no_discount' ? 'fixed' : discountType
+    const normalizedDiscountValue = kind === 'products_no_discount' ? 0 : Number(discountValue || 0)
+
     return {
       version: 1,
+      kind,
       name: String(name || '').trim(),
       status: 'draft',
       components,
       rules: {
-        type: offerType === 'quantity' ? (primaryTier?.type === 'fixed' ? 'fixed' : 'percentage') : discountType === 'fixed' ? 'fixed' : discountType === 'bundle_price' ? 'bundle_price' : 'percentage',
-        value: offerType === 'quantity' ? Number(primaryTier?.value || 0) : Number(discountValue || 0),
+        type:
+          offerType === 'quantity'
+            ? primaryTier?.type === 'fixed'
+              ? 'fixed'
+              : 'percentage'
+            : normalizedDiscountType === 'fixed'
+              ? 'fixed'
+              : normalizedDiscountType === 'bundle_price'
+                ? 'bundle_price'
+                : 'percentage',
+        value: offerType === 'quantity' ? Number(primaryTier?.value || 0) : normalizedDiscountValue,
         ...(offerType === 'quantity' ? { tiers: qtyTiersNormalized } : {}),
-        eligibility: { mustIncludeAllGroups: true, minCartQty: requiredQty },
+        eligibility: { mustIncludeAllGroups, minCartQty: requiredQty },
         limits: { maxUsesPerOrder: 50 },
       },
       presentation,
+      settings: {
+        selectionRequired: settingsSelectionRequired === true,
+        variantRequired: settingsVariantRequired !== false,
+        variantPickerVisible: settingsVariantPickerVisible !== false,
+        defaultSelectedProductIds: Array.isArray(settingsDefaultSelectedProductIds)
+          ? settingsDefaultSelectedProductIds.map((x) => String(x || '').trim()).filter(Boolean)
+          : [],
+        productOrder: settingsProductOrder,
+      },
     }
   }, [
     addonsWithMeta,
@@ -337,6 +449,8 @@ export function BundleEditorPage({ mode }) {
     baseVariantId,
     discountType,
     discountValue,
+    effectiveProductId,
+    kind,
     name,
     offerType,
     presentationBadgeColor,
@@ -355,13 +469,18 @@ export function BundleEditorPage({ mode }) {
     presentationTextColor,
     presentationTitle,
     qtyTiersNormalized,
+    settingsDefaultSelectedProductIds,
+    settingsProductOrder,
+    settingsSelectionRequired,
+    settingsVariantPickerVisible,
+    settingsVariantRequired,
   ])
 
   const canSubmit = useMemo(() => {
     if (!effectiveProductId) return false
     if (!draft.name.trim()) return false
     if (!draft.components.length) return false
-    if (offerType === 'bundle' && draft.components.length < 2) return false
+    if (offerType === 'bundle' && kind !== 'post_add_upsell' && draft.components.length < 2) return false
     if (offerType === 'quantity') {
       if (!qtyTiersNormalized.length) return false
       if (qtyTiersNormalized.some((t) => !Number.isFinite(Number(t?.minQty)) || Number(t.minQty) < 1)) return false
@@ -369,7 +488,7 @@ export function BundleEditorPage({ mode }) {
         return false
     }
     return true
-  }, [draft.components.length, draft.name, effectiveProductId, offerType, qtyTiersNormalized])
+  }, [draft.components.length, draft.name, effectiveProductId, kind, offerType, qtyTiersNormalized])
 
   function defaultBannerColorByRuleType(ruleType) {
     const t = String(ruleType || '').trim()
@@ -387,14 +506,29 @@ export function BundleEditorPage({ mode }) {
     if (offerType === 'quantity') {
       const bestTier = qtyTiersNormalized.length ? qtyTiersNormalized[qtyTiersNormalized.length - 1] : null
       if (bestTier) badge = bestTier.type === 'percentage' ? `${bestTier.value}%` : `${bestTier.value}`
-    } else if (ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
+    } else if (kind !== 'products_no_discount' && ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
     else if (ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
 
-    const title = String(presentationTitle || '').trim() || (badge ? `${String(draft?.name || 'باقة')} - وفر ${badge}` : String(draft?.name || 'باقة'))
+    const kindDefaultTitle =
+      kind === 'quantity_discount'
+        ? 'اشترِ أكثر ووفّر أكثر'
+        : kind === 'products_discount'
+          ? `${String(draft?.name || 'باقة')} - خصم متعدد المنتجات`
+          : kind === 'products_no_discount'
+            ? `${String(draft?.name || 'باقة')} - مجموعة منتجات`
+            : kind === 'post_add_upsell'
+              ? 'ناس كتير اشتروا كمان'
+              : String(draft?.name || 'باقة')
+
+    const title =
+      String(presentationTitle || '').trim() ||
+      (badge && kind !== 'products_no_discount' ? `${String(draft?.name || 'باقة')} - وفر ${badge}` : kindDefaultTitle)
     const subtitle = String(presentationSubtitle || '').trim() || ''
     const label = String(presentationLabel || '').trim() || ''
     const labelSub = String(presentationLabelSub || '').trim() || ''
-    const cta = String(presentationCta || '').trim() || 'أضف الباقة'
+    const cta =
+      String(presentationCta || '').trim() ||
+      (kind === 'post_add_upsell' ? 'أضف مع السلة' : 'أضف الباقة')
 
     const ctaBgColor = String(presentationCtaBgColor || '').trim() || null
     const ctaTextColor = String(presentationCtaTextColor || '').trim() || null
@@ -431,6 +565,7 @@ export function BundleEditorPage({ mode }) {
     }
   }, [
     draft,
+    kind,
     offerType,
     presentationBannerColor,
     presentationCta,
@@ -465,7 +600,7 @@ export function BundleEditorPage({ mode }) {
       toasts.error('كمّل البيانات الأول.')
       return
     }
-    if (offerType === 'bundle' && draft.components.length < 2) {
+    if (offerType === 'bundle' && kind !== 'post_add_upsell' && draft.components.length < 2) {
       toasts.error('اختار منتج/منتجات تانية مع المنتج الأساسي.')
       return
     }
@@ -482,7 +617,15 @@ export function BundleEditorPage({ mode }) {
         token,
         onUnauthorized: logout,
         method: 'PATCH',
-        body: { name: body.name, components: body.components, rules: body.rules, presentation: body.presentation, status },
+        body: {
+          kind: body.kind,
+          name: body.name,
+          components: body.components,
+          rules: body.rules,
+          settings: body.settings,
+          presentation: body.presentation,
+          status,
+        },
       })
       toasts.success(status === 'active' ? 'تم تفعيل الباندل.' : 'تم تحديث الباندل.')
     } catch (err) {
@@ -520,20 +663,36 @@ export function BundleEditorPage({ mode }) {
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
               onClick={() => {
                 setPickerOpen(false)
-                setOfferType('quantity')
+                setKind('quantity_discount')
                 setAddons([])
               }}
               disabled={saving || activating}
             >
-              خصم كمية
+              خصم كميات
             </button>
             <button
               type="button"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
-              onClick={() => setOfferType('bundle')}
+              onClick={() => setKind('products_discount')}
               disabled={saving || activating}
             >
-              باندل منتجات
+              خصم منتجات
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+              onClick={() => setKind('products_no_discount')}
+              disabled={saving || activating}
+            >
+              منتجات بدون خصم
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+              onClick={() => setKind('post_add_upsell')}
+              disabled={saving || activating}
+            >
+              Upsell بعد الإضافة
             </button>
             <button
               type="button"
@@ -978,6 +1137,51 @@ export function BundleEditorPage({ mode }) {
               </div>
 
               <div className="md:col-span-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">إعدادات الاختيار</div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                    {kind !== 'quantity_discount' ? (
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={settingsSelectionRequired}
+                          onChange={(e) => setSettingsSelectionRequired(e.target.checked)}
+                          disabled={saving || activating}
+                        />
+                        <span className="text-slate-700">إلزام اختيار منتجات قبل الإضافة</span>
+                      </label>
+                    ) : null}
+
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settingsVariantPickerVisible}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setSettingsVariantPickerVisible(next)
+                          if (!next) setSettingsVariantRequired(false)
+                        }}
+                        disabled={saving || activating}
+                      />
+                      <span className="text-slate-700">إظهار اختيار الفاريانت</span>
+                    </label>
+
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settingsVariantRequired}
+                        onChange={(e) => setSettingsVariantRequired(e.target.checked)}
+                        disabled={saving || activating || !settingsVariantPickerVisible}
+                      />
+                      <span className={settingsVariantPickerVisible ? 'text-slate-700' : 'text-slate-400'}>
+                        إلزام اختيار فاريانت عند تعدد الخيارات
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-slate-900">منتجات الباندل</div>
                   <button
@@ -997,6 +1201,31 @@ export function BundleEditorPage({ mode }) {
                       </div>
                       <div className="flex items-center gap-2">
                         <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={(() => {
+                            const vid = String(a?.variantId || '').trim()
+                            const pid = isProductRef(vid)
+                              ? String(vid.slice('product:'.length) || '').trim()
+                              : String(variantMetaById?.[vid]?.productId || '').trim()
+                            if (!pid) return false
+                            return (Array.isArray(settingsDefaultSelectedProductIds) ? settingsDefaultSelectedProductIds : []).includes(pid)
+                          })()}
+                          onChange={() => {
+                            const vid = String(a?.variantId || '').trim()
+                            const pid = isProductRef(vid)
+                              ? String(vid.slice('product:'.length) || '').trim()
+                              : String(variantMetaById?.[vid]?.productId || '').trim()
+                            if (!pid) return
+                            setSettingsDefaultSelectedProductIds((prev) => {
+                              const arr = Array.isArray(prev) ? prev : []
+                              const has = arr.includes(pid)
+                              return has ? arr.filter((x) => x !== pid) : [...arr, pid]
+                            })
+                          }}
+                          disabled={saving || activating}
+                        />
+                        <input
                           value={a.quantity}
                           onChange={(e) => {
                             const nextQty = Math.max(1, Math.min(999, toInt(e.target.value, 1)))
@@ -1005,6 +1234,40 @@ export function BundleEditorPage({ mode }) {
                           className="w-24 rounded-lg border border-slate-200 px-2 py-2 text-sm outline-none ring-slate-900/10 focus:ring-4"
                           inputMode="numeric"
                         />
+                        <button
+                          type="button"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:opacity-60"
+                          disabled={saving || activating}
+                          onClick={() => {
+                            setAddons((prev) => {
+                              const arr = Array.isArray(prev) ? [...prev] : []
+                              const idx = arr.findIndex((x) => String(x?.variantId) === String(a.variantId))
+                              if (idx <= 0) return prev
+                              const [it] = arr.splice(idx, 1)
+                              arr.splice(idx - 1, 0, it)
+                              return arr
+                            })
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:opacity-60"
+                          disabled={saving || activating}
+                          onClick={() => {
+                            setAddons((prev) => {
+                              const arr = Array.isArray(prev) ? [...prev] : []
+                              const idx = arr.findIndex((x) => String(x?.variantId) === String(a.variantId))
+                              if (idx < 0 || idx >= arr.length - 1) return prev
+                              const [it] = arr.splice(idx, 1)
+                              arr.splice(idx + 1, 0, it)
+                              return arr
+                            })
+                          }}
+                        >
+                          ↓
+                        </button>
                         <button
                           type="button"
                           className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"

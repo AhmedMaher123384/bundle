@@ -83,4 +83,37 @@
 .bundle-app-announcement.is-enter-fade{animation:bundle-app-announcement-enter-fade .22s ease-out both}
 .bundle-app-announcement.is-enter-pop{animation:bundle-app-announcement-enter-pop .22s ease-out both}
 @media (prefers-reduced-motion:reduce){.bundle-app-announcement__track{animation:none;transform:none}}
-@media (max-width:480px){.bundle-app-row{flex-direction:column;align-items:stretch}.bundle-app-btn{width:100%;white-space:normal}.bundle-app-checkwrap{align-self:flex-start}}
+.bundle-app-products{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.bundle-app-product{background:rgba(255,255,255,.14);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.bundle-app-product__media{position:relative;width:100%;aspect-ratio:1 / 1;background:rgba(0,0,0,.08);overflow:hidden}
+.bundle-app-product__img{width:100%;height:100%;object-fit:cover;display:block}
+.bundle-app-product__body{padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.bundle-app-product__top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.bundle-app-product__name{font-size:12px;font-weight:900;line-height:1.3;min-width:0}
+.bundle-app-product__attrs{font-size:12px;opacity:.95;line-height:1.3}
+.bundle-app-product__price{font-size:12px;font-weight:900;line-height:1.2;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.bundle-app-product__price-old{text-decoration:line-through;opacity:.85;font-weight:800}
+.bundle-app-product__checkwrap{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bundle-app-product__check{position:absolute;opacity:0;width:22px;height:22px;cursor:pointer;margin:0;inset:0}
+.bundle-app-product__checkmark{width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,.86);background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.bundle-app-product__check:checked + .bundle-app-product__checkmark{background:#fff;border-color:#fff}
+.bundle-app-product__check:checked + .bundle-app-product__checkmark:after{content:"";width:7px;height:12px;border:3px solid #0f172a;border-top:0;border-left:0;transform:rotate(45deg);margin-top:-1px}
+.bundle-app-bottomsheet{position:fixed;inset:0;z-index:100001;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45);padding:10px}
+.bundle-app-bottomsheet__panel{width:min(560px,100%);max-height:85vh;background:#fff;border-radius:18px 18px 12px 12px;box-shadow:0 18px 60px rgba(0,0,0,.3);overflow:auto}
+.bundle-app-bottomsheet__head{padding:14px 14px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.bundle-app-bottomsheet__title{font-size:15px;font-weight:950;line-height:1.2;color:#0b1220}
+.bundle-app-bottomsheet__sub{margin-top:6px;font-size:12px;opacity:.85;line-height:1.35;color:#0b1220}
+.bundle-app-bottomsheet__close{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:#0b1220;opacity:.8}
+.bundle-app-bottomsheet__content{padding:0 14px 12px}
+.bundle-app-bottomsheet__cta{display:flex;gap:10px;padding:12px 14px 14px}
+.bundle-app-bottomsheet__btn{border:0;border-radius:14px;padding:12px 12px;font-size:13px;font-weight:950;cursor:pointer}
+.bundle-app-bottomsheet__btn-primary{background:#0ea5e9;color:#0b1220;flex:1}
+.bundle-app-bottomsheet__btn-secondary{background:rgba(2,6,23,.08);color:#0b1220}
+.bundle-app-bottomsheet__btn:disabled{opacity:.55;cursor:not-allowed}
+.bundle-app-bottomsheet__msg{margin-top:10px;font-size:12px;line-height:1.35;color:#0b1220;opacity:.85}
+.bundle-app-bottomsheet__hero{border-radius:14px;overflow:hidden;background:rgba(2,6,23,.06);margin-bottom:10px}
+.bundle-app-bottomsheet__heroimg{width:100%;height:auto;display:block;object-fit:cover}
+.bundle-app-bottomsheet__hero-title{padding:10px 10px 0;font-size:13px;font-weight:950;color:#0b1220}
+.bundle-app-bottomsheet__hero-price{padding:6px 10px 10px;font-size:12px;font-weight:950;color:#0b1220;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.bundle-app-bottomsheet__hero-old{text-decoration:line-through;opacity:.65;font-weight:850}
+@media (max-width:480px){.bundle-app-row{flex-direction:column;align-items:stretch}.bundle-app-btn{width:100%;white-space:normal}.bundle-app-checkwrap{align-self:flex-start}.bundle-app-products{grid-template-columns:1fr}}
