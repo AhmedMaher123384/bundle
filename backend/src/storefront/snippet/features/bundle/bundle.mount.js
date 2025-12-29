@@ -28,7 +28,7 @@ module.exports = function mountBundle(context) {
   for (let i = 0; i < bundleLogicParts.length; i += 1) parts.push(bundleLogicParts[i]);
   for (let i = 0; i < bundleUiParts.length; i += 1) parts.push(bundleUiParts[i]);
   parts.push(
-    "function start(){try{if(window.BUNDLE_APP_SNIPPET_MOUNTED===true)return;if(typeof ensureStyles==='function')ensureStyles();if(typeof initOnce==='function'){initOnce();window.BUNDLE_APP_SNIPPET_MOUNTED=true}}catch(e){}}"
+    "function start(){try{if(window.BUNDLE_APP_SNIPPET_MOUNTED===true||window.BUNDLE_APP_SNIPPET_STARTING===true)return;window.BUNDLE_APP_SNIPPET_STARTING=true;if(typeof ensureStyles==='function')ensureStyles();var finish=function(){try{var root=document.getElementById('bundle-app-banner');if(root){window.BUNDLE_APP_SNIPPET_MOUNTED=true}}finally{window.BUNDLE_APP_SNIPPET_STARTING=false}};if(typeof refreshProduct==='function'){Promise.resolve(refreshProduct()).then(finish).catch(function(){window.BUNDLE_APP_SNIPPET_STARTING=false})}else if(typeof initOnce==='function'){initOnce();finish()}else{finish()}}catch(e){window.BUNDLE_APP_SNIPPET_STARTING=false}}"
   );
   parts.push(
     "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',start)}else{start()}"
