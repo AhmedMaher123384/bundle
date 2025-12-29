@@ -75,10 +75,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
-  const includeProductIdsNumeric = includeProductIds
-    .map((v) => Number.parseInt(String(v), 10))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
+  const includeProductIdsForApi = includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
   const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
