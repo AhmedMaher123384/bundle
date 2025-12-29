@@ -8,6 +8,7 @@ module.exports = function mountBundle(context) {
   const token = context.token;
   const cssBase = context.cssBase;
   const cssPickers = context.cssPickers;
+  const cssTraditional = context.cssTraditional;
 
   parts.push("(function(){");
   parts.push("var g=null;try{g=globalThis}catch(e){g=window}if(!g)g=window;");
@@ -22,8 +23,9 @@ module.exports = function mountBundle(context) {
   parts.push("function log(){if(!debug)return;try{console.log.apply(console,arguments)}catch(e){}}");
   parts.push("function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}");
 
-  parts.push(buildStylesJs({ cssBase, cssPickers }));
-  parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}}');
+  parts.push(buildStylesJs({ cssBase, cssPickers, cssTraditional }));
+  parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}');
+  parts.push('try{if(typeof ensureTraditionalStyles==="function")ensureTraditionalStyles()}catch(e){}');
 
   for (let i = 0; i < bundleLogicParts.length; i += 1) parts.push(bundleLogicParts[i]);
   for (let i = 0; i < bundleUiParts.length; i += 1) parts.push(bundleUiParts[i]);

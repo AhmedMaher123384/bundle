@@ -7,8 +7,9 @@ module.exports = function mountAnnouncementBanner(context) {
   const token = context.token;
   const cssBase = context.cssBase;
   const cssPickers = context.cssPickers;
+  const cssTraditional = context.cssTraditional;
 
-  parts.push(buildStylesJs({ cssBase, cssPickers }));
+  parts.push(buildStylesJs({ cssBase, cssPickers, cssTraditional }));
 
   for (let i = 0; i < bannerLogicParts.length; i += 1) {
     if (i === 3) {

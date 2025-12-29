@@ -586,8 +586,8 @@ function createApiRouter(config) {
       res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
-      const { cssBase, cssPickers } = readSnippetCss();
-      const context = { parts: [], merchantId, token, cssBase, cssPickers };
+      const { cssBase, cssPickers, cssTraditional } = readSnippetCss();
+      const context = { parts: [], merchantId, token, cssBase, cssPickers, cssTraditional };
       mountBundle(context);
       mountAnnouncementBanner(context);
       const js = context.parts.join("");
