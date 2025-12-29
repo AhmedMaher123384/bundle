@@ -412,11 +412,16 @@ async function tryApplyCoupon(code) {
     var fn = null;
     if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
     else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
+    else if (cart && cart.coupon && typeof cart.coupon.add === "function") fn = function (payload) { return cart.coupon.add(payload); };
     else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
     else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
     else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
     else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
+    else if (window.salla && typeof window.salla.addCoupon === "function") fn = function (payload) { return window.salla.addCoupon(payload); };
+    else if (window.salla && typeof window.salla.setCoupon === "function") fn = function (payload) { return window.salla.setCoupon(payload); };
     else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
+    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.add === "function") fn = function (payload) { return window.salla.coupon.add(payload); };
+    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.set === "function") fn = function (payload) { return window.salla.coupon.set(payload); };
 
     if (!fn) return false;
 
@@ -671,8 +676,17 @@ async function tryClearCoupon() {
     } else if (cart && typeof cart.removeCoupon === "function") {
       await cart.removeCoupon();
       cleared = true;
+    } else if (window.salla && window.salla.coupon && typeof window.salla.coupon.clear === "function") {
+      await window.salla.coupon.clear();
+      cleared = true;
+    } else if (window.salla && window.salla.coupon && typeof window.salla.coupon.remove === "function") {
+      await window.salla.coupon.remove();
+      cleared = true;
     } else if (window.salla && typeof window.salla.clearCoupon === "function") {
       await window.salla.clearCoupon();
+      cleared = true;
+    } else if (window.salla && typeof window.salla.removeCoupon === "function") {
+      await window.salla.removeCoupon();
       cleared = true;
     }
     if (cleared) {
