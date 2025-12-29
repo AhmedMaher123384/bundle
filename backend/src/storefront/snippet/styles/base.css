@@ -1,9 +1,7 @@
-.bundle-app-container{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;isolation:isolate}
-.bundle-app-container,.bundle-app-container *,.bundle-app-container *::before,.bundle-app-container *::after{box-sizing:border-box}
-.bundle-app-container button,.bundle-app-container input,.bundle-app-container select,.bundle-app-container textarea{all:revert;font-family:inherit;color:inherit}
+.bundle-app-container{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 .bundle-app-banner--inline{position:relative;display:block;width:100%;max-width:100%;margin:12px 0;z-index:10;box-sizing:border-box;grid-column:1 / -1;justify-self:stretch;align-self:stretch;flex:0 0 100%;flex-basis:100%;min-width:0;clear:both}
 .bundle-app-banner--fixed{position:fixed;left:16px;right:16px;bottom:16px;z-index:99999}
-.bundle-app-card{border-radius:14px;padding:12px 14px;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,.18);position:relative}
+.bundle-app-card{border-radius:14px;padding:12px 14px;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,.18)}
 .bundle-app-card+.bundle-app-card{margin-top:10px}
 .bundle-app-row{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .bundle-app-title{font-size:14px;font-weight:800;line-height:1.2}
@@ -20,7 +18,7 @@
 .bundle-app-radio{position:absolute;opacity:0;pointer-events:none}
 .bundle-app-dot{width:18px;height:18px;border-radius:999px;border:2px solid rgba(255,255,255,.85);box-sizing:border-box;flex:0 0 18px;margin-top:4px;background:transparent}
 .bundle-app-radio:checked + .bundle-app-dot{background:rgba(255,255,255,.95);box-shadow:inset 0 0 0 4px rgba(17,24,39,.45)}
-.bundle-app-card{border-radius:16px;padding:14px 14px;box-shadow:0 14px 40px rgba(2,6,23,.18);overflow:hidden;position:relative}
+.bundle-app-card{border-radius:16px;padding:14px 14px;box-shadow:0 14px 40px rgba(2,6,23,.18);overflow:hidden}
 .bundle-app-card--selected{outline:2px solid rgba(255,255,255,.7)}
 .bundle-app-row{gap:12px}
 .bundle-app-content{min-width:0;flex:1}
@@ -42,7 +40,7 @@
 .bundle-app-tier--selected{background:rgba(255,255,255,.26);outline:2px solid rgba(255,255,255,.65)}
 .bundle-app-tier:active{transform:scale(.99)}
 .bundle-app-tier strong{font-weight:900}
-.bundle-app-pickers{margin-top:12px;padding:12px;background:rgba(255,255,255,.14);border-radius:14px;position:relative}
+.bundle-app-pickers{margin-top:12px;padding:12px;background:rgba(255,255,255,.14);border-radius:14px}
 .bundle-app-pickers--inline{margin-top:0}
 .bundle-app-tier-main{min-width:0;flex:1}
 .bundle-app-tier-checkwrap{margin-top:1px}

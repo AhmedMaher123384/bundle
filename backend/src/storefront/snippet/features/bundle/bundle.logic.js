@@ -21,7 +21,6 @@ module.exports = [
   "function pickVariantSwatch(v){try{var img=String(v&&v.imageUrl||\"\").trim();if(img)return{t:\"img\",v:img};var attrs=v&&v.attributes&&typeof v.attributes===\"object\"?v.attributes:null;if(attrs){for(var k in attrs){if(!Object.prototype.hasOwnProperty.call(attrs,k))continue;var hex=normHex(attrs[k]);if(hex)return{t:\"hex\",v:hex}}}var hex2=normHex(v&&v.name);if(hex2)return{t:\"hex\",v:hex2};return null}catch(e){return null}}",
   "function variantOptionInnerHtml(v){var sw=pickVariantSwatch(v);var out='';if(sw&&sw.t==='img'){var u=escCssUrl(sw.v);if(u){out+='<span class=\"bundle-app-variant-swatch is-image\" style=\"background-image:url(\\''+escHtml(u)+'\\')\"></span>'}}else if(sw&&sw.t==='hex'&&sw.v){out+='<span class=\"bundle-app-variant-swatch\" style=\"background:'+escHtml(sw.v)+'\"></span>'}out+='<span class=\"bundle-app-variant-text\">'+escHtml(variantLabel(v))+'</span>';return out}",
   "var selectedBundleId=null;",
-  "var expandedBundleIds={};",
   "var lastTriggerProductId=null;",
   "var messageByBundleId={};",
   "var selectedTierByBundleId={};",
