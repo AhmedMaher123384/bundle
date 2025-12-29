@@ -598,148 +598,6 @@ async function removeItemsFromCart(items) {
   }
 }
 
-async function awaitMaybe(v) {
-  return v && typeof v.then === "function" ? await v : v;
-}
-
-function normalizeCartLineItem(it) {
-  try {
-    const item = it && typeof it === "object" ? it : {};
-    const qRaw = item.quantity != null ? item.quantity : item.qty != null ? item.qty : item.amount != null ? item.amount : null;
-    const quantity = Math.max(0, Math.floor(Number(qRaw || 0)));
-
-    const variantIdRaw =
-      item.variantId != null
-        ? item.variantId
-        : item.variant_id != null
-          ? item.variant_id
-          : item.variant && (item.variant.id != null ? item.variant.id : item.variant.variant_id != null ? item.variant.variant_id : null);
-    const variantId = String(variantIdRaw == null ? "" : variantIdRaw).trim() || null;
-
-    const productIdRaw =
-      item.productId != null
-        ? item.productId
-        : item.product_id != null
-          ? item.product_id
-          : item.product && (item.product.id != null ? item.product.id : item.product.product_id != null ? item.product.product_id : null);
-    const productId = String(productIdRaw == null ? "" : productIdRaw).trim() || null;
-
-    if (!quantity) return null;
-    return { variantId, productId, quantity };
-  } catch (e) {
-    return null;
-  }
-}
-
-async function readCartItemsRaw() {
-  try {
-    const cart = window.salla && window.salla.cart;
-    if (!cart) return null;
-
-    const direct =
-      (typeof cart.getItems === "function" ? await awaitMaybe(cart.getItems()) : null) ||
-      (typeof cart.items === "function" ? await awaitMaybe(cart.items()) : null) ||
-      cart.items ||
-      cart.cart ||
-      cart.data ||
-      null;
-
-    if (Array.isArray(direct)) return direct;
-    if (direct && typeof direct === "object") {
-      const arr =
-        (Array.isArray(direct.items) ? direct.items : null) ||
-        (Array.isArray(direct.data) ? direct.data : null) ||
-        (direct.data && Array.isArray(direct.data.items) ? direct.data.items : null) ||
-        (direct.cart && Array.isArray(direct.cart.items) ? direct.cart.items : null) ||
-        null;
-      if (arr) return arr;
-    }
-    return null;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function getCartLinesSnapshot() {
-  const raw = await readCartItemsRaw();
-  if (!raw || !Array.isArray(raw) || !raw.length) return [];
-  const out = [];
-  for (let i = 0; i < raw.length; i++) {
-    const n = normalizeCartLineItem(raw[i]);
-    if (!n) continue;
-    out.push(n);
-  }
-  return out;
-}
-
-async function getCartLinesSnapshotWithRetry(maxAttempts, delayMs) {
-  const attempts = Math.max(1, Math.min(6, Math.floor(Number(maxAttempts || 1))));
-  const delay = Math.max(0, Math.min(1200, Math.floor(Number(delayMs || 0))));
-  for (let i = 0; i < attempts; i++) {
-    const lines = await getCartLinesSnapshot();
-    if (lines && lines.length) return lines;
-    if (delay) {
-      await new Promise(function (r) {
-        setTimeout(r, delay);
-      });
-    }
-  }
-  return [];
-}
-
-function buildEligibleApplyItemsFromCart(bundle, cartLines) {
-  try {
-    const comps = (bundle && bundle.components) || [];
-    const allowedVariantIds = new Set();
-    const allowedProductIds = new Set();
-    for (let i = 0; i < comps.length; i++) {
-      const c = comps[i] || {};
-      const vid = String(c.variantId || "").trim();
-      const pid = String(c.productId || "").trim();
-      if (vid) {
-        if (vid.indexOf("product:") === 0) {
-          const refPid = String(vid).slice("product:".length).trim();
-          if (refPid) allowedProductIds.add(refPid);
-        } else {
-          allowedVariantIds.add(vid);
-        }
-      }
-      if (pid) allowedProductIds.add(pid);
-    }
-
-    const hasVariantComponents = allowedVariantIds.size > 0;
-    const map = new Map();
-
-    const lines = Array.isArray(cartLines) ? cartLines : [];
-    for (let j = 0; j < lines.length; j++) {
-      const l = lines[j] || {};
-      const v = String(l.variantId || "").trim();
-      const p = String(l.productId || "").trim();
-      const q = Math.max(0, Math.floor(Number(l.quantity || 0)));
-      if (!q) continue;
-
-      if (hasVariantComponents) {
-        if (!v || !allowedVariantIds.has(v)) continue;
-        map.set(v, (map.get(v) || 0) + q);
-      } else {
-        if (!p || !allowedProductIds.has(p)) continue;
-        const key = "product:" + p;
-        map.set(key, (map.get(key) || 0) + q);
-      }
-    }
-
-    return Array.from(map.entries())
-      .map(function (kv) {
-        return { variantId: String(kv[0]), quantity: Math.max(1, Math.floor(Number(kv[1] || 1))) };
-      })
-      .sort(function (a, b) {
-        return String(a.variantId).localeCompare(String(b.variantId));
-      });
-  } catch (e) {
-    return [];
-  }
-}
-
 async function tryClearCoupon() {
   try {
     const cart = window.salla && window.salla.cart;
@@ -1294,6 +1152,12 @@ async function applyBundleSelection(bundle) {
     }
 
     const prev = loadSelection(trigger);
+    try {
+      await tryClearCoupon();
+    } catch (eClr0) {}
+    try {
+      clearPendingCoupon(trigger);
+    } catch (eClr1) {}
     if (prev && prev.bundleId && String(prev.bundleId) !== bid && Array.isArray(prev.items) && prev.items.length) {
       try {
         removeItemsFromCart(prev.items);
@@ -1338,19 +1202,14 @@ async function applyBundleSelection(bundle) {
     }
 
     let res = null;
-    let applyItems = items;
-    if (canDiscount) {
-      try {
-        const cartLines = await getCartLinesSnapshotWithRetry(3, 250);
-        const eligible = buildEligibleApplyItemsFromCart(bundle, cartLines);
-        if (eligible && eligible.length) applyItems = eligible;
-      } catch (eCart0) {}
-    }
     try {
-      res = await requestApplyBundle(bid, applyItems);
+      res = await requestApplyBundle(bid, items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل تجهيز الخصم";
+      try {
+        clearPendingCoupon(trigger);
+      } catch (e03100a) {}
       applying = false;
       try {
         renderProductBanners(lastBundles || []);
@@ -1390,12 +1249,28 @@ async function applyBundleSelection(bundle) {
           });
         } catch (e0316) {}
       }
-      if (res.couponIssueFailed) messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
-      else if (res.hasDiscount === false) messageByBundleId[bid] = "تمت إضافة الباقة للسلة (بدون خصم)";
-      else if (!cc) messageByBundleId[bid] = "تمت إضافة الباقة للسلة";
+      if (res.couponIssueFailed) {
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
+        try {
+          clearPendingCoupon(trigger);
+        } catch (e03100b) {}
+      } else if (res.hasDiscount === false) {
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة (بدون خصم)";
+        try {
+          clearPendingCoupon(trigger);
+        } catch (e03100c) {}
+      } else if (!cc) {
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة";
+        try {
+          clearPendingCoupon(trigger);
+        } catch (e03100d) {}
+      }
     } else {
       const errMsg = (res && res.message) || "فشلت العملية";
       messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن " + errMsg;
+      try {
+        clearPendingCoupon(trigger);
+      } catch (e03100e) {}
     }
   } catch (applyErr) {
     markStoreClosed(applyErr);
