@@ -409,33 +409,55 @@ async function tryApplyCoupon(code) {
       ]);
     }
 
-    var fn = null;
-    if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
-    else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
-    else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
-    else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
-    else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
-    else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
-    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
+    var fns = [];
+    if (cart && typeof cart.addCoupon === "function") fns.push(function (payload) { return cart.addCoupon(payload); });
+    if (cart && typeof cart.applyCoupon === "function") fns.push(function (payload) { return cart.applyCoupon(payload); });
+    if (cart && cart.coupon && typeof cart.coupon.apply === "function") fns.push(function (payload) { return cart.coupon.apply(payload); });
+    if (cart && cart.coupon && typeof cart.coupon.set === "function") fns.push(function (payload) { return cart.coupon.set(payload); });
+    if (cart && typeof cart.setCoupon === "function") fns.push(function (payload) { return cart.setCoupon(payload); });
+    if (window.salla && typeof window.salla.applyCoupon === "function") fns.push(function (payload) { return window.salla.applyCoupon(payload); });
+    if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function")
+      fns.push(function (payload) { return window.salla.coupon.apply(payload); });
 
-    if (!fn) return false;
+    if (!fns.length) return false;
 
-    const res = await withTimeout(Promise.resolve(fn(c)), 12_000);
-    if (res && typeof res === "object") {
-      const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
-      if (ok === false) {
-        const m = String(res.message || res.error || res.title || "").trim();
-        const e0 = new Error(m || "coupon_apply_failed");
-        e0.details = res;
-        throw e0;
+    var payloads = [c, { code: c }, { coupon_code: c }, { couponCode: c }, { coupon: c }];
+    var lastErr = null;
+    for (var fi = 0; fi < fns.length; fi += 1) {
+      var fn = fns[fi];
+      for (var pi = 0; pi < payloads.length; pi += 1) {
+        var payload = payloads[pi];
+        try {
+          var res = await withTimeout(Promise.resolve(fn(payload)), 12_000);
+          if (res && typeof res === "object") {
+            var ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
+            if (ok === false) {
+              var m = String(res.message || res.error || res.title || "").trim();
+              var e0 = new Error(m || "coupon_apply_failed");
+              e0.details = res;
+              throw e0;
+            }
+          }
+          try {
+            g.BundleApp._lastCouponApplyStatus = null;
+            g.BundleApp._lastCouponApplyMessage = "";
+          } catch (x0) {}
+          return true;
+        } catch (eTry) {
+          lastErr = eTry;
+          var stTry = extractHttpStatus(eTry);
+          var msgTry = extractHttpMessage(eTry);
+          try {
+            g.BundleApp._lastCouponApplyStatus = stTry;
+            g.BundleApp._lastCouponApplyMessage = String(msgTry || "");
+          } catch (x1) {}
+          markStoreClosed({ status: stTry, message: msgTry });
+          if (storeClosedNow()) return false;
+        }
       }
     }
-
-    try {
-      g.BundleApp._lastCouponApplyStatus = null;
-      g.BundleApp._lastCouponApplyMessage = "";
-    } catch (x0) {}
-    return true;
+    if (lastErr) throw lastErr;
+    return false;
   } catch (e) {
     const st = extractHttpStatus(e);
     const msg = extractHttpMessage(e);
