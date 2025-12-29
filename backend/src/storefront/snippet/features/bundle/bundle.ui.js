@@ -1,20 +1,897 @@
 module.exports = [
-  'var scriptSrc=(document.currentScript&&document.currentScript.src)||"";',
-  "if(!scriptSrc){try{var ss=document.getElementsByTagName(\"script\");for(var i=0;i<ss.length;i++){var s=ss[i];var src=(s&&s.src)||\"\";if(!src)continue;if(src.indexOf(\"/api/storefront/snippet.js\")!==-1&&src.indexOf(\"merchantId=\"+encodeURIComponent(merchantId))!==-1){scriptSrc=src;break}}}catch(e){}}",
-  "function findVariantId(){try{var url=new URL(window.location.href);var fromUrl=url.searchParams.get(\"variant_id\")||url.searchParams.get(\"variantId\")||url.searchParams.get(\"variant\")||\"\";if(fromUrl)return String(fromUrl).trim();var el=document.querySelector('[name=\"variant_id\"],[name=\"variantId\"],[data-variant-id],input[name=\"variant_id\"],select[name=\"variant_id\"]');if(el){var v=el.getAttribute(\"data-variant-id\")||el.value||\"\";v=String(v).trim();if(v)return v}var any=document.querySelector(\"[data-variant-id]\");if(any){var a=String(any.getAttribute(\"data-variant-id\")||\"\").trim();if(a)return a}return\"\"}catch(e){return\"\"}}",
-  "function findProductId(){try{var path=String(window.location.pathname||\"\");var m=path.match(/\\/p(\\d+)(?:[/?#]|$)/);if(m&&m[1])return String(m[1]);var el=document.querySelector(\"[data-product-id],input[name=\\\"product_id\\\"],input[name=\\\"productId\\\"]\");if(el){var v=el.getAttribute(\"data-product-id\")||el.value||\"\";v=String(v).trim();if(v)return v}return\"\"}catch(e){return\"\"}}",
-  "function openPickerModal(titleHtml,bodyHtml){var resolver=null;var wait=new Promise(function(r){resolver=r});var overlay=document.createElement(\"div\");overlay.id=\"bundle-app-modal\";overlay.style.position=\"fixed\";overlay.style.inset=\"0\";overlay.style.background=\"rgba(0,0,0,.45)\";overlay.style.zIndex=\"100000\";overlay.style.display=\"flex\";overlay.style.alignItems=\"center\";overlay.style.justifyContent=\"center\";overlay.style.padding=\"16px\";var card=document.createElement(\"div\");card.style.width=\"min(520px,100%)\";card.style.maxHeight=\"80vh\";card.style.overflow=\"auto\";card.style.background=\"#fff\";card.style.borderRadius=\"14px\";card.style.boxShadow=\"0 12px 40px rgba(0,0,0,.25)\";card.style.padding=\"12px\";card.innerHTML='<div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px\"><div style=\"font-weight:900;font-size:14px\">'+titleHtml+'</div><button type=\"button\" data-action=\"close\" style=\"border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer\">×</button></div><div style=\"margin-top:10px\">'+bodyHtml+'</div>';overlay.appendChild(card);function close(val){try{overlay.remove()}catch(e){}if(resolver){var r=resolver;resolver=null;r(val)}}overlay.addEventListener(\"click\",function(e){if(e.target===overlay)close(null)});var closeBtn=card.querySelector('button[data-action=\"close\"]');if(closeBtn)closeBtn.onclick=function(){close(null)};document.body.appendChild(overlay);return {overlay:overlay,card:card,close:close,wait:wait}}",
-  "async function resolveProductRefItems(items,bundleId){var bid=String(bundleId||\"\").trim();var pre=(bid&&variantSelectionsByBundleId[bid]&&typeof variantSelectionsByBundleId[bid]===\"object\")?variantSelectionsByBundleId[bid]:null;var arr=Array.isArray(items)?items:[];var needs=[];var fixed=[];for(var i=0;i<arr.length;i++){var it=arr[i]||{};var v=String(it.variantId||\"\").trim();var qty=Math.max(1,Math.floor(Number(it.quantity||1)));var pid=String(it.productId||\"\").trim();if(isProductRef(v)){if(!pid)return null;needs.push({productId:pid,quantity:qty})}else{if(!v)continue;fixed.push({variantId:v,productId:pid||null,quantity:qty})}}if(!needs.length)return fixed;var units=[];var uniqPid={};for(var j=0;j<needs.length;j++){var n=needs[j];var pid2=String(n.productId);uniqPid[pid2]=true;for(var u=0;u<Number(n.quantity||0);u++){units.push({productId:pid2,key:pid2+\":\"+u})}}var pidList=Object.keys(uniqPid);var varsByPid={};for(var p=0;p<pidList.length;p++){var pid3=pidList[p];var vars=await getCachedVariants(pid3);varsByPid[pid3]=Array.isArray(vars)?vars:[];if(!varsByPid[pid3].length){varsByPid[pid3]=[{variantId:('product:'+pid3),productId:pid3,cartProductId:pid3,cartOptions:null,isActive:true,name:null,attributes:{},imageUrl:null,price:null}]}}var selectedByKey={};var pending=[];for(var k=0;k<units.length;k++){var unit=units[k];var vlist=(varsByPid[unit.productId]||[]).filter(function(x){return x&&x.isActive===true&&String(x.variantId||\"\").trim()});var preVal=pre?String(pre[unit.key]||\"\").trim():\"\";if(preVal){var ok=false;for(var z=0;z<vlist.length;z++){if(String(vlist[z]&&vlist[z].variantId||\"\").trim()===preVal){ok=true;break}}if(ok){selectedByKey[unit.key]=preVal;continue}}if(vlist.length===1){selectedByKey[unit.key]=String(vlist[0].variantId||\"\").trim()}else{pending.push(unit)}}if(pending.length){var body='';for(var x=0;x<pending.length;x++){var un=pending[x];var opts=(varsByPid[un.productId]||[]).filter(function(y){return y&&y.isActive===true&&String(y.variantId||\"\").trim()});if(!opts.length)continue;body+='<div style=\"margin-bottom:16px\"><div style=\"margin-bottom:6px;font-weight:600\">'+escHtml('اختر فاريانت للمنتج')+'</div><div style=\"display:flex;flex-wrap:wrap;gap:6px\">';for(var y=0;y<opts.length;y++){var o=opts[y];var img=o.imageUrl?'<img src=\"'+escHtml(o.imageUrl)+'\" style=\"width:32px;height:32px;border-radius:4px;margin-left:6px\">':'';body+='<button type=\"button\" data-action=\"pick-variant\" data-unit-key=\"'+escHtml(un.key)+'\" data-variant-id=\"'+escHtml(String(o.variantId||\"\").trim())+'\" style=\"display:flex;align-items:center;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px\">'+img+'<span>'+escHtml(variantLabel(o))+'</span></button>'}body+='</div></div>'}var modal=await openPickerModal('اختيار الفاريانتات',body);if(!modal)return null;var picked={};await modal.wait;var btns=modal.card.querySelectorAll('button[data-action=\"pick-variant\"]');for(var b=0;b<btns.length;b++){var btn=btns[b];var k=String(btn.getAttribute('data-unit-key')||\"\").trim();var v=String(btn.getAttribute('data-variant-id')||\"\").trim();if(k&&v&&btn.classList.contains('is-selected'))picked[k]=v}for(var key in picked){if(!Object.prototype.hasOwnProperty.call(picked,key))continue;selectedByKey[key]=picked[key]}}var out=fixed.slice();for(var key2 in selectedByKey){if(!Object.prototype.hasOwnProperty.call(selectedByKey,key2))continue;var vid=String(selectedByKey[key2]||\"\").trim();if(!vid)continue;var meta=null;for(var pidKey in varsByPid){if(!Object.prototype.hasOwnProperty.call(varsByPid,pidKey))continue;var list=varsByPid[pidKey]||[];for(var li=0;li<list.length;li++){var item=list[li];if(item&&String(item.variantId||\"\").trim()===vid){meta=item;break}}if(meta)break}if(!meta)continue;out.push({variantId:vid,productId:meta.productId,cartProductId:meta.cartProductId,cartOptions:meta.cartOptions,quantity:1})}return out}",
-  "function applySelectionsToContainer(container,bundleId){try{if(!container)return;var bid=String(bundleId||\"\").trim();if(!bid)return;var rows=container.querySelectorAll('[data-unit-key-row]');for(var i=0;i<rows.length;i++){var row=rows[i];var key=String(row.getAttribute('data-unit-key-row')||\"\").trim();if(!key)continue;var btns=row.querySelectorAll('button[data-action=\"pick-variant\"][data-variant-id]');for(var j=0;j<btns.length;j++){var b=btns[j];var vid=String(b.getAttribute('data-variant-id')||\"\").trim();var on=Boolean(val&&vid&&val===vid);if(on){b.classList.add('is-selected');b.setAttribute('aria-pressed','true')}else{b.classList.remove('is-selected');b.setAttribute('aria-pressed','false')}}}}catch(e){}}",
-  "function updatePickerStatus(container,bundleId){try{if(!container)return;var bid=String(bundleId||\"\").trim();if(!bid)return;var rows=container.querySelectorAll('[data-unit-key-row]');var total=rows.length;var chosen=0;for(var i=0;i<rows.length;i++){var key=String(rows[i].getAttribute('data-unit-key-row')||\"\").trim();if(!key)continue;var v=String(sel[key]||\"\").trim();if(v)chosen++}var el=container.querySelector('[data-role=\"picker-status\"]');if(el)el.textContent=total?('تم اختيار '+fmtNum(chosen)+' من '+fmtNum(total)):''}catch(e){}}",
-  "function bindPickerContainer(container,bundleId){try{if(!container)return;var bid=String(bundleId||\"\").trim();if(!bid)return;container.onclick=function(e){var t=e&&e.target;while(t&&t!==container){if(t&&t.getAttribute&&t.getAttribute('data-action')==='pick-variant')break;t=t.parentNode}if(!t||t===container)return;var key=String(t.getAttribute('data-unit-key')||\"\").trim();var val=String(t.getAttribute('data-variant-id')||\"\").trim();if(!key||!val)return;var sel=getBundleVariantSelectionMap(bid);if(!sel)return;sel[key]=val;applySelectionsToContainer(container,bid);updatePickerStatus(container,bid)};applySelectionsToContainer(container,bid);updatePickerStatus(container,bid)}catch(e){}}",
-  "async function ensureVariantPickersForCard(card,bundle){try{if(!card||!bundle)return;ensurePickerStyles();var bid=String(card.getAttribute('data-bundle-id')||\"\").trim();if(!bid)return;var container=card.querySelector('.bundle-app-pickers[data-bundle-id]');if(!container)return;var sig=bundleVariantSig(bundle);var cached=variantPickerCacheByBundleId[bid];if(cached&&cached.sig===sig&&cached.html!=null){container.innerHTML=cached.html;bindPickerContainer(container,bid);return}var pending=variantPickerPendingByBundleId[bid];if(pending&&pending.sig===sig&&pending.promise)return;container.innerHTML='<div class=\"bundle-app-picker-hint\">جاري تحميل الفاريانت...</div>';var promise=(async function(){var units=bundleVariantUnits(bundle);var sel=getBundleVariantSelectionMap(bid);if(!units.length){variantPickerCacheByBundleId[bid]={sig:sig,html:\"\"};container.innerHTML='';return}pruneBundleSelections(sel,units);var uniq={};for(var i=0;i<units.length;i++){uniq[String(units[i].productId)]=true}var pids=Object.keys(uniq);var lists=await Promise.all(pids.map(function(pid){return getCachedVariants(pid)}));var varsByPid={};for(var j=0;j<pids.length;j++){var pid=pids[j];var list=Array.isArray(lists[j])?lists[j]:[];list=list.filter(function(x){return x&&x.isActive===true&&String(x.variantId||\"\").trim()});if(!list.length){list=[{variantId:('product:'+pid),productId:pid,cartProductId:pid,cartOptions:null,isActive:true,name:null,attributes:{},imageUrl:null,price:null}]}varsByPid[pid]=list}var need=[];for(var k=0;k<units.length;k++){var unit=units[k];var list2=varsByPid[unit.productId]||[];if(list2.length===1){var only=list2[0]||{};var vid=String(only.variantId||\"\").trim();if(vid)sel[unit.key]=vid}else if(list2.length>1){need.push(unit)}}if(!need.length){variantPickerCacheByBundleId[bid]={sig:sig,html:\"\"};container.innerHTML='';return}var html='<div class=\"bundle-app-pickers-title\">اختيار الفاريانت للكميات</div><div class=\"bundle-app-picker-status\" data-role=\"picker-status\">جاري التحميل...</div>';for(var m=0;m<need.length;m++){var un=need[m];var opts=(varsByPid[un.productId]||[]).filter(function(y){return y&&y.isActive===true&&String(y.variantId||\"\").trim()});if(!opts.length)continue;html+='<div style=\"margin-bottom:16px\"><div style=\"margin-bottom:6px;font-weight:600\">'+escHtml('اختر فاريانت')+'</div><div style=\"display:flex;flex-wrap:wrap;gap:6px\" data-unit-key-row=\"'+escHtml(un.key)+'\">';for(var n=0;n<opts.length;n++){var o=opts[n];var img=o.imageUrl?'<img src=\"'+escHtml(o.imageUrl)+'\" style=\"width:32px;height:32px;border-radius:4px;margin-left:6px\">':'';var on=String(sel[un.key]||\"\").trim()===String(o.variantId||\"\").trim();html+='<button type=\"button\" data-action=\"pick-variant\" data-unit-key=\"'+escHtml(un.key)+'\" data-variant-id=\"'+escHtml(String(o.variantId||\"\").trim())+'\" class=\"'+(on?'is-selected':'')+'\" style=\"display:flex;align-items:center;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px\">'+img+'<span>'+escHtml(variantLabel(o))+'</span></button>'}html+='</div></div>'}variantPickerCacheByBundleId[bid]={sig:sig,html:html};container.innerHTML=html;bindPickerContainer(container,bid)})();variantPickerPendingByBundleId[bid]={sig:sig,promise:promise};try{await promise}catch(e){}delete variantPickerPendingByBundleId[bid]}catch(e){}}",
-  "function renderProductBanners(bundles){ensureStyles();ensureTraditionalStyles();var id=\"bundle-app-banner\";var root=document.getElementById(id);if(!root){root=document.createElement(\"div\");root.id=id}mountBanner(root);var arr=Array.isArray(bundles)?bundles:[];if(!arr.length){clearProductBanner();return}var trigger=String(arr[0]&&arr[0].triggerProductId||\"\");lastTriggerProductId=trigger||lastTriggerProductId;if(selectedBundleId){var ok=false;for(var z0=0;z0<arr.length;z0++){if(String(arr[z0]&&arr[z0].id||\"\")===String(selectedBundleId||\"\")){ok=true;break}}if(!ok)selectedBundleId=null}var html='';for(var i=0;i<arr.length;i++){var b=arr[i]||{};var bid=String(b.id||\"\");var color=String(b.bannerColor||\"#0ea5e9\");var textColor=String(b.textColor||\"#ffffff\");var title=normalizeTitle(b.title);var subtitle=String(b.subtitle||\"\");var label=String(b.label||\"\");var labelSub=String(b.labelSub||\"\");var labelBg=String(b.labelBgColor||b.badgeColor||\"\");var labelText=String(b.labelTextColor||textColor||\"\");var ctaBg=String(b.ctaBgColor||\"\");var ctaText=String(b.ctaTextColor||\"\");var showItems=(b&&b.showItems===false)?false:true;var showPrice=(b&&b.showPrice===false)?false:true;var showTiers=(b&&b.showTiers===false)?false:true;var selectedMinQty=pickMinQty(b);var items=normalizeItems(b);var itemsText=(showItems&&items.length)?buildItemsText(items):'';var priceText=showPrice?buildPriceText(b):'';var tiersHtml=showTiers?buildTierRows(b,bid,selectedMinQty):'';var msg=String(messageByBundleId[bid]||\"\");var checked=bid===String(selectedBundleId||\"\");var cls='bundle-app-card'+(checked?' bundle-app-card--selected':'');var btnLabel=String(b.cta||\"أضف الباقة\");if(tiersHtml){btnLabel=btnLabel+' ('+fmtNum(Math.max(getPageQty(),Math.max(minRequiredBaseQty(b),selectedMinQty)))+' قطع)'}var cardStyle='background:'+escHtml(color)+';color:'+escHtml(textColor)+';';var btnStyle='';if(ctaBg)btnStyle+='background:'+escHtml(ctaBg)+';';if(ctaText)btnStyle+='color:'+escHtml(ctaText)+';';var labelStyle='';if(labelBg)labelStyle+='background:'+escHtml(labelBg)+';';else labelStyle+='background:rgba(255,255,255,.18);';if(labelText)labelStyle+='color:'+escHtml(labelText)+';';html+='<div class=\"'+cls+'\" style=\"'+cardStyle+'\" data-bundle-id=\"'+escHtml(bid)+'\"><div class=\"bundle-app-traditional\"><div class=\"bundle-app-header\"><div class=\"bundle-app-title-section\"><div class=\"bundle-app-title\">'+escHtml(title)+'</div>'+(subtitle?('<div class=\"bundle-app-subtitle\">'+escHtml(subtitle)+'</div>'):'')+(labelSub?('<div class=\"bundle-app-label-sub\">'+escHtml(labelSub)+'</div>'):'')+'</div>'+(label?('<div class=\"bundle-app-label\" style=\"'+labelStyle+'\">'+escHtml(label)+'</div>'):'')+'</div>'+(itemsText?('<div class=\"bundle-app-items-summary\">'+escHtml(itemsText)+'</div>'):'')+'<div class=\"bundle-app-products-section\">';if(items&&items.length){for(var j=0;j<items.length;j++){var item=items[j]||{};var itemChecked=checked;html+='<div class=\"bundle-app-product-item\" data-item-index=\"'+j+'\"><div class=\"bundle-app-product-header\"><label class=\"bundle-app-product-checkwrap\"><input class=\"bundle-app-product-check\" type=\"checkbox\" data-bundle-id=\"'+escHtml(bid)+'\" data-item-index=\"'+j+'\" '+(itemChecked?'checked':'')+' /><span class=\"bundle-app-checkmark\"></span></label><div class=\"bundle-app-product-info\"><div class=\"bundle-app-product-name\">منتج '+(j+1)+'</div><div class=\"bundle-app-product-qty\">الكمية: '+fmtNum(item.quantity||1)+'</div></div></div><div class=\"bundle-app-product-variants\" data-bundle-id=\"'+escHtml(bid)+'\" data-item-index=\"'+j+'\"></div></div>'}}html+='</div>'+(priceText?('<div class=\"bundle-app-price\">'+escHtml(priceText)+'</div>'):'')+(tiersHtml?('<div class=\"bundle-app-tiers\">'+tiersHtml+'</div>'):'')+(msg?('<div class=\"bundle-app-msg\">'+escHtml(msg)+'</div>'):'')+'<div class=\"bundle-app-footer\"><button class=\"bundle-app-btn\" type=\"button\" data-action=\"apply-one\" data-bundle-id=\"'+escHtml(bid)+'\" '+(applying?'disabled':'')+(btnStyle?(' style=\"'+btnStyle+'\"'):'')+'>'+escHtml(btnLabel)+'</button></div></div></div>'}root.innerHTML=html;var tierEls=root.querySelectorAll('.bundle-app-tier[data-tier-minqty][data-bundle-id]');for(var t=0;t<tierEls.length;t++){(function(el){el.onclick=function(){var bid=String(el.getAttribute('data-bundle-id')||\"\");var mq=Number(el.getAttribute('data-tier-minqty'));if(bid&&Number.isFinite(mq)&&mq>=1){selectedTierByBundleId[bid]=Math.floor(mq);messageByBundleId[bid]='';renderProductBanners(arr)}}})(tierEls[t])}var productChecks=root.querySelectorAll('input.bundle-app-product-check[data-bundle-id][data-item-index]');for(var c=0;c<productChecks.length;c++){(function(el){el.onchange=function(){var bid=String(el.getAttribute('data-bundle-id')||\"\");var itemIndex=String(el.getAttribute('data-item-index')||\"\");if(!bid||itemIndex===\"\")return;if(el.checked){selectedBundleId=bid;messageByBundleId[bid]='';var otherChecks=root.querySelectorAll('input.bundle-app-product-check[data-bundle-id]:not([data-bundle-id=\"'+bid+'\"])');for(var o=0;o<otherChecks.length;o++){otherChecks[o].checked=false}var sameBundleChecks=root.querySelectorAll('input.bundle-app-product-check[data-bundle-id=\"'+bid+'\"]');for(var s=0;s<sameBundleChecks.length;s++){sameBundleChecks[s].checked=true}}else{var bundleChecks=root.querySelectorAll('input.bundle-app-product-check[data-bundle-id=\"'+bid+'\"]');var anyChecked=false;for(var b=0;b<bundleChecks.length;b++){if(bundleChecks[b].checked){anyChecked=true;break}}if(!anyChecked&&String(selectedBundleId||\"\")===bid){selectedBundleId=null}}renderProductBanners(arr)}})(productChecks[c])}var btns=root.querySelectorAll('button.bundle-app-btn[data-action=\"apply-one\"][data-bundle-id]');for(var k=0;k<btns.length;k++){(function(btn){btn.onclick=function(){var bid=String(btn.getAttribute('data-bundle-id')||\"\");if(!bid||applying)return;var bundleChecks=root.querySelectorAll('input.bundle-app-product-check[data-bundle-id=\"'+bid+'\"]');var anyChecked=false;for(var b=0;b<bundleChecks.length;b++){if(bundleChecks[b].checked){anyChecked=true;break}}if(!anyChecked){messageByBundleId[bid]='يرجى اختيار منتج واحد على الأقل من الباقة';renderProductBanners(arr);return}selectedBundleId=bid;var bundle=null;for(var i=0;i<arr.length;i++){if(String(arr[i]&&arr[i].id||\"\")===bid){bundle=arr[i];break}}if(!bundle)return;applyBundleSelection(bundle)}})(btns[k])}if(selectedBundleId){var selCard=null;var cards=root.querySelectorAll('.bundle-app-card[data-bundle-id]');for(var ci=0;ci<cards.length;ci++){var c0=cards[ci];if(String(c0.getAttribute('data-bundle-id')||\"\")===String(selectedBundleId||\"\")){selCard=c0;break}}var selBundle=null;for(var s0=0;s0<arr.length;s0++){if(String(arr[s0]&&arr[s0].id||\"\")===String(selectedBundleId||\"\")){selBundle=arr[s0];break}}if(selCard&&selBundle){ensureVariantPickersForTraditionalCard(selCard,selBundle)}}}",
-  "function ensureVariantPickersForTraditionalCard(card,bundle){try{if(!card||!bundle)return;ensurePickerStyles();var bid=String(card.getAttribute('data-bundle-id')||\"\").trim();if(!bid)return;var variantContainers=card.querySelectorAll('.bundle-app-product-variants[data-bundle-id][data-item-index]');var units=bundleVariantUnits(bundle);var sel=getBundleVariantSelectionMap(bid);if(!units.length){for(var v=0;v<variantContainers.length;v++){variantContainers[v].innerHTML=''}return}pruneBundleSelections(sel,units);var unitsByItem={};for(var i=0;i<units.length;i++){var unit=units[i];var itemIndex=Math.floor(i);if(!unitsByItem[itemIndex])unitsByItem[itemIndex]=[];unitsByItem[itemIndex].push(unit)}for(var j=0;j<variantContainers.length;j++){var container=variantContainers[j];var itemIndex=String(container.getAttribute('data-item-index')||\"\");var itemUnits=unitsByItem[itemIndex]||[];if(!itemUnits.length){container.innerHTML='';continue}var itemHtml='<div class=\"bundle-app-pickers-title\">اختيار الفاريانت</div>';for(var k=0;k<itemUnits.length;k++){var unit=itemUnits[k];var productId=unit.productId;var unitKey=unit.key;(function(cont,pid,key){getCachedVariants(pid).then(function(variants){if(!variants||!variants.length){cont.innerHTML='';return}var selectedVariantId=sel[key]||'';var variantHtml='<div class=\"bundle-app-variant-row\" data-unit-key-row=\"'+escHtml(key)+'\"><div style=\"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px\">';for(var v=0;v<variants.length;v++){var variant=variants[v];if(!variant||!variant.isActive)continue;var variantId=String(variant.variantId||\"\").trim();var isSelected=selectedVariantId===variantId;variantHtml+='<button type=\"button\" data-action=\"pick-variant\" data-unit-key=\"'+escHtml(key)+'\" data-variant-id=\"'+escHtml(variantId)+'\" class=\"bundle-app-variant-btn'+(isSelected?' is-selected':'')+'\" aria-pressed=\"'+(isSelected?'true':'false')+'\" style=\"display:flex;align-items:center;padding:6px 10px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);cursor:pointer;font-size:13px;color:inherit;transition:all 0.2s ease\">';if(variant.imageUrl){variantHtml+='<img src=\"'+escHtml(variant.imageUrl)+'\" alt=\"\" style=\"width:32px;height:32px;border-radius:4px;margin-left:8px;\">'}variantHtml+='<span>'+escHtml(variantLabel(variant))+'</span></button>'}variantHtml+='</div></div>';cont.innerHTML=itemHtml+variantHtml;bindPickerContainer(cont,bid)})})(container,productId,unitKey)}}}catch(e){console.error('Error in ensureVariantPickersForTraditionalCard:',e)}}",
-  "function clearProductBanner(){var root=document.getElementById(\"bundle-app-banner\");if(root)root.remove()}",
-  "function mountBanner(root){try{if(!root)return;if(root.getAttribute&&root.getAttribute('data-mounted')==='1')return;var container=document.querySelector('.bundle-app-container[data-feature-location=\"product\"]');if(!container){container=document.createElement('div');container.className='bundle-app-container';container.setAttribute('data-feature-location','product');var anchors=[\"form[action*='cart']\",\"form[action*='checkout']\",\".product-form\",\"[data-product-form]\",\"[data-add-to-cart]\",\"button[type='submit'][name='add-to-cart']\",\"button[type='submit']\"];var host=null;for(var i=0;i<anchors.length;i++){var el=document.querySelector(anchors[i]);if(el){host=el;break}}if(host&&host.parentNode){host.parentNode.insertBefore(container,host)}else{(document.body||document.documentElement).appendChild(container)}}if(root.parentNode!==container)container.appendChild(root);container.style.display='block';root.setAttribute('data-mounted','1')}catch(e){}}",
-  "function findVariantId(){try{var p=window.salla&&window.salla.config&&window.salla.config.product?window.salla.config.product:null;var v=p&&(p.variantId||p.variant_id||p.selectedVariantId||p.selected_variant_id||p.currentVariantId);v=String(v||\"\").trim();if(v)return v;var url=new URL(window.location.href);var fromUrl=url.searchParams.get(\"variant_id\")||url.searchParams.get(\"variantId\")||url.searchParams.get(\"variant\")||\"\";if(fromUrl)return String(fromUrl).trim();var el=document.querySelector('[name=\"variant_id\"],[name=\"variantId\"],[data-variant-id],input[name=\"variant_id\"],select[name=\"variant_id\"]');if(el){var vv=el.getAttribute(\"data-variant-id\")||el.value||\"\";vv=String(vv).trim();if(vv)return vv}var any=document.querySelector(\"[data-variant-id]\");if(any){var a=String(any.getAttribute(\"data-variant-id\")||\"\").trim();if(a)return a}return\"\"}catch(e){return\"\"}}",
-  "function findProductId(){try{var p=window.salla&&window.salla.config&&window.salla.config.product?window.salla.config.product:null;var pid=p&&(p.id||p.productId||p.product_id);pid=String(pid||\"\").trim();if(pid)return pid;var path=String(window.location.pathname||\"\");var m=path.match(/\\/p(\\d+)(?:[/?#]|$)/)||path.match(/\\/(?:products?|product)\\/(\\d+)(?:[/?#]|$)/)||path.match(/\\/(?:products?|product)\\/[^/?#]*?(\\d+)(?:[/?#]|$)/);if(m&&m[1])return String(m[1]);var el=document.querySelector(\"[data-product-id],input[name=\\\"product_id\\\"],input[name=\\\"productId\\\"]\");if(el){var v=el.getAttribute(\"data-product-id\")||el.value||\"\";v=String(v).trim();if(v)return v}return\"\"}catch(e){return\"\"}}",
-  "function initAuto(){var inited=false;var lastKey=\"\";var lastEvt=0;var couponTimer=0;function key(){try{var v=findVariantId();if(v)return\"v:\"+String(v);var p=findProductId();return p?\"p:\"+String(p):\"\"}catch(e){return\"\"}}function refreshIfChanged(){try{var k=key();if(!k){lastKey=\"\";try{clearProductBanner()}catch(e0){}return}if(k===lastKey)return;lastKey=k;refreshProduct()}catch(e){}}function scheduleCoupon(){try{if(couponTimer)clearTimeout(couponTimer);couponTimer=0;var st=null;try{st=window.BundleApp&&window.BundleApp._pendingCouponApply}catch(e0){}var now=Date.now();var nextAt=st?Number(st.nextAt||0):0;var inFlight=st?Boolean(st.inFlight):false;var delay=0;if(inFlight){delay=800}else if(Number.isFinite(nextAt)&&nextAt>now){delay=Math.min(15000,Math.max(250,nextAt-now))}else{delay=0}if(delay>0){couponTimer=setTimeout(function(){try{applyPendingCouponForCart()}catch(e1){}scheduleCoupon()},delay)}}catch(e){}}function tick(){try{applyPendingCouponForCart()}catch(e){}scheduleCoupon();refreshIfChanged()}function onEvt(){var now=Date.now();if(now-lastEvt<250)return;lastEvt=now;setTimeout(tick,0)}function start(){if(inited)return;inited=true;tick();try{window.addEventListener(\"focus\",onEvt);window.addEventListener(\"popstate\",onEvt);window.addEventListener(\"hashchange\",onEvt);document.addEventListener(\"visibilitychange\",function(){if(document.visibilityState===\"visible\")onEvt()});document.addEventListener(\"change\",onEvt,true);document.addEventListener(\"click\",onEvt,true);var h=window.history;if(h&&h.pushState){var p=h.pushState;h.pushState=function(){var r=p.apply(this,arguments);onEvt();return r}}if(h&&h.replaceState){var r0=h.replaceState;h.replaceState=function(){var r=r0.apply(this,arguments);onEvt();return r}}}catch(e){}setInterval(function(){refreshIfChanged()},15000)}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",start)}else{start()}}",
-  "try{initAuto()}catch(e){}",
+  `
+function openPickerModal(titleHtml, bodyHtml) {
+  let resolver = null;
+  const wait = new Promise((r) => {
+    resolver = r;
+  });
+
+  const overlay = document.createElement("div");
+  overlay.id = "bundle-app-modal";
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(0,0,0,.45)";
+  overlay.style.zIndex = "100000";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.padding = "16px";
+
+  const card = document.createElement("div");
+  card.style.width = "min(520px,100%)";
+  card.style.maxHeight = "80vh";
+  card.style.overflow = "auto";
+  card.style.background = "#fff";
+  card.style.borderRadius = "14px";
+  card.style.boxShadow = "0 12px 40px rgba(0,0,0,.25)";
+  card.style.padding = "12px";
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+    '<div style="font-weight:900;font-size:14px">' +
+    titleHtml +
+    "</div>" +
+    '<button type="button" data-action="close" style="border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer">×</button>' +
+    "</div>" +
+    '<div style="margin-top:10px">' +
+    bodyHtml +
+    "</div>";
+
+  overlay.appendChild(card);
+
+  const close = (val) => {
+    try {
+      overlay.remove();
+    } catch (e) {}
+    if (resolver) {
+      const r = resolver;
+      resolver = null;
+      r(val);
+    }
+  };
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close(null);
+  });
+
+  const closeBtn = card.querySelector('button[data-action="close"]');
+  if (closeBtn) closeBtn.onclick = () => close(null);
+
+  document.body.appendChild(overlay);
+  return { overlay, card, close, wait };
+}
+`,
+  `
+async function resolveProductRefItems(items, bundleId) {
+  const bid = String(bundleId || "").trim();
+  const pre =
+    bid && variantSelectionsByBundleId[bid] && typeof variantSelectionsByBundleId[bid] === "object"
+      ? variantSelectionsByBundleId[bid]
+      : null;
+
+  const arr = Array.isArray(items) ? items : [];
+  const fixed = [];
+  const needs = [];
+
+  for (const it of arr) {
+    const v = String((it && it.variantId) || "").trim();
+    const qty = Math.max(1, Math.floor(Number((it && it.quantity) || 1)));
+    const pid = String((it && it.productId) || "").trim();
+    if (isProductRef(v)) {
+      if (!pid) return null;
+      needs.push({ productId: pid, quantity: qty });
+    } else {
+      if (!v) continue;
+      fixed.push({ variantId: v, productId: pid || null, quantity: qty });
+    }
+  }
+
+  if (!needs.length) return fixed;
+
+  const units = [];
+  const uniqPid = {};
+  for (const n of needs) {
+    const pid2 = String(n.productId);
+    uniqPid[pid2] = true;
+    for (let u = 0; u < Number(n.quantity || 0); u += 1) {
+      units.push({ productId: pid2, key: pid2 + ":" + u });
+    }
+  }
+
+  const pidList = Object.keys(uniqPid);
+  const varsByPid = {};
+  for (const pid3 of pidList) {
+    const vars = await getCachedVariants(pid3);
+    let list = Array.isArray(vars) ? vars : [];
+    if (!list.length) {
+      list = [
+        {
+          variantId: "product:" + pid3,
+          productId: pid3,
+          cartProductId: pid3,
+          cartOptions: null,
+          isActive: true,
+          name: null,
+          attributes: {},
+          imageUrl: null,
+          price: null
+        }
+      ];
+    }
+    varsByPid[pid3] = list;
+  }
+
+  const selectedByKey = {};
+  const pending = [];
+
+  for (const unit of units) {
+    const vlist = (varsByPid[unit.productId] || []).filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+    const preVal = pre ? String(pre[unit.key] || "").trim() : "";
+    if (preVal) {
+      const ok = vlist.some((x) => String((x && x.variantId) || "").trim() === preVal);
+      if (ok) {
+        selectedByKey[unit.key] = preVal;
+        continue;
+      }
+    }
+    if (vlist.length === 1) {
+      selectedByKey[unit.key] = String(vlist[0].variantId || "").trim();
+    } else {
+      pending.push(unit);
+    }
+  }
+
+  if (pending.length) {
+    let body = "";
+    for (const un of pending) {
+      const opts = (varsByPid[un.productId] || []).filter((y) => y && y.isActive === true && String(y.variantId || "").trim());
+      if (!opts.length) continue;
+      body +=
+        '<div style="margin-bottom:16px">' +
+        '<div style="margin-bottom:6px;font-weight:800">' +
+        escHtml("اختر فاريانت للمنتج") +
+        "</div>" +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px" data-unit-key-row="' +
+        escHtml(un.key) +
+        '">';
+
+      for (const o of opts) {
+        const vid = String((o && o.variantId) || "").trim();
+        if (!vid) continue;
+        const on = String(selectedByKey[un.key] || "").trim() === vid;
+        body +=
+          '<button type="button" data-action="pick-variant" data-unit-key="' +
+          escHtml(un.key) +
+          '" data-variant-id="' +
+          escHtml(vid) +
+          '" class="bundle-app-variant-btn' +
+          (on ? " is-selected" : "") +
+          '" aria-pressed="' +
+          (on ? "true" : "false") +
+          '" style="border:1px solid rgba(2,6,23,.15);background:#fff;color:#0b1220">' +
+          (typeof variantOptionInnerHtml === "function" ? variantOptionInnerHtml(o) : "<span>" + escHtml(variantLabel(o)) + "</span>") +
+          "</button>";
+      }
+
+      body += "</div></div>";
+    }
+
+    const modal = await openPickerModal("اختيار الفاريانتات", body);
+    if (!modal) return null;
+
+    modal.card.addEventListener("click", (e) => {
+      let t = e && e.target;
+      while (t && t !== modal.card) {
+        if (t && t.getAttribute && t.getAttribute("data-action") === "pick-variant") break;
+        t = t.parentNode;
+      }
+      if (!t || t === modal.card) return;
+      e.preventDefault();
+
+      const key = String(t.getAttribute("data-unit-key") || "").trim();
+      const val = String(t.getAttribute("data-variant-id") || "").trim();
+      if (!key || !val) return;
+
+      selectedByKey[key] = val;
+      const selMap = getBundleVariantSelectionMap(bid);
+      if (selMap) selMap[key] = val;
+
+      let row = t;
+      while (row && row !== modal.card) {
+        if (row && row.getAttribute && row.getAttribute("data-unit-key-row")) break;
+        row = row.parentNode;
+      }
+      if (row && row !== modal.card) {
+        const btns = row.querySelectorAll('button[data-action="pick-variant"][data-variant-id]');
+        for (const b of btns) {
+          const vid = String(b.getAttribute("data-variant-id") || "").trim();
+          const on = Boolean(vid && vid === val);
+          if (on) {
+            b.classList.add("is-selected");
+            b.setAttribute("aria-pressed", "true");
+          } else {
+            b.classList.remove("is-selected");
+            b.setAttribute("aria-pressed", "false");
+          }
+        }
+      }
+    });
+
+    await modal.wait;
+  }
+
+  const out = fixed.slice();
+  for (const key2 in selectedByKey) {
+    if (!Object.prototype.hasOwnProperty.call(selectedByKey, key2)) continue;
+    const vid = String(selectedByKey[key2] || "").trim();
+    if (!vid) continue;
+    let meta = null;
+    for (const pidKey in varsByPid) {
+      if (!Object.prototype.hasOwnProperty.call(varsByPid, pidKey)) continue;
+      const list = varsByPid[pidKey] || [];
+      meta = list.find((item) => item && String(item.variantId || "").trim() === vid) || null;
+      if (meta) break;
+    }
+    if (!meta) continue;
+    out.push({ variantId: vid, productId: meta.productId, cartProductId: meta.cartProductId, cartOptions: meta.cartOptions, quantity: 1 });
+  }
+
+  return out;
+}
+`,
+  `
+function applySelectionsToContainer(container, bundleId) {
+  try {
+    if (!container) return;
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+    const sel = getBundleVariantSelectionMap(bid);
+    if (!sel) return;
+
+    const rows = container.querySelectorAll("[data-unit-key-row]");
+    for (const row of rows) {
+      const key = String(row.getAttribute("data-unit-key-row") || "").trim();
+      if (!key) continue;
+      const val = String(sel[key] || "").trim();
+
+      const btns = row.querySelectorAll('button[data-action="pick-variant"][data-variant-id]');
+      for (const b of btns) {
+        const vid = String(b.getAttribute("data-variant-id") || "").trim();
+        const on = Boolean(val && vid && val === vid);
+        if (on) {
+          b.classList.add("is-selected");
+          b.setAttribute("aria-pressed", "true");
+        } else {
+          b.classList.remove("is-selected");
+          b.setAttribute("aria-pressed", "false");
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+function updatePickerStatus(container, bundleId) {
+  try {
+    if (!container) return;
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+    const sel = getBundleVariantSelectionMap(bid);
+    if (!sel) return;
+
+    const rows = container.querySelectorAll("[data-unit-key-row]");
+    const total = rows.length;
+    let chosen = 0;
+    for (const r of rows) {
+      const key = String(r.getAttribute("data-unit-key-row") || "").trim();
+      if (!key) continue;
+      const v = String(sel[key] || "").trim();
+      if (v) chosen += 1;
+    }
+    const el = container.querySelector('[data-role="picker-status"]');
+    if (el) el.textContent = total ? "تم اختيار " + fmtNum(chosen) + " من " + fmtNum(total) : "";
+  } catch (e) {}
+}
+
+function bindPickerContainer(container, bundleId) {
+  try {
+    if (!container) return;
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+
+    container.onclick = (e) => {
+      let t = e && e.target;
+      while (t && t !== container) {
+        if (t && t.getAttribute && t.getAttribute("data-action") === "pick-variant") break;
+        t = t.parentNode;
+      }
+      if (!t || t === container) return;
+      e.preventDefault();
+
+      const key = String(t.getAttribute("data-unit-key") || "").trim();
+      const val = String(t.getAttribute("data-variant-id") || "").trim();
+      if (!key || !val) return;
+
+      const sel = getBundleVariantSelectionMap(bid);
+      if (!sel) return;
+      sel[key] = val;
+      applySelectionsToContainer(container, bid);
+      updatePickerStatus(container, bid);
+    };
+
+    applySelectionsToContainer(container, bid);
+    updatePickerStatus(container, bid);
+  } catch (e) {}
+}
+`,
+  `
+async function ensureVariantPickersForCard(card, bundle) {
+  try {
+    if (!card || !bundle) return;
+    ensurePickerStyles();
+    const bid = String(card.getAttribute("data-bundle-id") || "").trim();
+    if (!bid) return;
+
+    const container = card.querySelector('.bundle-app-pickers[data-bundle-id]');
+    if (!container) return;
+
+    const sig = bundleVariantSig(bundle);
+    const cached = variantPickerCacheByBundleId[bid];
+    if (cached && cached.sig === sig && cached.html != null) {
+      container.innerHTML = cached.html;
+      bindPickerContainer(container, bid);
+      return;
+    }
+
+    const pending = variantPickerPendingByBundleId[bid];
+    if (pending && pending.sig === sig && pending.promise) return;
+
+    container.innerHTML = '<div class="bundle-app-picker-hint">جاري تحميل الفاريانت...</div>';
+
+    const promise = (async () => {
+      const units = bundleVariantUnits(bundle);
+      const sel = getBundleVariantSelectionMap(bid);
+      if (!units.length) {
+        variantPickerCacheByBundleId[bid] = { sig, html: "" };
+        container.innerHTML = "";
+        return;
+      }
+
+      pruneBundleSelections(sel, units);
+
+      const uniq = {};
+      for (const u of units) uniq[String(u.productId)] = true;
+      const pids = Object.keys(uniq);
+      const lists = await Promise.all(pids.map((pid) => getCachedVariants(pid)));
+
+      const varsByPid = {};
+      for (let i = 0; i < pids.length; i += 1) {
+        const pid = pids[i];
+        let list = Array.isArray(lists[i]) ? lists[i] : [];
+        list = list.filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+        if (!list.length) {
+          list = [
+            {
+              variantId: "product:" + pid,
+              productId: pid,
+              cartProductId: pid,
+              cartOptions: null,
+              isActive: true,
+              name: null,
+              attributes: {},
+              imageUrl: null,
+              price: null
+            }
+          ];
+        }
+        varsByPid[pid] = list;
+      }
+
+      const need = [];
+      for (const unit of units) {
+        const list2 = varsByPid[unit.productId] || [];
+        if (list2.length === 1) {
+          const only = list2[0] || {};
+          const vid = String(only.variantId || "").trim();
+          if (vid) sel[unit.key] = vid;
+        } else if (list2.length > 1) {
+          need.push(unit);
+        }
+      }
+
+      if (!need.length) {
+        variantPickerCacheByBundleId[bid] = { sig, html: "" };
+        container.innerHTML = "";
+        return;
+      }
+
+      let html =
+        '<div class="bundle-app-pickers-title">اختيار الفاريانت للكميات</div>' +
+        '<div class="bundle-app-picker-status" data-role="picker-status"></div>';
+
+      for (const un of need) {
+        const opts = (varsByPid[un.productId] || []).filter((y) => y && y.isActive === true && String(y.variantId || "").trim());
+        if (!opts.length) continue;
+
+        html +=
+          '<div class="bundle-app-picker-row">' +
+          '<div class="bundle-app-picker-label">' +
+          escHtml("اختر فاريانت") +
+          "</div>" +
+          '<div class="bundle-app-variant-options" data-unit-key-row="' +
+          escHtml(un.key) +
+          '">';
+
+        for (const o of opts) {
+          const vid = String((o && o.variantId) || "").trim();
+          if (!vid) continue;
+          const on = String(sel[un.key] || "").trim() === vid;
+          html +=
+            '<button type="button" class="bundle-app-variant-btn' +
+            (on ? " is-selected" : "") +
+            '" data-action="pick-variant" data-unit-key="' +
+            escHtml(un.key) +
+            '" data-variant-id="' +
+            escHtml(vid) +
+            '" aria-pressed="' +
+            (on ? "true" : "false") +
+            '">' +
+            (typeof variantOptionInnerHtml === "function" ? variantOptionInnerHtml(o) : "<span>" + escHtml(variantLabel(o)) + "</span>") +
+            "</button>";
+        }
+
+        html += "</div></div>";
+      }
+
+      variantPickerCacheByBundleId[bid] = { sig, html };
+      container.innerHTML = html;
+      bindPickerContainer(container, bid);
+    })();
+
+    variantPickerPendingByBundleId[bid] = { sig, promise };
+    try {
+      await promise;
+    } catch (e) {}
+    delete variantPickerPendingByBundleId[bid];
+  } catch (e) {}
+}
+
+function renderProductBanners(bundles) {
+  ensureStyles();
+  ensureTraditionalStyles();
+
+  const id = "bundle-app-banner";
+  let root = document.getElementById(id);
+  if (!root) {
+    root = document.createElement("div");
+    root.id = id;
+  }
+  mountBanner(root);
+
+  const arr = Array.isArray(bundles) ? bundles : [];
+  if (!arr.length) {
+    clearProductBanner();
+    return;
+  }
+
+  const trigger = String((arr[0] && arr[0].triggerProductId) || "");
+  lastTriggerProductId = trigger || lastTriggerProductId;
+
+  if (selectedBundleId) {
+    const ok = arr.some((b) => String((b && b.id) || "") === String(selectedBundleId || ""));
+    if (!ok) selectedBundleId = null;
+  }
+
+  let html = "";
+  for (const b of arr) {
+    const bid = String((b && b.id) || "");
+    const color = String((b && b.bannerColor) || "#0ea5e9");
+    const textColor = String((b && b.textColor) || "#ffffff");
+    const title = normalizeTitle(b && b.title);
+    const subtitle = String((b && b.subtitle) || "");
+    const label = String((b && b.label) || "");
+    const labelSub = String((b && b.labelSub) || "");
+    const labelBg = String((b && (b.labelBgColor || b.badgeColor)) || "");
+    const labelText = String((b && b.labelTextColor) || textColor || "");
+    const ctaBg = String((b && b.ctaBgColor) || "");
+    const ctaText = String((b && b.ctaTextColor) || "");
+    const showItems = !(b && b.showItems === false);
+    const showPrice = !(b && b.showPrice === false);
+    const showTiers = !(b && b.showTiers === false);
+
+    const selectedMinQty = pickMinQty(b);
+    const items = normalizeItems(b);
+    const itemsText = showItems && items.length ? buildItemsText(items) : "";
+    const priceText = showPrice ? buildPriceText(b) : "";
+    const tiersHtml = showTiers ? buildTierRows(b, bid, selectedMinQty) : "";
+    const msg = String(messageByBundleId[bid] || "");
+
+    const checked = bid === String(selectedBundleId || "");
+    const cls = "bundle-app-card" + (checked ? " bundle-app-card--selected" : "");
+
+    let btnLabel = String((b && b.cta) || "أضف الباقة");
+    if (tiersHtml) {
+      btnLabel =
+        btnLabel +
+        " (" +
+        fmtNum(Math.max(getPageQty(), Math.max(minRequiredBaseQty(b), selectedMinQty))) +
+        " قطع)";
+    }
+
+    const cardStyle = "background:" + escHtml(color) + ";color:" + escHtml(textColor) + ";";
+    let btnStyle = "";
+    if (ctaBg) btnStyle += "background:" + escHtml(ctaBg) + ";";
+    if (ctaText) btnStyle += "color:" + escHtml(ctaText) + ";";
+
+    let labelStyle = "";
+    if (labelBg) labelStyle += "background:" + escHtml(labelBg) + ";";
+    else labelStyle += "background:rgba(255,255,255,.18);";
+    if (labelText) labelStyle += "color:" + escHtml(labelText) + ";";
+
+    html +=
+      '<div class="' +
+      cls +
+      '" style="' +
+      cardStyle +
+      '" data-bundle-id="' +
+      escHtml(bid) +
+      '">' +
+      '<div class="bundle-app-traditional">' +
+      '<div class="bundle-app-header">' +
+      '<div class="bundle-app-title-section">' +
+      '<div class="bundle-app-title">' +
+      escHtml(title) +
+      "</div>" +
+      (subtitle ? '<div class="bundle-app-subtitle">' + escHtml(subtitle) + "</div>" : "") +
+      (labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "") +
+      "</div>" +
+      (label ? '<div class="bundle-app-label" style="' + labelStyle + '">' + escHtml(label) + "</div>" : "") +
+      "</div>" +
+      (itemsText ? '<div class="bundle-app-items-summary">' + escHtml(itemsText) + "</div>" : "") +
+      '<div class="bundle-app-products-section">';
+
+    if (items && items.length) {
+      for (let j = 0; j < items.length; j += 1) {
+        const item = items[j] || {};
+        const itemChecked = checked;
+        html +=
+          '<div class="bundle-app-product-item" data-item-index="' +
+          String(j) +
+          '">' +
+          '<div class="bundle-app-product-header">' +
+          '<label class="bundle-app-product-checkwrap">' +
+          '<input class="bundle-app-product-check" type="checkbox" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          String(j) +
+          '" ' +
+          (itemChecked ? "checked" : "") +
+          " />" +
+          '<span class="bundle-app-checkmark"></span>' +
+          "</label>" +
+          '<div class="bundle-app-product-info">' +
+          '<div class="bundle-app-product-name">منتج ' +
+          String(j + 1) +
+          "</div>" +
+          '<div class="bundle-app-product-qty">الكمية: ' +
+          fmtNum(item.quantity || 1) +
+          "</div>" +
+          "</div>" +
+          "</div>" +
+          '<div class="bundle-app-product-variants" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          String(j) +
+          '"></div>' +
+          "</div>";
+      }
+    }
+
+    html +=
+      "</div>" +
+      (priceText ? '<div class="bundle-app-price">' + escHtml(priceText) + "</div>" : "") +
+      (tiersHtml ? '<div class="bundle-app-tiers">' + tiersHtml + "</div>" : "") +
+      (msg ? '<div class="bundle-app-msg">' + escHtml(msg) + "</div>" : "") +
+      '<div class="bundle-app-footer">' +
+      '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
+      escHtml(bid) +
+      '" ' +
+      (applying ? "disabled" : "") +
+      (btnStyle ? ' style="' + btnStyle + '"' : "") +
+      ">" +
+      escHtml(btnLabel) +
+      "</button>" +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+      "</div>";
+  }
+
+  root.innerHTML = html;
+
+  const tierEls = root.querySelectorAll(".bundle-app-tier[data-tier-minqty][data-bundle-id]");
+  for (const el of tierEls) {
+    el.onclick = () => {
+      const bid = String(el.getAttribute("data-bundle-id") || "");
+      const mq = Number(el.getAttribute("data-tier-minqty"));
+      if (bid && Number.isFinite(mq) && mq >= 1) {
+        selectedTierByBundleId[bid] = Math.floor(mq);
+        messageByBundleId[bid] = "";
+        renderProductBanners(arr);
+      }
+    };
+  }
+
+  const productChecks = root.querySelectorAll("input.bundle-app-product-check[data-bundle-id][data-item-index]");
+  for (const el of productChecks) {
+    el.onchange = () => {
+      const bid = String(el.getAttribute("data-bundle-id") || "");
+      const itemIndex = String(el.getAttribute("data-item-index") || "");
+      if (!bid || itemIndex === "") return;
+
+      if (el.checked) {
+        selectedBundleId = bid;
+        messageByBundleId[bid] = "";
+
+        const otherChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id]:not([data-bundle-id="' + bid + '"])');
+        for (const o of otherChecks) o.checked = false;
+
+        const sameBundleChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id="' + bid + '"]');
+        for (const s of sameBundleChecks) s.checked = true;
+      } else {
+        const bundleChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id="' + bid + '"]');
+        let anyChecked = false;
+        for (const b of bundleChecks) {
+          if (b.checked) {
+            anyChecked = true;
+            break;
+          }
+        }
+        if (!anyChecked && String(selectedBundleId || "") === bid) selectedBundleId = null;
+      }
+
+      renderProductBanners(arr);
+    };
+  }
+
+  const btns = root.querySelectorAll('button.bundle-app-btn[data-action="apply-one"][data-bundle-id]');
+  for (const btn of btns) {
+    btn.onclick = () => {
+      const bid = String(btn.getAttribute("data-bundle-id") || "");
+      if (!bid || applying) return;
+
+      const bundleChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id="' + bid + '"]');
+      let anyChecked = false;
+      for (const b of bundleChecks) {
+        if (b.checked) {
+          anyChecked = true;
+          break;
+        }
+      }
+      if (!anyChecked) {
+        messageByBundleId[bid] = "يرجى اختيار منتج واحد على الأقل من الباقة";
+        renderProductBanners(arr);
+        return;
+      }
+
+      selectedBundleId = bid;
+      const bundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
+      if (!bundle) return;
+      applyBundleSelection(bundle);
+    };
+  }
+
+  if (selectedBundleId) {
+    const selCard = Array.from(root.querySelectorAll(".bundle-app-card[data-bundle-id]")).find(
+      (c) => String(c.getAttribute("data-bundle-id") || "") === String(selectedBundleId || "")
+    );
+    const selBundle = arr.find((x) => String((x && x.id) || "") === String(selectedBundleId || "")) || null;
+    if (selCard && selBundle) ensureVariantPickersForTraditionalCard(selCard, selBundle);
+  }
+}
+
+async function ensureVariantPickersForTraditionalCard(card, bundle) {
+  try {
+    if (!card || !bundle) return;
+    ensurePickerStyles();
+    const bid = String(card.getAttribute("data-bundle-id") || "").trim();
+    if (!bid) return;
+
+    const variantContainers = card.querySelectorAll(".bundle-app-product-variants[data-bundle-id][data-item-index]");
+    const items = normalizeItems(bundle);
+    const sel = getBundleVariantSelectionMap(bid);
+
+    const units = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i] || {};
+      const v = String(it.variantId || "").trim();
+      if (!isProductRef(v)) continue;
+      const pid = String(it.productId || "").trim();
+      if (!pid) continue;
+      const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
+      for (let u = 0; u < qty; u += 1) {
+        units.push({ productId: pid, key: pid + ":" + u, itemIndex: i });
+      }
+    }
+
+    if (!units.length) {
+      for (const c of variantContainers) c.innerHTML = "";
+      return;
+    }
+
+    pruneBundleSelections(sel, units);
+
+    const uniq = {};
+    for (const u of units) uniq[String(u.productId)] = true;
+    const pids = Object.keys(uniq);
+    const lists = await Promise.all(pids.map((pid) => getCachedVariants(pid)));
+    const varsByPid = {};
+    for (let i = 0; i < pids.length; i += 1) {
+      const pid = pids[i];
+      let list = Array.isArray(lists[i]) ? lists[i] : [];
+      list = list.filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+      varsByPid[pid] = list;
+    }
+
+    const unitsByItem = {};
+    for (const u of units) {
+      const idx = String(u.itemIndex);
+      if (!unitsByItem[idx]) unitsByItem[idx] = [];
+      unitsByItem[idx].push(u);
+    }
+
+    for (const container of variantContainers) {
+      const itemIndex = String(container.getAttribute("data-item-index") || "");
+      const itemUnits = unitsByItem[itemIndex] || [];
+      if (!itemUnits.length) {
+        container.innerHTML = "";
+        continue;
+      }
+
+      let html = '<div class="bundle-app-pickers-title">اختيار الفاريانت</div>';
+      for (const unit of itemUnits) {
+        const pid = unit.productId;
+        const key = unit.key;
+        const variants = varsByPid[pid] || [];
+        if (!variants.length) continue;
+        const selectedVariantId = String((sel && sel[key]) || "").trim();
+
+        html +=
+          '<div class="bundle-app-picker-row" data-unit-key-row="' +
+          escHtml(key) +
+          '">' +
+          '<div class="bundle-app-variant-options">';
+
+        for (const v of variants) {
+          const variantId = String((v && v.variantId) || "").trim();
+          if (!variantId) continue;
+          const isSelected = selectedVariantId === variantId;
+          html +=
+            '<button type="button" class="bundle-app-variant-btn' +
+            (isSelected ? " is-selected" : "") +
+            '" aria-pressed="' +
+            (isSelected ? "true" : "false") +
+            '" data-action="pick-variant" data-unit-key="' +
+            escHtml(key) +
+            '" data-variant-id="' +
+            escHtml(variantId) +
+            '">' +
+            (typeof variantOptionInnerHtml === "function" ? variantOptionInnerHtml(v) : "<span>" + escHtml(variantLabel(v)) + "</span>") +
+            "</button>";
+        }
+
+        html += "</div></div>";
+      }
+
+      container.innerHTML = html;
+      bindPickerContainer(container, bid);
+    }
+  } catch (e) {}
+}
+
+function clearProductBanner() {
+  const root = document.getElementById("bundle-app-banner");
+  if (root) root.remove();
+}
+
+function mountBanner(root) {
+  try {
+    if (!root) return;
+    if (root.getAttribute && root.getAttribute("data-mounted") === "1") return;
+
+    let container = document.querySelector('.bundle-app-container[data-feature-location="product"]');
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "bundle-app-container";
+      container.setAttribute("data-feature-location", "product");
+
+      const anchors = [
+        "form[action*='cart']",
+        "form[action*='checkout']",
+        ".product-form",
+        "[data-product-form]",
+        "[data-add-to-cart]",
+        "button[type='submit'][name='add-to-cart']",
+        "button[type='submit']"
+      ];
+      let host = null;
+      for (const sel of anchors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          host = el;
+          break;
+        }
+      }
+
+      if (host && host.parentNode) host.parentNode.insertBefore(container, host);
+      else (document.body || document.documentElement).appendChild(container);
+    }
+
+    if (root.parentNode !== container) container.appendChild(root);
+    container.style.display = "block";
+    root.setAttribute("data-mounted", "1");
+  } catch (e) {}
+}
+
+function findVariantId() {
+  try {
+    const p =
+      window.salla && window.salla.config && window.salla.config.product ? window.salla.config.product : null;
+    let v = p && (p.variantId || p.variant_id || p.selectedVariantId || p.selected_variant_id || p.currentVariantId);
+    v = String(v || "").trim();
+    if (v) return v;
+
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get("variant_id") || url.searchParams.get("variantId") || url.searchParams.get("variant") || "";
+    if (fromUrl) return String(fromUrl).trim();
+
+    const el = document.querySelector('[name="variant_id"],[name="variantId"],[data-variant-id],input[name="variant_id"],select[name="variant_id"]');
+    if (el) {
+      let vv = (el.getAttribute && el.getAttribute("data-variant-id")) || el.value || "";
+      vv = String(vv).trim();
+      if (vv) return vv;
+    }
+
+    const any = document.querySelector("[data-variant-id]");
+    if (any) {
+      const a = String(any.getAttribute("data-variant-id") || "").trim();
+      if (a) return a;
+    }
+    return "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function findProductId() {
+  try {
+    const p =
+      window.salla && window.salla.config && window.salla.config.product ? window.salla.config.product : null;
+    let pid = p && (p.id || p.productId || p.product_id);
+    pid = String(pid || "").trim();
+    if (pid) return pid;
+
+    const path = String(window.location.pathname || "");
+    const m =
+      path.match(/\\/p(\\d+)(?:[/?#]|$)/) ||
+      path.match(/\\/(?:products?|product)\\/(\\d+)(?:[/?#]|$)/) ||
+      path.match(/\\/(?:products?|product)\\/[^/?#]*?(\\d+)(?:[/?#]|$)/);
+    if (m && m[1]) return String(m[1]);
+
+    const el = document.querySelector('[data-product-id],input[name="product_id"],input[name="productId"]');
+    if (el) {
+      let v = (el.getAttribute && el.getAttribute("data-product-id")) || el.value || "";
+      v = String(v).trim();
+      if (v) return v;
+    }
+
+    return "";
+  } catch (e) {
+    return "";
+  }
+}
+`,
+  `
+try {
+  initAuto();
+} catch (e) {}
+`
 ];
