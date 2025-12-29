@@ -1279,7 +1279,16 @@ async function applyBundleSelection(bundle) {
         } catch (e0313) {}
       }
       if (res.couponIssueFailed) {
-        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم";
+        var r0 = res && res.couponIssue && res.couponIssue.reason ? String(res.couponIssue.reason) : "";
+        var hint =
+          r0 === "NO_MATCHED_PRODUCTS"
+            ? " (لم يتم التعرف على منتجات الباقة)"
+            : r0 === "SALLA_REJECTED"
+              ? " (رفضت سلة إنشاء كوبون)"
+              : r0 === "NO_DISCOUNT"
+                ? " (لا يوجد خصم)"
+                : "";
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم" + hint;
         try {
           clearPendingCoupon(trigger);
         } catch (e03100b) {}
