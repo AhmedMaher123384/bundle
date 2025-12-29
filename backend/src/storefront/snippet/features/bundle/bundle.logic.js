@@ -415,7 +415,8 @@ async function tryApplyCoupon(code) {
           if (res && typeof res === "object") {
             const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
             if (ok === false) {
-              const m = String(res.message || res.error || res.title || "").trim();
+              const raw = res.message != null ? res.message : res.error != null ? res.error : res.title != null ? res.title : res;
+              const m = typeof raw === "string" ? String(raw || "").trim() : safeDebugStringify(raw, 3000);
               const e0 = new Error(m || "coupon_apply_failed");
               e0.details = res;
               throw e0;
@@ -436,34 +437,38 @@ async function tryApplyCoupon(code) {
     function buildCandidates() {
       var fns = [];
       if (cart) {
-        if (typeof cart.applyCoupon === "function") fns.push(function () { return cart.applyCoupon(c); });
+        if (typeof cart.applyCoupon === "function") fns.push({ label: "cart.applyCoupon(string)", fn: function () { return cart.applyCoupon(c); } });
         if (typeof cart.addCoupon === "function") {
-          fns.push(function () { return cart.addCoupon({ code: c }); });
-          fns.push(function () { return cart.addCoupon({ coupon_code: c }); });
-          fns.push(function () { return cart.addCoupon(c); });
+          fns.push({ label: "cart.addCoupon({code})", fn: function () { return cart.addCoupon({ code: c }); } });
+          fns.push({ label: "cart.addCoupon({coupon_code})", fn: function () { return cart.addCoupon({ coupon_code: c }); } });
+          fns.push({ label: "cart.addCoupon(string)", fn: function () { return cart.addCoupon(c); } });
         }
         if (cart.coupon && typeof cart.coupon.apply === "function") {
-          fns.push(function () { return cart.coupon.apply(c); });
-          fns.push(function () { return cart.coupon.apply({ code: c }); });
-          fns.push(function () { return cart.coupon.apply({ coupon_code: c }); });
+          fns.push({ label: "cart.coupon.apply(string)", fn: function () { return cart.coupon.apply(c); } });
+          fns.push({ label: "cart.coupon.apply({code})", fn: function () { return cart.coupon.apply({ code: c }); } });
+          fns.push({ label: "cart.coupon.apply({coupon_code})", fn: function () { return cart.coupon.apply({ coupon_code: c }); } });
         }
         if (cart.coupon && typeof cart.coupon.set === "function") {
-          fns.push(function () { return cart.coupon.set(c); });
-          fns.push(function () { return cart.coupon.set({ code: c }); });
-          fns.push(function () { return cart.coupon.set({ coupon_code: c }); });
+          fns.push({ label: "cart.coupon.set(string)", fn: function () { return cart.coupon.set(c); } });
+          fns.push({ label: "cart.coupon.set({code})", fn: function () { return cart.coupon.set({ code: c }); } });
+          fns.push({ label: "cart.coupon.set({coupon_code})", fn: function () { return cart.coupon.set({ coupon_code: c }); } });
         }
         if (typeof cart.setCoupon === "function") {
-          fns.push(function () { return cart.setCoupon(c); });
-          fns.push(function () { return cart.setCoupon({ code: c }); });
-          fns.push(function () { return cart.setCoupon({ coupon_code: c }); });
+          fns.push({ label: "cart.setCoupon(string)", fn: function () { return cart.setCoupon(c); } });
+          fns.push({ label: "cart.setCoupon({code})", fn: function () { return cart.setCoupon({ code: c }); } });
+          fns.push({ label: "cart.setCoupon({coupon_code})", fn: function () { return cart.setCoupon({ coupon_code: c }); } });
         }
       }
       if (window.salla) {
-        if (typeof window.salla.applyCoupon === "function") fns.push(function () { return window.salla.applyCoupon(c); });
+        if (typeof window.salla.applyCoupon === "function")
+          fns.push({ label: "salla.applyCoupon(string)", fn: function () { return window.salla.applyCoupon(c); } });
         if (window.salla.coupon && typeof window.salla.coupon.apply === "function") {
-          fns.push(function () { return window.salla.coupon.apply(c); });
-          fns.push(function () { return window.salla.coupon.apply({ code: c }); });
-          fns.push(function () { return window.salla.coupon.apply({ coupon_code: c }); });
+          fns.push({ label: "salla.coupon.apply(string)", fn: function () { return window.salla.coupon.apply(c); } });
+          fns.push({ label: "salla.coupon.apply({code})", fn: function () { return window.salla.coupon.apply({ code: c }); } });
+          fns.push({
+            label: "salla.coupon.apply({coupon_code})",
+            fn: function () { return window.salla.coupon.apply({ coupon_code: c }); }
+          });
         }
       }
       return fns;
@@ -471,6 +476,7 @@ async function tryApplyCoupon(code) {
 
     var lastErr = null;
     var attempts = 0;
+    var lastAttemptLabel = "";
     for (var pass = 0; pass < 3; pass += 1) {
       if (pass > 0) await sleep(450 * pass);
       var fns = buildCandidates();
@@ -478,16 +484,17 @@ async function tryApplyCoupon(code) {
       for (var i = 0; i < fns.length; i += 1) {
         attempts += 1;
         try {
-          await runAndAssertOk(fns[i]());
-        try {
-          g.BundleApp._lastCouponApplyStatus = null;
-          g.BundleApp._lastCouponApplyMessage = "";
-          g.BundleApp._lastCouponApplyDetails = "";
-        } catch (x0) {}
-        return true;
-      } catch (eTry) {
-        lastErr = eTry;
-        var stTry = extractHttpStatus(eTry);
+          lastAttemptLabel = String((fns[i] && fns[i].label) || "");
+          await runAndAssertOk((fns[i] && fns[i].fn ? fns[i].fn() : null));
+          try {
+            g.BundleApp._lastCouponApplyStatus = null;
+            g.BundleApp._lastCouponApplyMessage = "";
+            g.BundleApp._lastCouponApplyDetails = "";
+          } catch (x0) {}
+          return true;
+        } catch (eTry) {
+          lastErr = eTry;
+          var stTry = extractHttpStatus(eTry);
           var msgTry = extractHttpMessage(eTry);
           markStoreClosed({ status: stTry, message: msgTry });
           if (storeClosedNow()) return false;
@@ -495,7 +502,13 @@ async function tryApplyCoupon(code) {
       }
     }
 
-    if (lastErr) throw lastErr;
+    if (lastErr) {
+      try {
+        lastErr._bundleAttemptLabel = lastAttemptLabel;
+        lastErr._bundleAttempts = attempts;
+      } catch (x) {}
+      throw lastErr;
+    }
 
     try {
       g.BundleApp._lastCouponApplyStatus = null;
@@ -513,6 +526,8 @@ async function tryApplyCoupon(code) {
         {
           status: st,
           message: msg,
+          attempt: (e && (e._bundleAttemptLabel || e.attempt || e.method)) || undefined,
+          attempts: (e && (e._bundleAttempts || e.attempts)) || undefined,
           details: (e && (e.details || (e.response && e.response.data) || e)) || null
         },
         12000
@@ -545,9 +560,11 @@ function extractHttpMessage(e) {
   try {
     let m = "";
     if (e && e.details && typeof e.details === "object") {
-      m = String(e.details.message || e.details.error || e.details.title || "").trim();
+      const raw0 = e.details.message || e.details.error || e.details.title || "";
+      m = typeof raw0 === "string" ? String(raw0 || "").trim() : safeDebugStringify(raw0, 3000);
       if (!m && e.details.data && typeof e.details.data === "object") {
-        m = String(e.details.data.message || e.details.data.error || e.details.data.title || "").trim();
+        const raw1 = e.details.data.message || e.details.data.error || e.details.data.title || "";
+        m = typeof raw1 === "string" ? String(raw1 || "").trim() : safeDebugStringify(raw1, 3000);
       }
     }
     if (!m && e && e.response && e.response.data != null) {
@@ -555,13 +572,21 @@ function extractHttpMessage(e) {
       if (typeof d === "string") {
         m = String(d || "").trim();
       } else if (typeof d === "object") {
-        m = String(d.message || d.error || d.title || "").trim();
+        const raw2 = d.message || d.error || d.title || "";
+        m = typeof raw2 === "string" ? String(raw2 || "").trim() : safeDebugStringify(raw2, 3000);
         if (!m && d.data && typeof d.data === "object") {
-          m = String(d.data.message || d.data.error || d.data.title || "").trim();
+          const raw3 = d.data.message || d.data.error || d.data.title || "";
+          m = typeof raw3 === "string" ? String(raw3 || "").trim() : safeDebugStringify(raw3, 3000);
         }
       }
     }
-    if (!m && e) m = String(e.message || "").trim();
+    if (!m && e) {
+      const em = e.message;
+      m = typeof em === "string" ? String(em || "").trim() : em != null ? safeDebugStringify(em, 3000) : "";
+    }
+    if (m === "[object Object]" && e) {
+      m = safeDebugStringify((e && (e.details || (e.response && e.response.data) || e)) || null, 3000);
+    }
     return m;
   } catch (x) {
     return "";
@@ -583,8 +608,10 @@ function safeDebugStringify(value, maxLen) {
   }
   function looksSensitiveValue(v) {
     const s = String(v || "");
-    if (s.length >= 24 && (s.indexOf("Bearer ") === 0 || s.indexOf("eyJ") === 0)) return true;
-    return s.length >= 64;
+    if (s.length >= 24 && s.indexOf("Bearer ") === 0) return true;
+    if (s.length >= 24 && s.indexOf("eyJ") === 0) return true;
+    if (s.length >= 24 && /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(s)) return true;
+    return false;
   }
   function cleanse(v, k) {
     try {
@@ -676,7 +703,7 @@ function humanizeCartError(e) {
       ? (function () {
           try {
             const last = g && g.BundleApp ? g.BundleApp._lastCouponApplyDetails : "";
-            const packed = { status: st, message: msg, lastCoupon: last || undefined };
+            const packed = { status: st, message: msg, couponApplyDetails: last || undefined };
             return safeDebugStringify(packed, 8000);
           } catch (x) {
             return safeDebugStringify({ status: st, message: msg }, 8000);
