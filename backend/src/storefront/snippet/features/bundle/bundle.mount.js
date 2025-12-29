@@ -23,7 +23,7 @@ module.exports = function mountBundle(context) {
   parts.push("function warn(){if(!debug)return;try{console.warn.apply(console,arguments)}catch(e){}}");
 
   parts.push(buildStylesJs({ cssBase, cssPickers }));
-  parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}');
+  parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}}');
 
   for (let i = 0; i < bundleLogicParts.length; i += 1) parts.push(bundleLogicParts[i]);
   for (let i = 0; i < bundleUiParts.length; i += 1) parts.push(bundleUiParts[i]);
