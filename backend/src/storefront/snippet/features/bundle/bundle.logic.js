@@ -409,107 +409,74 @@ async function tryApplyCoupon(code) {
       ]);
     }
 
-    var fns = [];
-    if (cart && typeof cart.addCoupon === "function") fns.push(function (payload) { return cart.addCoupon(payload); });
-    if (cart && typeof cart.applyCoupon === "function") fns.push(function (payload) { return cart.applyCoupon(payload); });
-    if (cart && cart.coupon && typeof cart.coupon.apply === "function") fns.push(function (payload) { return cart.coupon.apply(payload); });
-    if (cart && cart.coupon && typeof cart.coupon.set === "function") fns.push(function (payload) { return cart.coupon.set(payload); });
-    if (cart && typeof cart.setCoupon === "function") fns.push(function (payload) { return cart.setCoupon(payload); });
-    if (window.salla && typeof window.salla.applyCoupon === "function") fns.push(function (payload) { return window.salla.applyCoupon(payload); });
-    if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function")
-      fns.push(function (payload) { return window.salla.coupon.apply(payload); });
+    var fn = null;
+    if (cart && typeof cart.addCoupon === "function") fn = function (payload) { return cart.addCoupon(payload); };
+    else if (cart && typeof cart.applyCoupon === "function") fn = function (payload) { return cart.applyCoupon(payload); };
+    else if (cart && cart.coupon && typeof cart.coupon.apply === "function") fn = function (payload) { return cart.coupon.apply(payload); };
+    else if (cart && cart.coupon && typeof cart.coupon.set === "function") fn = function (payload) { return cart.coupon.set(payload); };
+    else if (cart && typeof cart.setCoupon === "function") fn = function (payload) { return cart.setCoupon(payload); };
+    else if (window.salla && typeof window.salla.applyCoupon === "function") fn = function (payload) { return window.salla.applyCoupon(payload); };
+    else if (window.salla && window.salla.coupon && typeof window.salla.coupon.apply === "function") fn = function (payload) { return window.salla.coupon.apply(payload); };
 
-    if (!fns.length) return false;
+    if (!fn) return false;
 
-    var payloads = [c, { code: c }, { coupon_code: c }, { couponCode: c }, { coupon: c }];
-    function scoreErr(st, msg) {
-      var s = Number(st);
-      var m = String(msg || "");
-      var ml = m.toLowerCase();
-      var invalid =
-        m.indexOf("غير صحيح") !== -1 ||
-        m.indexOf("منتهي") !== -1 ||
-        ml.indexOf("expired") !== -1 ||
-        ml.indexOf("invalid") !== -1 ||
-        ml.indexOf("not valid") !== -1;
-      var ineligible =
-        m.indexOf("لا يشمل") !== -1 ||
-        m.indexOf("لا ينطبق") !== -1 ||
-        ml.indexOf("coupon") !== -1 ||
-        ml.indexOf("eligible") !== -1 ||
-        ml.indexOf("not applicable") !== -1 ||
-        ml.indexOf("not eligible") !== -1;
-      if (s === 400 && invalid) return 100;
-      if (s === 400 && ineligible) return 90;
-      if (s === 429) return 80;
-      if (s === 410 || s === 401 || s === 403 || s === 404) return 70;
-      if (s >= 500 && s < 600) return 60;
-      if (s === 400) return 50;
-      if (m === "timeout") return 40;
-      return 10;
-    }
-    function isHardInvalid400(st, msg) {
-      var s = Number(st);
-      if (s !== 400) return false;
-      var m = String(msg || "");
-      var ml = m.toLowerCase();
-      return (
-        m.indexOf("غير صحيح") !== -1 ||
-        m.indexOf("منتهي") !== -1 ||
-        ml.indexOf("expired") !== -1 ||
-        ml.indexOf("invalid") !== -1 ||
-        ml.indexOf("not valid") !== -1
-      );
-    }
-    var bestScore = -1;
-    var bestSt = null;
-    var bestMsg = "";
-    for (var fi = 0; fi < fns.length; fi += 1) {
-      var fn = fns[fi];
-      for (var pi = 0; pi < payloads.length; pi += 1) {
-        var payload = payloads[pi];
-        try {
-          var res = await withTimeout(Promise.resolve(fn(payload)), 12_000);
-          if (res && typeof res === "object") {
-            var ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
-            if (ok === false) {
-              var m = String(res.message || res.error || res.title || "").trim();
-              var e0 = new Error(m || "coupon_apply_failed");
-              e0.details = res;
-              throw e0;
-            }
-          }
-          try {
-            g.BundleApp._lastCouponApplyStatus = null;
-            g.BundleApp._lastCouponApplyMessage = "";
-          } catch (x0) {}
-          return true;
-        } catch (eTry) {
-          var stTry = extractHttpStatus(eTry);
-          var msgTry = extractHttpMessage(eTry);
-          var sc = scoreErr(stTry, msgTry);
-          if (sc > bestScore) {
-            bestScore = sc;
-            bestSt = stTry;
-            bestMsg = String(msgTry || "");
-            try {
-              g.BundleApp._lastCouponApplyStatus = bestSt;
-              g.BundleApp._lastCouponApplyMessage = String(bestMsg || "");
-            } catch (x1) {}
-          }
-          markStoreClosed({ status: stTry, message: msgTry });
-          if (storeClosedNow()) return false;
-          if (Number(stTry) === 429) return false;
-          if (isHardInvalid400(stTry, msgTry)) return false;
-        }
+    function isFailureResponse(res) {
+      try {
+        if (!res || typeof res !== "object") return false;
+        const ok = res.ok != null ? Boolean(res.ok) : res.success != null ? Boolean(res.success) : null;
+        return ok === false;
+      } catch (e) {
+        return false;
       }
     }
-    if (bestScore >= 0) {
-      var eBest = new Error(bestMsg || "coupon_apply_failed");
-      eBest.statusCode = bestSt;
-      throw eBest;
+
+    function responseError(res) {
+      const m = String((res && (res.message || res.error || res.title)) || "").trim();
+      const e0 = new Error(m || "coupon_apply_failed");
+      e0.details = res;
+      return e0;
     }
-    return false;
+
+    function looksLikeBadPayload(err) {
+      try {
+        const st = extractHttpStatus(err);
+        if (Number(st) !== 400) return false;
+        const msg = extractHttpMessage(err);
+        const m = String(msg || "").toLowerCase();
+        if (m.indexOf("payload") !== -1) return true;
+        if (m.indexOf("request") !== -1) return true;
+        if (m.indexOf("invalid") !== -1) return true;
+        if (m.indexOf("غير صالح") !== -1) return true;
+        if (m.indexOf("not valid") !== -1) return true;
+        return true;
+      } catch (e) {
+        return true;
+      }
+    }
+
+    const payloads = [c, { code: c }, { coupon_code: c }, { couponCode: c }, { coupon: c }];
+    let lastErr = null;
+    for (let i = 0; i < payloads.length; i++) {
+      try {
+        const res = await withTimeout(Promise.resolve(fn(payloads[i])), 8_000);
+        if (isFailureResponse(res)) throw responseError(res);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        const msg = extractHttpMessage(e);
+        if (msg && String(msg).indexOf("timeout") !== -1) throw e;
+        if (i < payloads.length - 1 && looksLikeBadPayload(e)) continue;
+        throw e;
+      }
+    }
+    if (lastErr) throw lastErr;
+
+    try {
+      g.BundleApp._lastCouponApplyStatus = null;
+      g.BundleApp._lastCouponApplyMessage = "";
+    } catch (x0) {}
+    return true;
   } catch (e) {
     const st = extractHttpStatus(e);
     const msg = extractHttpMessage(e);
