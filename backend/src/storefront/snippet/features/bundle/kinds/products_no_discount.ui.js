@@ -80,7 +80,7 @@ function renderBundleCard_products_no_discount(b) {
   html += "</div>";
   html += "</div>";
 
-  html += '<div class="bundle-app-kind-hint">' + escHtml(req ? "اختر منتج واحد على الأقل" : "اختار المنتجات اللي عايزها") + "</div>";
+  html += '<div class="bundle-app-kind-hint">' + escHtml(req ? "اختر منتج واحد على الأقل" : "اختار المنتجات اللي اللي عجباك يا زميلي") + "</div>";
 
   if (itemsText) html += '<div class="bundle-app-items">' + escHtml(itemsText) + "</div>";
 
