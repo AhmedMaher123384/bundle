@@ -391,8 +391,9 @@ function renderProductBanners(bundles) {
         if (!bid) return;
         const card = cardById[bid];
         if (!card) return;
+        const kind = String((bundle && bundle.kind) || "").trim();
         const showTiers = !(bundle && bundle.showTiers === false);
-        const hasTiers = showTiers && bundle && bundle.offer && Array.isArray(bundle.offer.tiers) && bundle.offer.tiers.length;
+        const hasTiers = kind === "quantity_discount" && showTiers && bundle && bundle.offer && Array.isArray(bundle.offer.tiers) && bundle.offer.tiers.length;
         if (hasTiers) ensureVariantPickersForTierCard(card, bundle);
         else ensureVariantPickersForTraditionalCard(card, bundle);
       } catch (e) {}

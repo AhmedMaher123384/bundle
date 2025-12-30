@@ -45,7 +45,7 @@ function renderBundleCard_products_discount(b) {
     }
   }
 
-  let btnLabel = String((b && b.cta) || "أضف الباقة");
+  let btnLabel = String((b && b.cta) || "أضف المنتجات");
 
   const cardStyle = "background:" + escHtml(color) + ";color:" + escHtml(textColor) + ";";
   let btnStyle = "";
@@ -67,7 +67,7 @@ function renderBundleCard_products_discount(b) {
     escHtml(bid) +
     '" data-kind="products_discount">';
 
-  html += '<div class="bundle-app-kind-chip">خصم منتجات</div>';
+  html += '<div class="bundle-app-kind-chip">تجميعة منتجات</div>';
 
   html += '<div class="bundle-app-row">';
   html += '<div class="bundle-app-choice">';
@@ -82,7 +82,7 @@ function renderBundleCard_products_discount(b) {
   html += "</div>";
   html += "</div>";
 
-  html += '<div class="bundle-app-kind-hint">' + escHtml(req ? "اختر منتج واحد على الأقل" : "اختار المنتجات اللي عايزها") + "</div>";
+  html += '<div class="bundle-app-kind-hint">' + escHtml(req ? "اختر منتج واحد على الأقل" : "اختار المنتجات اللي اللي عجباك يا زميلي") + "</div>";
 
   if (itemsText) html += '<div class="bundle-app-items">' + escHtml(itemsText) + "</div>";
 
@@ -105,34 +105,7 @@ function renderBundleCard_products_discount(b) {
             : !req;
 
       const name1 = String(it1.name || "").trim() || pid1 || v1;
-      const qty1 = Math.max(1, Math.floor(Number(it1.quantity || 1)));
       const img1 = String(it1.imageUrl || "").trim();
-
-      let attrsText1 = "";
-      const attrs1 = it1.attributes;
-      if (attrs1 && typeof attrs1 === "object" && !Array.isArray(attrs1)) {
-        const parts1 = [];
-        for (const k1 in attrs1) {
-          if (!Object.prototype.hasOwnProperty.call(attrs1, k1)) continue;
-          const kk1 = String(k1 || "").trim();
-          const vv1 = attrs1[k1];
-          let vs1 = "";
-          if (Array.isArray(vv1)) {
-            const xs1 = vv1.map((x) => String(x || "").trim()).filter(Boolean);
-            vs1 = xs1.join(" / ");
-          } else if (vv1 != null && typeof vv1 === "object") {
-            const cand1 = String(vv1.value || vv1.name || vv1.label || "").trim();
-            vs1 = cand1 || String(vv1 || "").trim();
-          } else {
-            vs1 = String(vv1 == null ? "" : vv1).trim();
-          }
-          if (!kk1 || !vs1) continue;
-          parts1.push(kk1 + ": " + vs1);
-        }
-        attrsText1 = parts1.join(" • ");
-      }
-
-      const attrsLine1 = "الكمية: " + fmtNum(qty1) + (attrsText1 ? " • " + attrsText1 : "");
 
       html +=
         '<div class="bundle-app-product bundle-app-product-item" data-item-index="' +
@@ -160,9 +133,7 @@ function renderBundleCard_products_discount(b) {
         '<div class="bundle-app-product__checkmark"></div>' +
         "</div>" +
         "</div>" +
-        '<div class="bundle-app-product__attrs">' +
-        escHtml(attrsLine1) +
-        "</div>" +
+        "" +
         '<div class="bundle-app-product-variants" data-bundle-id="' +
         escHtml(bid) +
         '" data-item-index="' +
