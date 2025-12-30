@@ -419,15 +419,6 @@ function renderProductBanners(bundles) {
     html += labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "";
     html += "</div>";
     html += "</div>";
-    html +=
-      '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
-      escHtml(bid) +
-      '" ' +
-      (applying ? "disabled" : "") +
-      (btnStyle ? ' style="' + btnStyle + '"' : "") +
-      ">" +
-      escHtml(btnLabel) +
-      "</button>";
     html += "</div>";
 
     if (itemsText) html += '<div class="bundle-app-items">' + escHtml(itemsText) + "</div>";
@@ -507,6 +498,11 @@ function renderProductBanners(bundles) {
           '<div class="bundle-app-product__attrs">' +
           escHtml(attrsLine1) +
           "</div>" +
+          '<div class="bundle-app-product-variants" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          escHtml(i1) +
+          '"></div>' +
           "</div>" +
           "</div>";
       }
@@ -517,6 +513,14 @@ function renderProductBanners(bundles) {
       (priceText ? '<div class="bundle-app-price">' + escHtml(priceText) + "</div>" : "") +
       (tiersHtml ? '<div class="bundle-app-tiers">' + tiersHtml + "</div>" : "") +
       (msg ? '<div class="bundle-app-msg">' + escHtml(msg) + "</div>" : "") +
+      '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
+      escHtml(bid) +
+      '" ' +
+      (applying ? "disabled" : "") +
+      (btnStyle ? ' style="' + btnStyle + ';width:100%;margin-top:12px"' : ' style="width:100%;margin-top:12px"') +
+      ">" +
+      escHtml(btnLabel) +
+      "</button>" +
       "</div>";
   }
 
@@ -715,7 +719,18 @@ function renderProductBanners(bundles) {
     };
   }
 
-  void 0;
+  if (selectedBundleId) {
+    const bid = String(selectedBundleId || "").trim();
+    if (bid) {
+      const selCard = root.querySelector('.bundle-app-card[data-bundle-id="' + bid + '"]');
+      const selBundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
+      if (selCard && selBundle) {
+        try {
+          ensureVariantPickersForTraditionalCard(selCard, selBundle);
+        } catch (e) {}
+      }
+    }
+  }
 }
 
 async function ensureVariantPickersForTraditionalCard(card, bundle) {
