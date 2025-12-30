@@ -25,7 +25,6 @@ module.exports = function mountBundle(context) {
 
   parts.push(buildStylesJs({ cssBase, cssPickers, cssTraditional }));
   parts.push('try{if(typeof ensureStyles==="function")ensureStyles()}catch(e){}');
-  parts.push('try{if(typeof ensureTraditionalStyles==="function")ensureTraditionalStyles()}catch(e){}');
 
   for (let i = 0; i < bundleLogicParts.length; i += 1) parts.push(bundleLogicParts[i]);
 

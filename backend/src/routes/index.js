@@ -209,6 +209,8 @@ function createApiRouter(config) {
           }
         }
 
+        const resolvedVariantId = String(snap?.variantId || "").trim();
+        const finalVariantId = isProductRef && resolvedVariantId ? resolvedVariantId : variantId;
         const productId = String(snap?.productId || "").trim() || (isProductRef ? (refProductId || null) : null);
         const imageUrl = snap?.imageUrl ? String(snap.imageUrl).trim() || null : null;
         const price = snap?.price != null ? Number(snap.price) : null;
@@ -216,7 +218,7 @@ function createApiRouter(config) {
         const attributes =
           snap?.attributes && typeof snap.attributes === "object" && !Array.isArray(snap.attributes) ? snap.attributes : null;
         return {
-          variantId,
+          variantId: finalVariantId,
           productId,
           quantity,
           group: String(c?.group || "").trim() || null,

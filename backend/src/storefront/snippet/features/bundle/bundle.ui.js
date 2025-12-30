@@ -1,66 +1,5 @@
 module.exports = [
   `
-function openPickerModal(titleHtml, bodyHtml) {
-  let resolver = null;
-  const wait = new Promise((r) => {
-    resolver = r;
-  });
-
-  const overlay = document.createElement("div");
-  overlay.id = "bundle-app-modal";
-  overlay.style.position = "fixed";
-  overlay.style.inset = "0";
-  overlay.style.background = "rgba(0,0,0,.45)";
-  overlay.style.zIndex = "100000";
-  overlay.style.display = "flex";
-  overlay.style.alignItems = "center";
-  overlay.style.justifyContent = "center";
-  overlay.style.padding = "16px";
-
-  const card = document.createElement("div");
-  card.style.width = "min(520px,100%)";
-  card.style.maxHeight = "80vh";
-  card.style.overflow = "auto";
-  card.style.background = "#fff";
-  card.style.borderRadius = "14px";
-  card.style.boxShadow = "0 12px 40px rgba(0,0,0,.25)";
-  card.style.padding = "12px";
-  card.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
-    '<div style="font-weight:900;font-size:14px">' +
-    titleHtml +
-    "</div>" +
-    '<button type="button" data-action="close" style="border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer">×</button>' +
-    "</div>" +
-    '<div style="margin-top:10px">' +
-    bodyHtml +
-    "</div>";
-
-  overlay.appendChild(card);
-
-  const close = (val) => {
-    try {
-      overlay.remove();
-    } catch (e) {}
-    if (resolver) {
-      const r = resolver;
-      resolver = null;
-      r(val);
-    }
-  };
-
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close(null);
-  });
-
-  const closeBtn = card.querySelector('button[data-action="close"]');
-  if (closeBtn) closeBtn.onclick = () => close(null);
-
-  document.body.appendChild(overlay);
-  return { overlay, card, close, wait };
-}
-`,
-  `
 async function resolveProductRefItems(items, bundleId) {
   const bid = String(bundleId || "").trim();
   const pre =
@@ -121,7 +60,6 @@ async function resolveProductRefItems(items, bundleId) {
   }
 
   const selectedByKey = {};
-  const pending = [];
 
   for (const unit of units) {
     const vlist = (varsByPid[unit.productId] || []).filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
@@ -133,90 +71,11 @@ async function resolveProductRefItems(items, bundleId) {
         continue;
       }
     }
-    if (vlist.length === 1) {
-      selectedByKey[unit.key] = String(vlist[0].variantId || "").trim();
+    if (vlist.length) {
+      selectedByKey[unit.key] = String((vlist[0] && vlist[0].variantId) || "").trim() || ("product:" + String(unit.productId));
     } else {
-      pending.push(unit);
+      selectedByKey[unit.key] = "product:" + String(unit.productId);
     }
-  }
-
-  if (pending.length) {
-    let body = "";
-    for (const un of pending) {
-      const opts = (varsByPid[un.productId] || []).filter((y) => y && y.isActive === true && String(y.variantId || "").trim());
-      if (!opts.length) continue;
-      body +=
-        '<div style="margin-bottom:16px">' +
-        '<div style="margin-bottom:6px;font-weight:800">' +
-        escHtml("اختر فاريانت للمنتج") +
-        "</div>" +
-        '<div style="display:flex;flex-wrap:wrap;gap:8px" data-unit-key-row="' +
-        escHtml(un.key) +
-        '">';
-
-      for (const o of opts) {
-        const vid = String((o && o.variantId) || "").trim();
-        if (!vid) continue;
-        const on = String(selectedByKey[un.key] || "").trim() === vid;
-        body +=
-          '<button type="button" data-action="pick-variant" data-unit-key="' +
-          escHtml(un.key) +
-          '" data-variant-id="' +
-          escHtml(vid) +
-          '" class="bundle-app-variant-btn' +
-          (on ? " is-selected" : "") +
-          '" aria-pressed="' +
-          (on ? "true" : "false") +
-          '" style="border:1px solid rgba(2,6,23,.15);background:#fff;color:#0b1220">' +
-          (typeof variantOptionInnerHtml === "function" ? variantOptionInnerHtml(o) : "<span>" + escHtml(variantLabel(o)) + "</span>") +
-          "</button>";
-      }
-
-      body += "</div></div>";
-    }
-
-    const modal = await openPickerModal("اختيار الفاريانتات", body);
-    if (!modal) return null;
-
-    modal.card.addEventListener("click", (e) => {
-      let t = e && e.target;
-      while (t && t !== modal.card) {
-        if (t && t.getAttribute && t.getAttribute("data-action") === "pick-variant") break;
-        t = t.parentNode;
-      }
-      if (!t || t === modal.card) return;
-      e.preventDefault();
-
-      const key = String(t.getAttribute("data-unit-key") || "").trim();
-      const val = String(t.getAttribute("data-variant-id") || "").trim();
-      if (!key || !val) return;
-
-      selectedByKey[key] = val;
-      const selMap = getBundleVariantSelectionMap(bid);
-      if (selMap) selMap[key] = val;
-
-      let row = t;
-      while (row && row !== modal.card) {
-        if (row && row.getAttribute && row.getAttribute("data-unit-key-row")) break;
-        row = row.parentNode;
-      }
-      if (row && row !== modal.card) {
-        const btns = row.querySelectorAll('button[data-action="pick-variant"][data-variant-id]');
-        for (const b of btns) {
-          const vid = String(b.getAttribute("data-variant-id") || "").trim();
-          const on = Boolean(vid && vid === val);
-          if (on) {
-            b.classList.add("is-selected");
-            b.setAttribute("aria-pressed", "true");
-          } else {
-            b.classList.remove("is-selected");
-            b.setAttribute("aria-pressed", "false");
-          }
-        }
-      }
-    });
-
-    await modal.wait;
   }
 
   const out = fixed.slice();
@@ -456,7 +315,6 @@ async function ensureVariantPickersForCard(card, bundle) {
 
 function renderProductBanners(bundles) {
   ensureStyles();
-  ensureTraditionalStyles();
 
   const id = "bundle-app-banner";
   let root = document.getElementById(id);
@@ -549,27 +407,30 @@ function renderProductBanners(bundles) {
     else labelStyle += "background:rgba(255,255,255,.18);";
     if (labelText) labelStyle += "color:" + escHtml(labelText) + ";";
 
+    html += '<div class="' + cls + '" style="' + cardStyle + '" data-bundle-id="' + escHtml(bid) + '">';
+    html += '<div class="bundle-app-row">';
+    html += '<div class="bundle-app-choice">';
+    html += '<div class="bundle-app-content">';
+    html += '<div class="bundle-app-head">';
+    html += '<div class="bundle-app-title">' + escHtml(title) + "</div>";
+    html += label ? '<div class="bundle-app-label" style="' + labelStyle + '">' + escHtml(label) + "</div>" : "";
+    html += "</div>";
+    html += subtitle ? '<div class="bundle-app-subtitle">' + escHtml(subtitle) + "</div>" : "";
+    html += labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "";
+    html += "</div>";
+    html += "</div>";
     html +=
-      '<div class="' +
-      cls +
-      '" style="' +
-      cardStyle +
-      '" data-bundle-id="' +
+      '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
       escHtml(bid) +
-      '">' +
-      '<div class="bundle-app-traditional">' +
-      '<div class="bundle-app-header">' +
-      '<div class="bundle-app-title-section">' +
-      '<div class="bundle-app-title">' +
-      escHtml(title) +
-      "</div>" +
-      (subtitle ? '<div class="bundle-app-subtitle">' + escHtml(subtitle) + "</div>" : "") +
-      (labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "") +
-      "</div>" +
-      (label ? '<div class="bundle-app-label" style="' + labelStyle + '">' + escHtml(label) + "</div>" : "") +
-      "</div>" +
-      (itemsText ? '<div class="bundle-app-items-summary">' + escHtml(itemsText) + "</div>" : "") +
-      '<div class="bundle-app-products-section">';
+      '" ' +
+      (applying ? "disabled" : "") +
+      (btnStyle ? ' style="' + btnStyle + '"' : "") +
+      ">" +
+      escHtml(btnLabel) +
+      "</button>";
+    html += "</div>";
+
+    if (itemsText) html += '<div class="bundle-app-items">' + escHtml(itemsText) + "</div>";
 
     if (showItems && items.length) {
       html += '<div class="bundle-app-products">';
@@ -591,6 +452,7 @@ function renderProductBanners(bundles) {
 
         const name1 = String(it1.name || "").trim() || pid1 || v1;
         const qty1 = Math.max(1, Math.floor(Number(it1.quantity || 1)));
+        const img1 = String(it1.imageUrl || "").trim();
 
         let attrsText1 = "";
         const attrs1 = it1.attributes;
@@ -616,16 +478,22 @@ function renderProductBanners(bundles) {
           attrsText1 = parts1.join(" • ");
         }
 
-        const itemCls = "bundle-app-product-item" + (on1 ? " bundle-app-product-item--selected" : "");
+        const attrsLine1 = "الكمية: " + fmtNum(qty1) + (attrsText1 ? " • " + attrsText1 : "");
+
         html +=
-          '<div class="' +
-          itemCls +
-          '" data-item-index="' +
+          '<div class="bundle-app-product bundle-app-product-item" data-item-index="' +
           escHtml(i1) +
           '">' +
-          '<div class="bundle-app-product-header">' +
-          '<div class="bundle-app-product-checkwrap">' +
-          '<input class="bundle-app-product-check" type="checkbox" data-bundle-id="' +
+          '<div class="bundle-app-product__media">' +
+          (img1 ? '<img class="bundle-app-product__img" src="' + escHtml(img1) + '" alt="" />' : "") +
+          "</div>" +
+          '<div class="bundle-app-product__body">' +
+          '<div class="bundle-app-product__top">' +
+          '<div class="bundle-app-product__name">' +
+          escHtml(name1) +
+          "</div>" +
+          '<div class="bundle-app-product__checkwrap bundle-app-product-checkwrap">' +
+          '<input class="bundle-app-product__check bundle-app-product-check" type="checkbox" data-bundle-id="' +
           escHtml(bid) +
           '" data-item-index="' +
           escHtml(i1) +
@@ -633,45 +501,22 @@ function renderProductBanners(bundles) {
           (on1 ? " checked" : "") +
           (isBase1 ? " disabled" : "") +
           "/>" +
-          '<div class="bundle-app-checkmark"></div>' +
-          "</div>" +
-          '<div class="bundle-app-product-info">' +
-          '<div class="bundle-app-product-name">' +
-          escHtml(name1) +
-          "</div>" +
-          '<div class="bundle-app-product-qty">' +
-          escHtml("الكمية: " + fmtNum(qty1)) +
-          "</div>" +
-          (attrsText1 ? '<div class="bundle-app-product-qty">' + escHtml(attrsText1) + "</div>" : "") +
+          '<div class="bundle-app-product__checkmark"></div>' +
           "</div>" +
           "</div>" +
-          '<div class="bundle-app-product-variants" data-bundle-id="' +
-          escHtml(bid) +
-          '" data-item-index="' +
-          escHtml(i1) +
-          '"></div>' +
+          '<div class="bundle-app-product__attrs">' +
+          escHtml(attrsLine1) +
+          "</div>" +
+          "</div>" +
           "</div>";
       }
       html += "</div>";
     }
 
     html +=
-      "</div>" +
       (priceText ? '<div class="bundle-app-price">' + escHtml(priceText) + "</div>" : "") +
       (tiersHtml ? '<div class="bundle-app-tiers">' + tiersHtml + "</div>" : "") +
       (msg ? '<div class="bundle-app-msg">' + escHtml(msg) + "</div>" : "") +
-      '<div class="bundle-app-footer">' +
-      '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
-      escHtml(bid) +
-      '" ' +
-      (applying ? "disabled" : "") +
-      (btnStyle ? ' style="' + btnStyle + '"' : "") +
-      ">" +
-      escHtml(btnLabel) +
-      "</button>" +
-      "</div>" +
-      "</div>" +
-      "</div>" +
       "</div>";
   }
 
@@ -870,13 +715,7 @@ function renderProductBanners(bundles) {
     };
   }
 
-  if (selectedBundleId) {
-    const selCard = Array.from(root.querySelectorAll(".bundle-app-card[data-bundle-id]")).find(
-      (c) => String(c.getAttribute("data-bundle-id") || "") === String(selectedBundleId || "")
-    );
-    const selBundle = arr.find((x) => String((x && x.id) || "") === String(selectedBundleId || "")) || null;
-    if (selCard && selBundle) ensureVariantPickersForTraditionalCard(selCard, selBundle);
-  }
+  void 0;
 }
 
 async function ensureVariantPickersForTraditionalCard(card, bundle) {

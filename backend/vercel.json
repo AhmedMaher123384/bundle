@@ -4,7 +4,7 @@
     {
       "src": "api/index.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["src/storefront/snippet/styles/*.css", "src/storefront/snippet/features/bundle/bundle-traditional.css"] }
+      "config": { "includeFiles": ["src/storefront/snippet/styles/*.css"] }
     }
   ],
   "routes": [
