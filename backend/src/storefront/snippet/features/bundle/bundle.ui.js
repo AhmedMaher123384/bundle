@@ -571,49 +571,7 @@ function renderProductBanners(bundles) {
       (itemsText ? '<div class="bundle-app-items-summary">' + escHtml(itemsText) + "</div>" : "") +
       '<div class="bundle-app-products-section">';
 
-    if (items && items.length) {
-      for (let j = 0; j < items.length; j += 1) {
-        const item = items[j] || {};
-        const isBase = Boolean(item.isBase);
-        let pid = String(item.productId || "").trim();
-        const vid = String(item.variantId || "").trim();
-        if (!pid && vid && vid.indexOf("product:") === 0) pid = String(vid).slice("product:".length).trim();
-        const itemChecked = isBase ? true : hasItemSel ? itemSel && itemSel[String(j)] === true : includeSize ? include[pid] === true : !req;
-        html +=
-          '<div class="bundle-app-product-item' +
-          (itemChecked ? " bundle-app-product-item--selected" : "") +
-          '" data-item-index="' +
-          String(j) +
-          '">' +
-          '<div class="bundle-app-product-header">' +
-          '<label class="bundle-app-product-checkwrap">' +
-          '<input class="bundle-app-product-check" type="checkbox" data-bundle-id="' +
-          escHtml(bid) +
-          '" data-item-index="' +
-          String(j) +
-          '" ' +
-          (itemChecked ? "checked" : "") +
-          (isBase ? " disabled" : "") +
-          " />" +
-          '<span class="bundle-app-checkmark"></span>' +
-          "</label>" +
-          '<div class="bundle-app-product-info">' +
-          '<div class="bundle-app-product-name">منتج ' +
-          String(j + 1) +
-          "</div>" +
-          '<div class="bundle-app-product-qty">الكمية: ' +
-          fmtNum(item.quantity || 1) +
-          "</div>" +
-          "</div>" +
-          "</div>" +
-          '<div class="bundle-app-product-variants" data-bundle-id="' +
-          escHtml(bid) +
-          '" data-item-index="' +
-          String(j) +
-          '"></div>' +
-          "</div>";
-      }
-    }
+    
 
     html +=
       "</div>" +
