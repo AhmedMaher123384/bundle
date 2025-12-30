@@ -481,6 +481,19 @@ function markTriggerVariantInCart(variantId) {
   } catch (e) {}
 }
 
+function scheduleUpsellRefresh() {
+  try {
+    if (g && g.BundleApp) g.BundleApp._postAddRefreshAt = Date.now();
+  } catch (e0) {}
+  try {
+    setTimeout(function () {
+      try {
+        if (typeof refreshProduct === "function") refreshProduct();
+      } catch (e1) {}
+    }, 350);
+  } catch (e2) {}
+}
+
 function loadTriggerMark(key) {
   try {
     const raw = localStorage.getItem(String(key || ""));
@@ -553,6 +566,7 @@ function ensureCartHooks() {
         const idNum = Number(idStr);
         if (Number.isFinite(idNum) && idNum > 0) markTriggerInCart(String(idNum));
         if (idStr) markTriggerVariantInCart(idStr);
+        scheduleUpsellRefresh();
       } catch (eM) {}
     });
 
@@ -561,9 +575,120 @@ function ensureCartHooks() {
         const pid = String(productId || "").trim();
         const pidNum = Number(pid);
         if (Number.isFinite(pidNum) && pidNum > 0) markTriggerInCart(String(pidNum));
+        scheduleUpsellRefresh();
       } catch (eM2) {}
     });
   } catch (e2) {}
+}
+
+function ensureCartSignals() {
+  try {
+    if (g && g.BundleApp && g.BundleApp._bundleCartSignalsHooked) return;
+  } catch (e0) {}
+  try {
+    if (g && g.BundleApp) g.BundleApp._bundleCartSignalsHooked = true;
+  } catch (e1) {}
+
+  function markCurrentAsInCart() {
+    try {
+      const pid = typeof findProductId === "function" ? String(findProductId() || "").trim() : "";
+      const vid = typeof findVariantId === "function" ? String(findVariantId() || "").trim() : "";
+      if (!pid && !vid) return;
+      if (pid) markTriggerInCart(pid);
+      if (vid) markTriggerVariantInCart(vid);
+      scheduleUpsellRefresh();
+    } catch (e) {}
+  }
+
+  function looksLikeAddToCartButton(el) {
+    try {
+      if (!el || !el.getAttribute) return false;
+      const da = String(el.getAttribute("data-action") || "").toLowerCase();
+      const id = String(el.getAttribute("id") || "").toLowerCase();
+      const cls = String(el.getAttribute("class") || "").toLowerCase();
+      const name = String(el.getAttribute("name") || "").toLowerCase();
+      const aria = String(el.getAttribute("aria-label") || "").toLowerCase();
+      const title = String(el.getAttribute("title") || "").toLowerCase();
+      const text = String((el.textContent || "")).toLowerCase();
+
+      const s = (da + " " + id + " " + cls + " " + name + " " + aria + " " + title + " " + text).trim();
+
+      if (s.indexOf("wishlist") !== -1 || s.indexOf("favorite") !== -1 || s.indexOf("favourite") !== -1) return false;
+      if (s.indexOf("مفض") !== -1) return false;
+
+      if (cls && (cls.indexOf("add-to-cart") !== -1 || cls.indexOf("addtocart") !== -1)) return true;
+
+      const hasAdd =
+        s.indexOf("add") !== -1 ||
+        s.indexOf("buy") !== -1 ||
+        s.indexOf("purchase") !== -1 ||
+        s.indexOf("quickadd") !== -1 ||
+        s.indexOf("أضف") !== -1 ||
+        s.indexOf("اضف") !== -1 ||
+        s.indexOf("اشتر") !== -1;
+      const hasCart = s.indexOf("cart") !== -1 || s.indexOf("basket") !== -1 || s.indexOf("bag") !== -1 || s.indexOf("checkout") !== -1;
+      const hasCartAr = s.indexOf("سلة") !== -1 || s.indexOf("سله") !== -1 || s.indexOf("الدفع") !== -1;
+
+      if (hasAdd && (hasCart || hasCartAr)) return true;
+
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  try {
+    document.addEventListener(
+      "submit",
+      function (e) {
+        try {
+          const form = e && e.target && e.target.tagName ? e.target : null;
+          if (!form) return;
+          const action = String((form.getAttribute && form.getAttribute("action")) || "").toLowerCase();
+          if (action && action.indexOf("cart") === -1 && action.indexOf("checkout") === -1) return;
+          markCurrentAsInCart();
+        } catch (e2) {}
+      },
+      true
+    );
+  } catch (eSub) {}
+
+  try {
+    document.addEventListener(
+      "click",
+      function (e) {
+        try {
+          let t = e && e.target ? e.target : null;
+          let steps = 0;
+          while (t && steps < 6) {
+            if (t.tagName) {
+              const tag = String(t.tagName || "").toLowerCase();
+              if (tag === "button" || tag === "a" || tag === "input") {
+                if (looksLikeAddToCartButton(t)) {
+                  markCurrentAsInCart();
+                  return;
+                }
+                if (tag === "button") {
+                  const type = String((t.getAttribute && t.getAttribute("type")) || "").toLowerCase();
+                  if (type === "submit") {
+                    const form = t.form || null;
+                    const action = String((form && form.getAttribute && form.getAttribute("action")) || "").toLowerCase();
+                    if (action && (action.indexOf("cart") !== -1 || action.indexOf("checkout") !== -1)) {
+                      markCurrentAsInCart();
+                      return;
+                    }
+                  }
+                }
+              }
+            }
+            t = t.parentNode;
+            steps += 1;
+          }
+        } catch (e3) {}
+      },
+      true
+    );
+  } catch (eClk) {}
 }
 `,
   `
@@ -2200,6 +2325,9 @@ async function refreshProduct() {
     try {
       ensureCartHooks();
     } catch (eHook) {}
+    try {
+      ensureCartSignals();
+    } catch (eSig) {}
 
     const variantId = findVariantId();
     const productId = findProductId();
