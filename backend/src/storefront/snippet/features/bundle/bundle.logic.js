@@ -1969,6 +1969,67 @@ async function refreshProduct() {
             (pm.price > 0 && nm.price < Math.floor(pm.price * 0.5));
 
           if (degraded) return;
+
+          try {
+            function pickItemsArray(b0) {
+              if (b0 && Array.isArray(b0.components) && b0.components.length) return b0.components;
+              if (b0 && Array.isArray(b0.bundleItems) && b0.bundleItems.length) return b0.bundleItems;
+              return null;
+            }
+
+            function itemKey(c0) {
+              const v0 = String((c0 && c0.variantId) || "").trim();
+              const p0 = String((c0 && c0.productId) || "").trim();
+              const b0 = c0 && c0.isBase ? "1" : "0";
+              const q0 = c0 && c0.quantity != null ? String(c0.quantity) : "";
+              return v0 + "|" + p0 + "|" + b0 + "|" + q0;
+            }
+
+            function mergeComponentMeta(prevBundle0, nextBundle0) {
+              if (!prevBundle0 || !nextBundle0) return;
+              const prevItems = pickItemsArray(prevBundle0);
+              const nextItems = pickItemsArray(nextBundle0);
+              if (!prevItems || !nextItems) return;
+
+              const prevByKey = {};
+              for (let pi = 0; pi < prevItems.length; pi += 1) {
+                const pc = prevItems[pi] || {};
+                const k = itemKey(pc);
+                if (!k) continue;
+                if (!prevByKey[k]) prevByKey[k] = [];
+                prevByKey[k].push(pc);
+              }
+
+              for (let ni = 0; ni < nextItems.length; ni += 1) {
+                const nc = nextItems[ni] || {};
+                const k = itemKey(nc);
+                if (!k || !prevByKey[k] || !prevByKey[k].length) continue;
+                const pc = prevByKey[k].shift() || null;
+                if (!pc) continue;
+
+                if (!String(nc.name || "").trim() && String(pc.name || "").trim()) nc.name = pc.name;
+                if (!String(nc.imageUrl || "").trim() && String(pc.imageUrl || "").trim()) nc.imageUrl = pc.imageUrl;
+
+                const np = nc.price == null ? null : Number(nc.price);
+                const pp = pc.price == null ? null : Number(pc.price);
+                if ((np == null || !Number.isFinite(np)) && pp != null && Number.isFinite(pp)) nc.price = pc.price;
+
+                if (
+                  (!nc.attributes || typeof nc.attributes !== "object" || Array.isArray(nc.attributes)) &&
+                  pc.attributes &&
+                  typeof pc.attributes === "object" &&
+                  !Array.isArray(pc.attributes)
+                ) {
+                  nc.attributes = pc.attributes;
+                }
+              }
+            }
+
+            for (const idK in nextById) {
+              if (!Object.prototype.hasOwnProperty.call(nextById, idK)) continue;
+              mergeComponentMeta(prevById[idK], nextById[idK]);
+            }
+          } catch (eMerge) {}
         }
       } catch (eMeta) {}
     }

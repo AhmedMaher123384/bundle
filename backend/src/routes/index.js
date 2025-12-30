@@ -378,7 +378,8 @@ function createApiRouter(config) {
         : inferredKind === "post_add_upsell"
           ? "ناس كتير اشتروا كمان"
           : name;
-    const title = rawTitle || (badge ? `${defaultTitle} - وفر ${badge}` : defaultTitle);
+    const canShowSave = inferredKind !== "products_no_discount" && badge;
+    const title = rawTitle || (canShowSave ? `${defaultTitle} - وفر ${badge}` : defaultTitle);
     const subtitle = rawSubtitle || null;
     const label = rawLabel || null;
     const labelSub = rawLabelSub || null;
