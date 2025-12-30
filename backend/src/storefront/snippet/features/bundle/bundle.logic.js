@@ -1412,6 +1412,18 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
       rows.push({ minQty: 1, pricing: pickPricingForQty(bundle, 1) });
     }
 
+    const kind = String((bundle && bundle.kind) || "").trim();
+    if (kind === "quantity_discount") {
+      let hasOne = false;
+      for (let i1 = 0; i1 < rows.length; i1++) {
+        if (Number(rows[i1] && rows[i1].minQty) === 1) {
+          hasOne = true;
+          break;
+        }
+      }
+      if (!hasOne) rows.push({ minQty: 1, pricing: pickPricingForQty(bundle, 1) });
+    }
+
     rows.sort(function (a, b) {
       return a.minQty - b.minQty;
     });
@@ -1423,7 +1435,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
       const o = Number(prc.originalTotal);
       const f = Number(prc.finalTotal);
       const d = Number(prc.discountAmount);
-      const left = "عند " + fmtNum(r.minQty) + " قطع";
+      const left = Number(r.minQty) === 1 ? "قطعة واحدة" : "عند " + fmtNum(r.minQty) + " قطع";
       let right = "";
       if (Number.isFinite(o) && Number.isFinite(f)) {
         right = "قبل " + fmtMoney(o) + " • بعد " + fmtMoney(f);

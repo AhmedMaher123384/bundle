@@ -500,7 +500,9 @@ function renderProductBanners(bundles) {
           '<div class="bundle-app-product__name">' +
           escHtml(name1) +
           "</div>" +
-          '<div class="bundle-app-product__checkwrap bundle-app-product-checkwrap">' +
+          '<div class="bundle-app-product__checkwrap bundle-app-product-checkwrap"' +
+          (isBase1 ? ' style="display:none"' : "") +
+          ">" +
           '<input class="bundle-app-product__check bundle-app-product-check" type="checkbox" data-bundle-id="' +
           escHtml(bid) +
           '" data-item-index="' +

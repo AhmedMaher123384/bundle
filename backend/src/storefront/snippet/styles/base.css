@@ -69,6 +69,7 @@
 
 
 
+
 .bundle-app-announcement{position:sticky;top:0;z-index:100000;box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:center;padding:10px 44px;background:#0f172a;color:#fff;border-bottom:1px solid rgba(255,255,255,.12);text-align:center;border-radius:var(--bundle-app-announcement-radius,0px)}
 .bundle-app-announcement.is-not-sticky{position:relative}
 .bundle-app-announcement.is-not-selectable{user-select:none;-webkit-user-select:none}
