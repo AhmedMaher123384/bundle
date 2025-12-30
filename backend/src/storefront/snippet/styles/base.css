@@ -12,8 +12,13 @@
 .bundle-app-btn{border:0;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:800;cursor:pointer;background:rgba(255,255,255,.18);color:#fff}
 .bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}
 .bundle-app-items{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
-.bundle-app-price{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
-.bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
+.bundle-app-price {
+  margin-top: 12px;
+  font-size: 16px;
+  opacity: 1;
+  line-height: 1.6;
+  font-weight: bold;
+}.bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
 .bundle-app-choice{position:relative;display:flex;gap:10px;align-items:flex-start}
 .bundle-app-radio{position:absolute;opacity:0;pointer-events:none}
 .bundle-app-dot{width:18px;height:18px;border-radius:999px;border:2px solid rgba(255,255,255,.85);box-sizing:border-box;flex:0 0 18px;margin-top:4px;background:transparent}
