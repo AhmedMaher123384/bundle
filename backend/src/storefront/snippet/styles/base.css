@@ -153,3 +153,16 @@
 .bundle-app-variant-swatch.is-image{background-size:cover;background-position:center}
 .bundle-app-variant-text{line-height:1.15}
 @media (max-width:480px){.bundle-app-variant-btn{width:100%;justify-content:flex-start}}
+.bundle-app-card{position:relative}
+.bundle-app-card:before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.12}
+.bundle-app-card[data-kind="quantity_discount"]:before{background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(255,255,255,0))}
+.bundle-app-card[data-kind="products_discount"]:before{background:linear-gradient(135deg,rgba(56,189,248,.35),rgba(255,255,255,0))}
+.bundle-app-card[data-kind="products_no_discount"]:before{background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(0,0,0,0))}
+.bundle-app-card[data-kind="post_add_upsell"]:before{background:linear-gradient(135deg,rgba(250,204,21,.35),rgba(255,255,255,0))}
+.bundle-app-kind-chip{position:absolute;top:10px;left:10px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(15,23,42,.38);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.16);font-size:11px;font-weight:950;line-height:1}
+.bundle-app-kind-hint{margin-top:10px;font-size:12px;font-weight:900;opacity:.95;line-height:1.35}
+.bundle-app-products--quantity{grid-template-columns:1fr}
+.bundle-app-products--products{grid-template-columns:1fr}
+.bundle-app-products--upsell{grid-template-columns:1fr;gap:8px}
+.bundle-app-card[data-kind="post_add_upsell"] .bundle-app-product__media{aspect-ratio:16 / 10}
+.bundle-app-btn--upsell{background:rgba(250,204,21,.9);color:#0b1220}
