@@ -158,6 +158,22 @@ function variantLabel(v) {
   return "—";
 }
 
+function variantTextParts(v) {
+  try {
+    const id = String((v && v.variantId) || "").trim();
+    const name = String((v && v.name) || "").trim();
+    const attrs = stringifyAttrs(v && v.attributes);
+    const price = v && v.price != null ? Number(v.price) : null;
+    const priceText = Number.isFinite(price) && price >= 0 ? fmtMoney(price) : "";
+
+    const title = name || attrs || id || "—";
+    const sub = name && attrs ? attrs : "";
+    return { title: title, sub: sub, price: priceText };
+  } catch (e) {
+    return { title: "—", sub: "", price: "" };
+  }
+}
+
 function normHex(s) {
   try {
     const x = String(s || "").trim();
@@ -203,6 +219,7 @@ function pickVariantSwatch(v) {
 
 function variantOptionInnerHtml(v) {
   const sw = pickVariantSwatch(v);
+  const txt = variantTextParts(v);
   let out = "";
   if (sw && sw.t === "img") {
     const u = escCssUrl(sw.v);
@@ -215,7 +232,11 @@ function variantOptionInnerHtml(v) {
   } else if (sw && sw.t === "hex" && sw.v) {
     out += '<span class="bundle-app-variant-swatch" style="background:' + escHtml(sw.v) + '"></span>';
   }
-  out += '<span class="bundle-app-variant-text">' + escHtml(variantLabel(v)) + "</span>";
+  out += '<span class="bundle-app-variant-text">';
+  out += '<span class="bundle-app-variant-title">' + escHtml(txt.title) + "</span>";
+  if (txt.sub) out += '<span class="bundle-app-variant-sub">' + escHtml(txt.sub) + "</span>";
+  if (txt.price) out += '<span class="bundle-app-variant-price">' + escHtml(txt.price) + "</span>";
+  out += "</span>";
   return out;
 }
 
