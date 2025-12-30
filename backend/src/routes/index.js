@@ -593,6 +593,9 @@ function createApiRouter(config) {
       mountBundle(context);
       mountAnnouncementBanner(context);
       const js = context.parts.join("");
+      res.setHeader("X-BundleApp-Snippet-Path", "/api/storefront/snippet.js");
+      res.setHeader("X-BundleApp-Snippet-Sha256", sha256Hex(js));
+      res.setHeader("X-BundleApp-Snippet-Bytes", String(Buffer.byteLength(js, "utf8")));
       return res.send(js);
     } catch (err) {
       return next(err);
