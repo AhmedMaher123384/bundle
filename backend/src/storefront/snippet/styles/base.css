@@ -13,11 +13,17 @@
 .bundle-app-btn:disabled{opacity:.6;cursor:not-allowed}
 .bundle-app-items{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
 .bundle-app-price {
-  margin-top: 12px;
-  font-size: 16px;
-  opacity: 1;
-  line-height: 1.6;
+  margin-top: 10px;
+  font-size: 14px;
   font-weight: bold;
+  color: #ff5722; /* لون جديد */
+  background-color: #fff3e0; /* خلفية */
+  border: 1px solid #ffccbc; /* إطار خفيف */
+  padding: 6px 10px;
+  border-radius: 6px; /* زوايا مدورة */
+  line-height: 1.5;
+  text-align: center; /* لو تحب النص يكون في النص */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* تأثير ظل خفيف */
 }.bundle-app-msg{margin-top:8px;font-size:12px;opacity:.95;line-height:1.35}
 .bundle-app-choice{position:relative;display:flex;gap:10px;align-items:flex-start}
 .bundle-app-radio{position:absolute;opacity:0;pointer-events:none}
