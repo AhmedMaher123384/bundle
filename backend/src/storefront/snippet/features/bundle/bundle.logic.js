@@ -289,7 +289,6 @@ function bundleVariantSig(bundle) {
 function bundleVariantUnits(bundle) {
   const items = normalizeItems(bundle);
   const units = [];
-  const byPid = {};
   for (let i = 0; i < items.length; i++) {
     const it = items[i] || {};
     const v = String(it.variantId || "").trim();
@@ -298,9 +297,7 @@ function bundleVariantUnits(bundle) {
     if (!pid) continue;
     const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
     for (let u = 0; u < qty; u++) {
-      const cur = Math.max(0, Math.floor(Number(byPid[pid] || 0)));
-      byPid[pid] = cur + 1;
-      units.push({ productId: pid, key: pid + ":" + cur });
+      units.push({ productId: pid, key: pid + ":" + u });
     }
   }
   return units;
@@ -1134,20 +1131,23 @@ function computeQtyItems(bundle, opts) {
     const mode = String((opts && opts.mode) || "apply");
     if (mode === "preview") {
       const out = [];
-      const unitIdxByPid = {};
       for (let j = 0; j < items.length; j++) {
         const it = items[j] || {};
         const vid = String(it.variantId || "").trim();
         if (vid.indexOf("product:") === 0) {
           const ref = String(it.productId || "").trim();
+          let pickedCount = 0;
           const qty2 = Math.max(1, Math.floor(Number(it.quantity || 1)));
           for (let u = 0; u < qty2; u++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[ref] || 0)));
-            unitIdxByPid[ref] = cur + 1;
-            const key = ref + ":" + cur;
+            const key = ref + ":" + u;
             const pv = readTierSelection(sel, qSel, key);
-            if (!pv) continue;
-            out.push({ variantId: pv, productId: ref || null, quantity: 1, isBase: it.isBase });
+            if (pv) pickedCount++;
+          }
+          for (let p = 0; p < pickedCount; p++) {
+            const key2 = ref + ":" + p;
+            const pv2 = readTierSelection(sel, qSel, key2);
+            const useVid = pv2 || vid;
+            out.push({ variantId: useVid, productId: ref || null, quantity: 1, isBase: it.isBase });
           }
         } else if (pickerVisible) {
           const ref = String(it.productId || "").trim();
@@ -1157,9 +1157,7 @@ function computeQtyItems(bundle, opts) {
           } else {
             const counts = {};
             for (let u = 0; u < qty2; u++) {
-              const cur = Math.max(0, Math.floor(Number(unitIdxByPid[ref] || 0)));
-              unitIdxByPid[ref] = cur + 1;
-              const key = ref + ":" + cur;
+              const key = ref + ":" + u;
               const pv = readTierSelection(sel, qSel, key);
               const useVid = pv || vid;
               if (!useVid) continue;
@@ -1179,7 +1177,6 @@ function computeQtyItems(bundle, opts) {
 
     if (!pickerVisible) return items;
     const out = [];
-    const unitIdxByPid = {};
     for (let j = 0; j < items.length; j++) {
       const it = items[j] || {};
       const vid = String(it.variantId || "").trim();
@@ -1191,9 +1188,7 @@ function computeQtyItems(bundle, opts) {
       }
       const counts = {};
       for (let u = 0; u < qty2; u++) {
-        const cur = Math.max(0, Math.floor(Number(unitIdxByPid[ref] || 0)));
-        unitIdxByPid[ref] = cur + 1;
-        const key = ref + ":" + cur;
+        const key = ref + ":" + u;
         const pv = readTierSelection(sel, qSel, key);
         const useVid = pv || vid;
         if (!useVid) continue;
@@ -1257,7 +1252,6 @@ function computeProductsItems(bundle, opts) {
     }
 
     const out = [];
-    const unitIdxByPid = {};
     for (let i2 = 0; i2 < chosen.length; i2 += 1) {
       const it2 = chosen[i2] || {};
       const v = String(it2.variantId || "").trim();
@@ -1269,21 +1263,23 @@ function computeProductsItems(bundle, opts) {
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
+          let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key = pid2 + ":" + cur;
+            const key = pid2 + ":" + u;
             const pv = readTierSelection(sel, tierMinQty, key);
-            if (!pv) continue;
-            out.push({ variantId: pv, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
+            if (pv) pickedCount++;
+          }
+          for (let p = 0; p < pickedCount; p++) {
+            const key2 = pid2 + ":" + p;
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
+            if (!pv2 && settings && settings.variantRequired !== false) continue;
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           let pickedAll = true;
           const parts = [];
           for (let u2 = 0; u2 < qty; u2++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key3 = pid2 + ":" + cur;
+            const key3 = pid2 + ":" + u2;
             const pv3 = readTierSelection(sel, tierMinQty, key3);
             if (!pv3) pickedAll = false;
             parts.push(pv3 || v);
@@ -1298,9 +1294,7 @@ function computeProductsItems(bundle, opts) {
         if (pickerVisible && pid2) {
           const counts = {};
           for (let u = 0; u < qty; u++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key = pid2 + ":" + cur;
+            const key = pid2 + ":" + u;
             const pv = readTierSelection(sel, tierMinQty, key);
             const useVid = pv || v;
             if (!useVid) continue;
@@ -1372,7 +1366,6 @@ function computeNoDiscountItems(bundle, opts) {
     }
 
     const out = [];
-    const unitIdxByPid = {};
     for (let i2 = 0; i2 < chosen.length; i2 += 1) {
       const it2 = chosen[i2] || {};
       const v = String(it2.variantId || "").trim();
@@ -1384,19 +1377,20 @@ function computeNoDiscountItems(bundle, opts) {
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
+          let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key = pid2 + ":" + cur;
+            const key = pid2 + ":" + u;
             const pv = readTierSelection(sel, tierMinQty, key);
-            if (!pv) continue;
-            out.push({ variantId: pv, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
+            if (pv) pickedCount++;
+          }
+          for (let p = 0; p < pickedCount; p++) {
+            const key2 = pid2 + ":" + p;
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key3 = pid2 + ":" + cur;
+            const key3 = pid2 + ":" + m;
             const pv3 = readTierSelection(sel, tierMinQty, key3);
             out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
@@ -1442,7 +1436,6 @@ function computePostAddItems(bundle, opts) {
     }
 
     const out = [];
-    const unitIdxByPid = {};
     for (let i2 = 0; i2 < chosen.length; i2 += 1) {
       const it2 = chosen[i2] || {};
       const v = String(it2.variantId || "").trim();
@@ -1454,19 +1447,20 @@ function computePostAddItems(bundle, opts) {
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
+          let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key = pid2 + ":" + cur;
+            const key = pid2 + ":" + u;
             const pv = readTierSelection(sel, tierMinQty, key);
-            if (!pv) continue;
-            out.push({ variantId: pv, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
+            if (pv) pickedCount++;
+          }
+          for (let p = 0; p < pickedCount; p++) {
+            const key2 = pid2 + ":" + p;
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
-            const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-            unitIdxByPid[pid2] = cur + 1;
-            const key3 = pid2 + ":" + cur;
+            const key3 = pid2 + ":" + m;
             const pv3 = readTierSelection(sel, tierMinQty, key3);
             out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
@@ -1740,9 +1734,7 @@ async function applyBundleSelection(bundle) {
 
   try {
     const rawItems = typeof computeBundleApplyItems === "function" ? computeBundleApplyItems(bundle) : normalizeItems(bundle);
-    const resolved = await resolveProductRefItems(rawItems, bundle);
-    const items = resolved && Array.isArray(resolved.items) ? resolved.items : null;
-    const missingRequired = resolved && Number.isFinite(Number(resolved.missingRequired)) ? Math.max(0, Math.floor(Number(resolved.missingRequired))) : 0;
+    const items = await resolveProductRefItems(rawItems, bid);
 
     if (!items || !items.length) {
       messageByBundleId[bid] =
@@ -1753,15 +1745,6 @@ async function applyBundleSelection(bundle) {
       try {
         renderProductBanners(lastBundles || []);
       } catch (e000) {}
-      return;
-    }
-
-    if (missingRequired > 0) {
-      messageByBundleId[bid] = "فضلاً اختر الفاريانت لكل قطعة قبل الإضافة";
-      applying = false;
-      try {
-        renderProductBanners(lastBundles || []);
-      } catch (e000m) {}
       return;
     }
 

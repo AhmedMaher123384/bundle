@@ -9,17 +9,14 @@ module.exports = [
   kindProductsNoDiscountUi,
   kindPostAddUpsellUi,
   `
-async function resolveProductRefItems(items, bundle) {
-  const bid = String((bundle && bundle.id) || "").trim();
+async function resolveProductRefItems(items, bundleId) {
+  const bid = String(bundleId || "").trim();
   const pre =
     bid && variantSelectionsByBundleId[bid] && typeof variantSelectionsByBundleId[bid] === "object"
       ? variantSelectionsByBundleId[bid]
       : null;
   const mqRaw = bid && selectedTierByBundleId && selectedTierByBundleId[bid] != null ? Number(selectedTierByBundleId[bid]) : 1;
-  const mqFallback = Math.max(1, Math.floor(Number((bundle && typeof pickMinQty === "function" ? pickMinQty(bundle) : 1) || 1)));
-  const mq = Number.isFinite(mqRaw) && mqRaw >= 1 ? Math.floor(mqRaw) : mqFallback;
-  const settings = (bundle && bundle.settings) || {};
-  const requireVariants = settings && settings.variantRequired !== false;
+  const mq = Number.isFinite(mqRaw) && mqRaw >= 1 ? Math.floor(mqRaw) : 1;
 
   const arr = Array.isArray(items) ? items : [];
   const fixed = [];
@@ -28,9 +25,8 @@ async function resolveProductRefItems(items, bundle) {
   for (const it of arr) {
     const v = String((it && it.variantId) || "").trim();
     const qty = Math.max(1, Math.floor(Number((it && it.quantity) || 1)));
-    let pid = String((it && it.productId) || "").trim();
+    const pid = String((it && it.productId) || "").trim();
     if (isProductRef(v)) {
-      if (!pid) pid = String(v).slice("product:".length).trim();
       if (!pid) return null;
       needs.push({ productId: pid, quantity: qty });
     } else {
@@ -39,18 +35,15 @@ async function resolveProductRefItems(items, bundle) {
     }
   }
 
-  if (!needs.length) return { items: fixed, missingRequired: 0, requiredCount: 0 };
+  if (!needs.length) return fixed;
 
   const units = [];
   const uniqPid = {};
-  const unitIdxByPid = {};
   for (const n of needs) {
     const pid2 = String(n.productId);
     uniqPid[pid2] = true;
     for (let u = 0; u < Number(n.quantity || 0); u += 1) {
-      const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid2] || 0)));
-      unitIdxByPid[pid2] = cur + 1;
-      units.push({ productId: pid2, key: pid2 + ":" + cur });
+      units.push({ productId: pid2, key: pid2 + ":" + u });
     }
   }
 
@@ -80,8 +73,6 @@ async function resolveProductRefItems(items, bundle) {
   }
 
   const selectedByKey = {};
-  let requiredCount = 0;
-  let missingRequired = 0;
 
   for (const unit of units) {
     const vlist = (varsByPid[unit.productId] || []).filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
@@ -94,19 +85,6 @@ async function resolveProductRefItems(items, bundle) {
         continue;
       }
     }
-    if (vlist.length === 1) {
-      selectedByKey[unit.key] = String((vlist[0] && vlist[0].variantId) || "").trim() || ("product:" + String(unit.productId));
-      continue;
-    }
-
-    if (vlist.length > 1) {
-      requiredCount += 1;
-      if (requireVariants) {
-        missingRequired += 1;
-        continue;
-      }
-    }
-
     if (vlist.length) {
       selectedByKey[unit.key] = String((vlist[0] && vlist[0].variantId) || "").trim() || ("product:" + String(unit.productId));
     } else {
@@ -115,26 +93,22 @@ async function resolveProductRefItems(items, bundle) {
   }
 
   const out = fixed.slice();
-  const metaByVariantId = {};
-  for (const pidKey in varsByPid) {
-    if (!Object.prototype.hasOwnProperty.call(varsByPid, pidKey)) continue;
-    const list = varsByPid[pidKey] || [];
-    for (let i = 0; i < list.length; i += 1) {
-      const it = list[i] || {};
-      const vid0 = String(it.variantId || "").trim();
-      if (vid0) metaByVariantId[vid0] = it;
-    }
-  }
   for (const key2 in selectedByKey) {
     if (!Object.prototype.hasOwnProperty.call(selectedByKey, key2)) continue;
     const vid = String(selectedByKey[key2] || "").trim();
     if (!vid) continue;
-    const meta = (metaByVariantId && metaByVariantId[vid]) || null;
+    let meta = null;
+    for (const pidKey in varsByPid) {
+      if (!Object.prototype.hasOwnProperty.call(varsByPid, pidKey)) continue;
+      const list = varsByPid[pidKey] || [];
+      meta = list.find((item) => item && String(item.variantId || "").trim() === vid) || null;
+      if (meta) break;
+    }
     if (!meta) continue;
     out.push({ variantId: vid, productId: meta.productId, cartProductId: meta.cartProductId, cartOptions: meta.cartOptions, quantity: 1 });
   }
 
-  return { items: out, missingRequired, requiredCount };
+  return out;
 }
 `,
   `
@@ -694,7 +668,6 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
 
     const selectedByItemIndex = {};
     const units = [];
-    const unitIdxByPid = {};
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i] || {};
       const v = String(it.variantId || "").trim();
@@ -709,9 +682,7 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
       const qty = isBase ? baseQty : Math.max(1, Math.floor(Number(it.quantity || 1)));
       const defVid = v && !isProductRef(v) ? v : "";
       for (let u = 0; u < qty; u += 1) {
-        const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid] || 0)));
-        unitIdxByPid[pid] = cur + 1;
-        units.push({ productId: pid, key: pid + ":" + cur, itemIndex: i, defaultVariantId: defVid });
+        units.push({ productId: pid, key: pid + ":" + u, itemIndex: i, defaultVariantId: defVid });
       }
     }
 
@@ -875,7 +846,6 @@ async function ensureVariantPickersForTierCard(card, bundle) {
     }
 
     const units = [];
-    const unitIdxByPid = {};
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i] || {};
       const v = String(it.variantId || "").trim();
@@ -888,9 +858,7 @@ async function ensureVariantPickersForTierCard(card, bundle) {
       const qty = isBase ? baseQty : Math.max(1, Math.floor(Number(it.quantity || 1)));
       const defVid = v && !isProductRef(v) ? v : "";
       for (let u = 0; u < qty; u += 1) {
-        const cur = Math.max(0, Math.floor(Number(unitIdxByPid[pid] || 0)));
-        unitIdxByPid[pid] = cur + 1;
-        units.push({ productId: pid, key: pid + ":" + cur, defaultVariantId: defVid });
+        units.push({ productId: pid, key: pid + ":" + u, defaultVariantId: defVid });
       }
     }
 
