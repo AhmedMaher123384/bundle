@@ -223,6 +223,7 @@ var selectedBundleId = null;
 var lastTriggerProductId = null;
 var messageByBundleId = {};
 var selectedTierByBundleId = {};
+var selectedItemIndexesByBundleId = {};
 var applying = false;
 var variantSelectionsByBundleId = {};
 var postAddShownByBundleId = {};
@@ -236,6 +237,33 @@ function getBundleVariantSelectionMap(bundleId) {
   if (!m || typeof m !== "object") m = {};
   variantSelectionsByBundleId[bid] = m;
   return m;
+}
+
+function getBundleItemSelectionMap(bundleId) {
+  const bid = String(bundleId || "").trim();
+  if (!bid) return null;
+  let m = selectedItemIndexesByBundleId[bid];
+  if (!m || typeof m !== "object") m = {};
+  selectedItemIndexesByBundleId[bid] = m;
+  return m;
+}
+
+function clearBundleItemSelection(bundleId) {
+  try {
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+    const m = selectedItemIndexesByBundleId[bid];
+    if (m && typeof m === "object") {
+      for (const k in m) {
+        if (!Object.prototype.hasOwnProperty.call(m, k)) continue;
+        try {
+          delete m[k];
+        } catch (e) {
+          m[k] = null;
+        }
+      }
+    }
+  } catch (e) {}
 }
 
 function bundleVariantSig(bundle) {
@@ -998,64 +1026,96 @@ function computeQtyItems(bundle, opts) {
 
 function computeProductsItems(bundle, opts) {
   try {
-    const comps = (bundle && bundle.components) || [];
+    const baseItems = normalizeItems(bundle);
     const settings = (bundle && bundle.settings) || {};
     const req = Boolean(settings && settings.selectionRequired === true);
     const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
-    const include = new Set(defIds.map(function (x) { return String(x || "").trim(); }).filter(Boolean));
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
 
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
-    const items = [];
+    const selIdx = getBundleItemSelectionMap(bid) || {};
+    let hasSelIdx = false;
+    for (const k in selIdx) {
+      if (Object.prototype.hasOwnProperty.call(selIdx, k)) {
+        hasSelIdx = true;
+        break;
+      }
+    }
 
-    for (let i = 0; i < comps.length; i++) {
-      const c = comps[i] || {};
-      const v = String(c.variantId || "").trim();
-      const pid = String(c.productId || "").trim();
-      const qty = Math.max(1, Math.floor(Number(c.quantity || 1)));
-      if (!v) continue;
+    const chosen = [];
+    for (let i = 0; i < baseItems.length; i += 1) {
+      const it = baseItems[i] || {};
+      const isBase = Boolean(it.isBase);
+      let pid = String(it.productId || "").trim();
+      const vid = String(it.variantId || "").trim();
+      if (!pid && vid && vid.indexOf("product:") === 0) pid = String(vid).slice("product:".length).trim();
+      if (!vid) continue;
 
-      const should = include.size ? include.has(pid) : !req;
+      let should = false;
+      if (isBase) should = true;
+      else if (hasSelIdx) should = selIdx[String(i)] === true;
+      else if (includeSize) should = Boolean(pid && include[pid] === true);
+      else should = !req;
+
       if (!should) continue;
+      chosen.push(it);
+    }
+
+    const out = [];
+    for (let i2 = 0; i2 < chosen.length; i2 += 1) {
+      const it2 = chosen[i2] || {};
+      const v = String(it2.variantId || "").trim();
+      if (!v) continue;
+      let pid2 = String(it2.productId || "").trim();
+      if (!pid2 && v.indexOf("product:") === 0) pid2 = String(v).slice("product:".length).trim();
+      const qty = Math.max(1, Math.floor(Number(it2.quantity || 1)));
 
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const key = pid + ":" + u;
+            const key = pid2 + ":" + u;
             const pv = String(sel[key] || "").trim();
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
-            const key2 = pid + ":" + p;
+            const key2 = pid2 + ":" + p;
             const pv2 = String(sel[key2] || "").trim();
             if (!pv2 && settings && settings.variantRequired !== false) continue;
-            items.push({ variantId: pv2 || v, productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           let pickedAll = true;
           const parts = [];
           for (let u2 = 0; u2 < qty; u2++) {
-            const key3 = pid + ":" + u2;
+            const key3 = pid2 + ":" + u2;
             const pv3 = String(sel[key3] || "").trim();
             if (!pv3) pickedAll = false;
             parts.push(pv3 || v);
           }
           if (req && settings && settings.variantRequired !== false && !pickedAll) continue;
           for (let m = 0; m < parts.length; m++) {
-            items.push({ variantId: parts[m], productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: parts[m], productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         }
       } else {
-        items.push({ variantId: v, productId: pid || null, quantity: qty, isBase: false });
+        out.push({ variantId: v, productId: pid2 || null, quantity: qty, isBase: Boolean(it2.isBase) });
       }
     }
 
-    items.sort(function (a, b) {
+    out.sort(function (a, b) {
       return String(a.variantId).localeCompare(String(b.variantId));
     });
-    return items;
+    return out;
   } catch (e) {
     return [];
   }
@@ -1063,56 +1123,88 @@ function computeProductsItems(bundle, opts) {
 
 function computeNoDiscountItems(bundle, opts) {
   try {
-    const comps = (bundle && bundle.components) || [];
+    const baseItems = normalizeItems(bundle);
     const settings = (bundle && bundle.settings) || {};
     const req = Boolean(settings && settings.selectionRequired === true);
     const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
-    const include = new Set(defIds.map(function (x) { return String(x || "").trim(); }).filter(Boolean));
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
 
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
-    const items = [];
+    const selIdx = getBundleItemSelectionMap(bid) || {};
+    let hasSelIdx = false;
+    for (const k in selIdx) {
+      if (Object.prototype.hasOwnProperty.call(selIdx, k)) {
+        hasSelIdx = true;
+        break;
+      }
+    }
 
-    for (let i = 0; i < comps.length; i++) {
-      const c = comps[i] || {};
-      const v = String(c.variantId || "").trim();
-      const pid = String(c.productId || "").trim();
-      const qty = Math.max(1, Math.floor(Number(c.quantity || 1)));
-      if (!v) continue;
+    const chosen = [];
+    for (let i = 0; i < baseItems.length; i += 1) {
+      const it = baseItems[i] || {};
+      const isBase = Boolean(it.isBase);
+      let pid = String(it.productId || "").trim();
+      const vid = String(it.variantId || "").trim();
+      if (!pid && vid && vid.indexOf("product:") === 0) pid = String(vid).slice("product:".length).trim();
+      if (!vid) continue;
 
-      const should = include.size ? include.has(pid) : !req;
+      let should = false;
+      if (isBase) should = true;
+      else if (hasSelIdx) should = selIdx[String(i)] === true;
+      else if (includeSize) should = Boolean(pid && include[pid] === true);
+      else should = !req;
+
       if (!should) continue;
+      chosen.push(it);
+    }
+
+    const out = [];
+    for (let i2 = 0; i2 < chosen.length; i2 += 1) {
+      const it2 = chosen[i2] || {};
+      const v = String(it2.variantId || "").trim();
+      if (!v) continue;
+      let pid2 = String(it2.productId || "").trim();
+      if (!pid2 && v.indexOf("product:") === 0) pid2 = String(v).slice("product:".length).trim();
+      const qty = Math.max(1, Math.floor(Number(it2.quantity || 1)));
 
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const key = pid + ":" + u;
+            const key = pid2 + ":" + u;
             const pv = String(sel[key] || "").trim();
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
-            const key2 = pid + ":" + p;
+            const key2 = pid2 + ":" + p;
             const pv2 = String(sel[key2] || "").trim();
-            items.push({ variantId: pv2 || v, productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
-            const key3 = pid + ":" + m;
+            const key3 = pid2 + ":" + m;
             const pv3 = String(sel[key3] || "").trim();
-            items.push({ variantId: pv3 || v, productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         }
       } else {
-        items.push({ variantId: v, productId: pid || null, quantity: qty, isBase: false });
+        out.push({ variantId: v, productId: pid2 || null, quantity: qty, isBase: Boolean(it2.isBase) });
       }
     }
 
-    items.sort(function (a, b) {
+    out.sort(function (a, b) {
       return String(a.variantId).localeCompare(String(b.variantId));
     });
-    return items;
+    return out;
   } catch (e) {
     return [];
   }
@@ -1120,48 +1212,68 @@ function computeNoDiscountItems(bundle, opts) {
 
 function computePostAddItems(bundle, opts) {
   try {
-    const comps = (bundle && bundle.components) || [];
+    const baseItems = normalizeItems(bundle);
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
-    const items = [];
+    const selIdx = getBundleItemSelectionMap(bid) || {};
+    let hasSelIdx = false;
+    for (const k in selIdx) {
+      if (Object.prototype.hasOwnProperty.call(selIdx, k)) {
+        hasSelIdx = true;
+        break;
+      }
+    }
 
-    for (let i = 0; i < comps.length; i++) {
-      const c = comps[i] || {};
-      const v = String(c.variantId || "").trim();
-      const pid = String(c.productId || "").trim();
-      const qty = Math.max(1, Math.floor(Number(c.quantity || 1)));
+    const chosen = [];
+    for (let i = 0; i < baseItems.length; i += 1) {
+      const it = baseItems[i] || {};
+      if (it.isBase === true) {
+        chosen.push(it);
+        continue;
+      }
+      if (hasSelIdx && selIdx[String(i)] !== true) continue;
+      chosen.push(it);
+    }
+
+    const out = [];
+    for (let i2 = 0; i2 < chosen.length; i2 += 1) {
+      const it2 = chosen[i2] || {};
+      const v = String(it2.variantId || "").trim();
       if (!v) continue;
+      let pid2 = String(it2.productId || "").trim();
+      if (!pid2 && v.indexOf("product:") === 0) pid2 = String(v).slice("product:".length).trim();
+      const qty = Math.max(1, Math.floor(Number(it2.quantity || 1)));
 
       if (v.indexOf("product:") === 0) {
         const mode = String((opts && opts.mode) || "apply");
         if (mode === "preview") {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
-            const key = pid + ":" + u;
+            const key = pid2 + ":" + u;
             const pv = String(sel[key] || "").trim();
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
-            const key2 = pid + ":" + p;
+            const key2 = pid2 + ":" + p;
             const pv2 = String(sel[key2] || "").trim();
-            items.push({ variantId: pv2 || v, productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
-            const key3 = pid + ":" + m;
+            const key3 = pid2 + ":" + m;
             const pv3 = String(sel[key3] || "").trim();
-            items.push({ variantId: pv3 || v, productId: pid || null, quantity: 1, isBase: false });
+            out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         }
       } else {
-        items.push({ variantId: v, productId: pid || null, quantity: qty, isBase: false });
+        out.push({ variantId: v, productId: pid2 || null, quantity: qty, isBase: Boolean(it2.isBase) });
       }
     }
 
-    items.sort(function (a, b) {
+    out.sort(function (a, b) {
       return String(a.variantId).localeCompare(String(b.variantId));
     });
-    return items;
+    return out;
   } catch (e) {
     return [];
   }
@@ -1245,8 +1357,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
         escHtml(r.minQty) +
         '" ' +
         (active ? "checked" : "") +
-        ' /><span class="bundle-app-checkmark"></span></span></label>' +
-        (active ? '<div class="bundle-app-pickers bundle-app-pickers--inline" data-bundle-id="' + escHtml(bundleId) + '"></div>' : "");
+        ' /><span class="bundle-app-checkmark"></span></span></label>';
     }
     return out;
   } catch (e) {
