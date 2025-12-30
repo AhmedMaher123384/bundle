@@ -1418,7 +1418,10 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
         escHtml(left) +
         "</strong></div>" +
         (right ? '<div class="bundle-app-muted">' + escHtml(right) + "</div>" : "") +
-        "</div></label>";
+        "</div></label>" +
+        (active
+          ? '<div class="bundle-app-pickers bundle-app-pickers--inline" data-bundle-id="' + escHtml(bundleId) + '"></div>'
+          : "");
     }
     return out;
   } catch (e) {
