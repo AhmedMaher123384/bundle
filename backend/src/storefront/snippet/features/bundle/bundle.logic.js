@@ -1389,7 +1389,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
       const o = Number(prc.originalTotal);
       const f = Number(prc.finalTotal);
       const d = Number(prc.discountAmount);
-      const left = "عند " + fmtNum(r.minQty) + " قطع";
+      const left = "احمد " + fmtNum(r.minQty) + " ماهر";
       let right = "";
       if (Number.isFinite(o) && Number.isFinite(f)) {
         right = "قبل " + fmtMoney(o) + " • بعد " + fmtMoney(f);
