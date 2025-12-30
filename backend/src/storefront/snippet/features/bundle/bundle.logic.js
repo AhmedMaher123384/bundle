@@ -2011,7 +2011,7 @@ async function refreshProduct() {
           const it0 = its0[ii] || {};
           const v0 = String(it0.variantId || "").trim();
           if (!isProductRef(v0)) continue;
-          const pid = String(it0.productId || "").trim();
+          const pid = typeof canonProductId === "function" ? canonProductId(it0.productId, v0) : String(it0.productId || "").trim();
           if (pid) uniqPid[pid] = true;
         }
       }

@@ -377,6 +377,45 @@ function renderProductBanners(bundles) {
 
   root.innerHTML = html;
 
+  try {
+    const cards = root.querySelectorAll(".bundle-app-card[data-bundle-id]");
+    const cardById = {};
+    for (const c of cards) {
+      const bid = String(c.getAttribute("data-bundle-id") || "").trim();
+      if (bid) cardById[bid] = c;
+    }
+
+    function initPickersForBundle(bundle) {
+      try {
+        const bid = String((bundle && bundle.id) || "").trim();
+        if (!bid) return;
+        const card = cardById[bid];
+        if (!card) return;
+        const showTiers = !(bundle && bundle.showTiers === false);
+        const hasTiers = showTiers && bundle && bundle.offer && Array.isArray(bundle.offer.tiers) && bundle.offer.tiers.length;
+        if (hasTiers) ensureVariantPickersForTierCard(card, bundle);
+        else ensureVariantPickersForTraditionalCard(card, bundle);
+      } catch (e) {}
+    }
+
+    const selectedNow = String(selectedBundleId || "").trim();
+    if (selectedNow) {
+      const selBundle = arr.find((x) => String((x && x.id) || "") === selectedNow) || null;
+      if (selBundle) initPickersForBundle(selBundle);
+    }
+
+    let idx = 0;
+    (function pump() {
+      try {
+        if (idx >= arr.length) return;
+        const b = arr[idx];
+        idx += 1;
+        initPickersForBundle(b);
+      } catch (e) {}
+      setTimeout(pump, 0);
+    })();
+  } catch (e) {}
+
   const tierEls = root.querySelectorAll(".bundle-app-tier[data-tier-minqty][data-bundle-id]");
   for (const el of tierEls) {
     el.onclick = () => {
@@ -586,22 +625,6 @@ function renderProductBanners(bundles) {
       if (!bundle) return;
       applyBundleSelection(bundle);
     };
-  }
-
-  if (selectedBundleId) {
-    const bid = String(selectedBundleId || "").trim();
-    if (bid) {
-      const selCard = root.querySelector('.bundle-app-card[data-bundle-id="' + bid + '"]');
-      const selBundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
-      if (selCard && selBundle) {
-        try {
-          const showTiers = !(selBundle && selBundle.showTiers === false);
-          const hasTiers = showTiers && selBundle && selBundle.offer && Array.isArray(selBundle.offer.tiers) && selBundle.offer.tiers.length;
-          if (hasTiers) ensureVariantPickersForTierCard(selCard, selBundle);
-          else ensureVariantPickersForTraditionalCard(selCard, selBundle);
-        } catch (e) {}
-      }
-    }
   }
 }
 
