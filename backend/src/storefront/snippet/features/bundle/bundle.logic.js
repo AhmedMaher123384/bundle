@@ -1505,6 +1505,95 @@ function buildPriceText(bundle) {
     return "";
   }
 }
+
+function buildProductsPriceText(bundle, bundleId) {
+  try {
+    const kind = String((bundle && bundle.kind) || "").trim();
+    const bid = String(bundleId || (bundle && bundle.id) || "").trim();
+    if (!bid) return "";
+
+    const items = normalizeItems(bundle);
+    const settings = (bundle && bundle.settings) || {};
+    const req = Boolean(settings && settings.selectionRequired === true);
+    const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
+
+    const itemSel = typeof getBundleItemSelectionMap === "function" ? getBundleItemSelectionMap(bid) : null;
+    let hasItemSel = false;
+    if (itemSel && typeof itemSel === "object") {
+      for (const k in itemSel) {
+        if (Object.prototype.hasOwnProperty.call(itemSel, k)) {
+          hasItemSel = true;
+          break;
+        }
+      }
+    }
+
+    let subtotal = 0;
+    let hasMissing = false;
+
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i] || {};
+      const v = String(it.variantId || "").trim();
+      if (!v) continue;
+      const isBase = Boolean(it.isBase);
+      let pid = String(it.productId || "").trim();
+      if (!pid && v.indexOf("product:") === 0) pid = String(v).slice("product:".length).trim();
+      const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
+
+      let on = false;
+      if (isBase) on = true;
+      else if (hasItemSel) on = itemSel && itemSel[String(i)] === true;
+      else if (includeSize) on = Boolean(pid && include[pid] === true);
+      else on = !req;
+
+      if (!on) continue;
+
+      const unit = it.price == null ? null : Number(it.price);
+      if (unit == null || !Number.isFinite(unit) || unit < 0) {
+        hasMissing = true;
+        continue;
+      }
+      subtotal += unit * qty;
+    }
+
+    if (!Number.isFinite(subtotal) || subtotal < 0) return "";
+    if (hasMissing && subtotal <= 0) return "السعر حسب اختيارك";
+
+    if (kind === "products_discount") {
+      const offer = (bundle && bundle.offer) || {};
+      const type = String(offer.type || "").trim();
+      const value = Number(offer.value ?? 0);
+      let discount = 0;
+      if (type === "percentage") {
+        const pct = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+        discount = (subtotal * pct) / 100;
+      } else if (type === "fixed") {
+        const amt = Math.max(0, Number.isFinite(value) ? value : 0);
+        discount = Math.min(subtotal, amt);
+      } else if (type === "bundle_price") {
+        const price = Math.max(0, Number.isFinite(value) ? value : 0);
+        discount = Math.max(0, Math.min(subtotal, subtotal - price));
+      }
+
+      const finalTotal = Math.max(0, subtotal - discount);
+      let s = "قبل " + fmtMoney(subtotal) + " • بعد " + fmtMoney(finalTotal);
+      if (Number.isFinite(discount) && discount > 0) s += " • وفّرت " + fmtMoney(discount);
+      return s;
+    }
+
+    return "الإجمالي " + fmtMoney(subtotal);
+  } catch (e) {
+    return "";
+  }
+}
 `,
   `
 async function applyBundleSelection(bundle) {
@@ -1815,13 +1904,82 @@ async function refreshProduct() {
 
     if (!applying && key === state.lastKey && sig === state.lastSig) return;
 
+    if (
+      !applying &&
+      lastBundles &&
+      Array.isArray(lastBundles) &&
+      lastBundles.length &&
+      key === state.lastKey &&
+      Array.isArray(bundles) &&
+      bundles.length
+    ) {
+      try {
+        const prev = lastBundles;
+        const prevById = {};
+        const nextById = {};
+        for (let i0 = 0; i0 < prev.length; i0 += 1) {
+          const pb = prev[i0] || {};
+          const id0 = String(pb.id || "").trim();
+          if (id0) prevById[id0] = pb;
+        }
+        for (let i1 = 0; i1 < bundles.length; i1 += 1) {
+          const nb = bundles[i1] || {};
+          const id1 = String(nb.id || "").trim();
+          if (id1) nextById[id1] = nb;
+        }
+
+        let sameIds = true;
+        const nextIds = Object.keys(nextById);
+        const prevIds = Object.keys(prevById);
+        if (nextIds.length !== prevIds.length) sameIds = false;
+        if (sameIds) {
+          for (let i2 = 0; i2 < nextIds.length; i2 += 1) {
+            if (!prevById[nextIds[i2]]) {
+              sameIds = false;
+              break;
+            }
+          }
+        }
+
+        if (sameIds) {
+          function meta(arr0) {
+            const m = { items: 0, name: 0, img: 0, price: 0 };
+            for (let bi = 0; bi < arr0.length; bi += 1) {
+              const bb = arr0[bi] || {};
+              const its = normalizeItems(bb);
+              for (let ii = 0; ii < its.length; ii += 1) {
+                const it = its[ii] || {};
+                m.items += 1;
+                if (String(it.name || "").trim()) m.name += 1;
+                if (String(it.imageUrl || "").trim()) m.img += 1;
+                const p = it.price == null ? null : Number(it.price);
+                if (p != null && Number.isFinite(p) && p >= 0) m.price += 1;
+              }
+            }
+            return m;
+          }
+
+          const pm = meta(prev);
+          const nm = meta(bundles);
+          const degraded =
+            (pm.img > 0 && nm.img <= 0) ||
+            (pm.name > 0 && nm.name <= 0) ||
+            (pm.img > 0 && nm.img < Math.floor(pm.img * 0.5)) ||
+            (pm.name > 0 && nm.name < Math.floor(pm.name * 0.5)) ||
+            (pm.price > 0 && nm.price < Math.floor(pm.price * 0.5));
+
+          if (degraded) return;
+        }
+      } catch (eMeta) {}
+    }
+
     state.lastKey = key;
     state.lastSig = sig;
     lastBundles = bundles;
     renderProductBanners(bundles);
   } catch (e) {
     warn("bundle-app: refresh failed", e && (e.details || e.message || e));
-    clearProductBanner();
+    if (!lastBundles) clearProductBanner();
   } finally {
     if (state) {
       state.busy = false;

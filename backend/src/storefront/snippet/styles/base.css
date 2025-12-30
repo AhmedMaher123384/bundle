@@ -165,4 +165,6 @@
 .bundle-app-products--products{grid-template-columns:1fr}
 .bundle-app-products--upsell{grid-template-columns:1fr;gap:8px}
 .bundle-app-card[data-kind="post_add_upsell"] .bundle-app-product__media{aspect-ratio:16 / 10}
+.bundle-app-card[data-kind="products_discount"] .bundle-app-product__media,
+.bundle-app-card[data-kind="products_no_discount"] .bundle-app-product__media{aspect-ratio:auto;height:64px}
 .bundle-app-btn--upsell{background:rgba(250,204,21,.9);color:#0b1220}

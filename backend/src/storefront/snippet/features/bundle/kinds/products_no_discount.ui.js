@@ -12,6 +12,7 @@ function renderBundleCard_products_no_discount(b) {
   const ctaBg = String((b && b.ctaBgColor) || "");
   const ctaText = String((b && b.ctaTextColor) || "");
   const showItems = !(b && b.showItems === false);
+  const showPrice = !(b && b.showPrice === false);
 
   const settings = (b && b.settings) || {};
   const req = Boolean(settings && settings.selectionRequired === true);
@@ -27,6 +28,7 @@ function renderBundleCard_products_no_discount(b) {
 
   const items = normalizeItems(b);
   const itemsText = showItems && items.length ? buildItemsText(items) : "";
+  const priceText = showPrice ? buildProductsPriceText(b, bid) : "";
   const msg = String(messageByBundleId[bid] || "");
 
   const checked = bid === String(selectedBundleId || "");
@@ -147,6 +149,7 @@ function renderBundleCard_products_no_discount(b) {
   }
 
   html +=
+    (priceText ? '<div class="bundle-app-price">' + escHtml(priceText) + "</div>" : "") +
     (msg ? '<div class="bundle-app-msg">' + escHtml(msg) + "</div>" : "") +
     '<button class="bundle-app-btn" type="button" data-action="apply-one" data-bundle-id="' +
     escHtml(bid) +
@@ -161,4 +164,3 @@ function renderBundleCard_products_no_discount(b) {
   return html;
 }
 `;
-

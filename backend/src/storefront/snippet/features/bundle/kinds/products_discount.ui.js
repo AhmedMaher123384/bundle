@@ -28,7 +28,7 @@ function renderBundleCard_products_discount(b) {
 
   const items = normalizeItems(b);
   const itemsText = showItems && items.length ? buildItemsText(items) : "";
-  const priceText = showPrice ? buildPriceText(b) : "";
+  const priceText = showPrice ? buildProductsPriceText(b, bid) : "";
   const msg = String(messageByBundleId[bid] || "");
 
   const checked = bid === String(selectedBundleId || "");
@@ -190,4 +190,3 @@ function renderBundleCard_products_discount(b) {
   return html;
 }
 `;
-
