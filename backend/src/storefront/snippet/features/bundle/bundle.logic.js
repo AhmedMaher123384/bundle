@@ -456,6 +456,115 @@ function clearSelection(triggerProductId) {
     localStorage.removeItem(selectionKey(triggerProductId));
   } catch (e) {}
 }
+
+function triggerInCartKey(triggerProductId) {
+  return "bundle_app_trigger_in_cart:" + String(merchantId || "") + ":" + String(triggerProductId || "");
+}
+
+function triggerInCartVariantKey(variantId) {
+  return "bundle_app_trigger_in_cart_variant:" + String(merchantId || "") + ":" + String(variantId || "");
+}
+
+function markTriggerInCart(triggerProductId) {
+  try {
+    const pid = String(triggerProductId || "").trim();
+    if (!pid) return;
+    localStorage.setItem(triggerInCartKey(pid), JSON.stringify({ ts: Date.now() }));
+  } catch (e) {}
+}
+
+function markTriggerVariantInCart(variantId) {
+  try {
+    const vid = String(variantId || "").trim();
+    if (!vid) return;
+    localStorage.setItem(triggerInCartVariantKey(vid), JSON.stringify({ ts: Date.now() }));
+  } catch (e) {}
+}
+
+function loadTriggerMark(key) {
+  try {
+    const raw = localStorage.getItem(String(key || ""));
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    const ts = Number(j && j.ts);
+    if (!Number.isFinite(ts) || ts <= 0) return null;
+    return { ts: ts };
+  } catch (e) {
+    return null;
+  }
+}
+
+function hasRecentTriggerMark(triggerProductId, triggerVariantId) {
+  try {
+    const ttlMs = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+    const pid = String(triggerProductId || "").trim();
+    const vid = String(triggerVariantId || "").trim();
+    if (pid) {
+      const m = loadTriggerMark(triggerInCartKey(pid));
+      if (m && now - m.ts <= ttlMs) return true;
+    }
+    if (vid) {
+      const m2 = loadTriggerMark(triggerInCartVariantKey(vid));
+      if (m2 && now - m2.ts <= ttlMs) return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+function ensureCartHooks() {
+  try {
+    if (g && g.BundleApp && g.BundleApp._bundleCartHooked) return;
+  } catch (e0) {}
+  try {
+    if (g && g.BundleApp) g.BundleApp._bundleCartHooked = true;
+  } catch (e1) {}
+
+  try {
+    const cart = window.salla && window.salla.cart;
+    if (!cart) return;
+
+    function hookMethod(name, handler) {
+      try {
+        if (!cart || typeof cart[name] !== "function") return;
+        const key = "_orig_" + name;
+        try {
+          if (g && g.BundleApp && g.BundleApp[key]) return;
+        } catch (eKey) {}
+        const orig = cart[name];
+        try {
+          if (g && g.BundleApp) g.BundleApp[key] = orig;
+        } catch (eSave) {}
+        cart[name] = function () {
+          try {
+            handler.apply(this, arguments);
+          } catch (eH) {}
+          return orig.apply(this, arguments);
+        };
+      } catch (eHook) {}
+    }
+
+    hookMethod("addItem", function (payload) {
+      try {
+        const idRaw = payload && payload.id != null ? payload.id : null;
+        const idStr = String(idRaw || "").trim();
+        const idNum = Number(idStr);
+        if (Number.isFinite(idNum) && idNum > 0) markTriggerInCart(String(idNum));
+        if (idStr) markTriggerVariantInCart(idStr);
+      } catch (eM) {}
+    });
+
+    hookMethod("quickAdd", function (productId) {
+      try {
+        const pid = String(productId || "").trim();
+        const pidNum = Number(pid);
+        if (Number.isFinite(pidNum) && pidNum > 0) markTriggerInCart(String(pidNum));
+      } catch (eM2) {}
+    });
+  } catch (e2) {}
+}
 `,
   `
 function isCartLikePage() {
@@ -612,6 +721,102 @@ async function tryApplyCoupon(code) {
     if (storeClosedNow()) return false;
     warn("bundle-app: coupon apply failed", e && (e.details || e.message || e));
     return false;
+  }
+}
+
+async function readCartItems() {
+  const cart = window.salla && window.salla.cart;
+  if (!cart) return [];
+
+  function pickItems(obj) {
+    if (!obj) return [];
+    if (Array.isArray(obj)) return obj;
+    if (Array.isArray(obj.items)) return obj.items;
+    if (obj.data) {
+      if (Array.isArray(obj.data.items)) return obj.data.items;
+      if (Array.isArray(obj.data.cart && obj.data.cart.items)) return obj.data.cart.items;
+    }
+    if (Array.isArray(obj.cart && obj.cart.items)) return obj.cart.items;
+    return [];
+  }
+
+  function withTimeout(p, ms) {
+    return Promise.race([
+      Promise.resolve(p),
+      new Promise(function (_r, rej) {
+        setTimeout(function () {
+          rej(new Error("timeout"));
+        }, Math.max(1, Number(ms || 1)));
+      })
+    ]);
+  }
+
+  try {
+    const direct = pickItems(cart.items || (cart.data && cart.data.items) || null);
+    if (direct && direct.length) return direct;
+  } catch (e0) {}
+
+  const candidates = [];
+  try {
+    if (typeof cart.getItems === "function") candidates.push(cart.getItems());
+  } catch (e1) {}
+  try {
+    if (typeof cart.getCart === "function") candidates.push(cart.getCart());
+  } catch (e2) {}
+  try {
+    if (typeof cart.fetch === "function") candidates.push(cart.fetch());
+  } catch (e3) {}
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    try {
+      const res = await withTimeout(candidates[i], 4500);
+      const items = pickItems(res);
+      if (items && items.length) return items;
+    } catch (e4) {}
+  }
+
+  return [];
+}
+
+function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
+  try {
+    const pid = String(
+      (it && (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id)))) || ""
+    ).trim();
+    const vid = String(
+      (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || ""
+    ).trim();
+    const trgPid = String(triggerProductId || "").trim();
+    const trgVid = String(triggerVariantId || "").trim();
+    if (trgPid && pid && pid === trgPid) return true;
+    if (trgVid && vid && String(vid) === trgVid) return true;
+    if (trgPid) {
+      const vNum = Number(vid);
+      if (Number.isFinite(vNum) && String(vNum) === trgPid) return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function hasTriggerInCart(triggerProductId, triggerVariantId) {
+  try {
+    const pid = String(triggerProductId || "").trim();
+    const vid = String(triggerVariantId || "").trim();
+    if (!pid && !vid) return false;
+    if (hasRecentTriggerMark(pid, vid)) return true;
+
+    const items = await readCartItems();
+    if (!items || !items.length) return false;
+    const ok = items.some((it) => cartItemMatchesTrigger(it, pid, vid));
+    if (ok) {
+      if (pid) markTriggerInCart(pid);
+      if (vid) markTriggerVariantInCart(vid);
+    }
+    return ok;
+  } catch (e) {
+    return hasRecentTriggerMark(triggerProductId, triggerVariantId);
   }
 }
 
@@ -1992,6 +2197,10 @@ async function refreshProduct() {
     }
     state.busy = true;
 
+    try {
+      ensureCartHooks();
+    } catch (eHook) {}
+
     const variantId = findVariantId();
     const productId = findProductId();
     const key = productId ? "p:" + String(productId) : variantId ? "v:" + String(variantId) : "";
@@ -2016,7 +2225,16 @@ async function refreshProduct() {
       return;
     }
 
-    const bundles = (res && res.bundles) || [];
+    let bundles = (res && res.bundles) || [];
+    try {
+      const hasPostAdd = Array.isArray(bundles) && bundles.some((b) => String((b && b.kind) || "").trim() === "post_add_upsell");
+      if (hasPostAdd) {
+        const pid = String(productId || "").trim();
+        const vid = String(variantId || "").trim();
+        const ok = await hasTriggerInCart(pid, vid);
+        if (!ok) bundles = bundles.filter((b) => String((b && b.kind) || "").trim() !== "post_add_upsell");
+      }
+    } catch (eGate) {}
     if (!bundles.length) {
       clearProductBanner();
       state.lastKey = key;

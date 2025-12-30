@@ -407,8 +407,9 @@ export function BundleEditorPage({ mode }) {
     }
 
     const mustIncludeAllGroups = !(kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell')
-    const normalizedDiscountType = kind === 'products_no_discount' ? 'fixed' : discountType
-    const normalizedDiscountValue = kind === 'products_no_discount' ? 0 : Number(discountValue || 0)
+    const noDiscountKind = kind === 'products_no_discount' || kind === 'post_add_upsell'
+    const normalizedDiscountType = noDiscountKind ? 'fixed' : discountType
+    const normalizedDiscountValue = noDiscountKind ? 0 : Number(discountValue || 0)
 
     return {
       version: 1,
@@ -506,7 +507,7 @@ export function BundleEditorPage({ mode }) {
     if (offerType === 'quantity') {
       const bestTier = qtyTiersNormalized.length ? qtyTiersNormalized[qtyTiersNormalized.length - 1] : null
       if (bestTier) badge = bestTier.type === 'percentage' ? `${bestTier.value}%` : `${bestTier.value}`
-    } else if (kind !== 'products_no_discount' && ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
+    } else if (kind !== 'products_no_discount' && kind !== 'post_add_upsell' && ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
     else if (ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
 
     const kindDefaultTitle =
@@ -522,7 +523,9 @@ export function BundleEditorPage({ mode }) {
 
     const title =
       String(presentationTitle || '').trim() ||
-      (badge && kind !== 'products_no_discount' ? `${String(draft?.name || 'باقة')} - وفر ${badge}` : kindDefaultTitle)
+      (badge && kind !== 'products_no_discount' && kind !== 'post_add_upsell'
+        ? `${String(draft?.name || 'باقة')} - وفر ${badge}`
+        : kindDefaultTitle)
     const subtitle = String(presentationSubtitle || '').trim() || ''
     const label = String(presentationLabel || '').trim() || ''
     const labelSub = String(presentationLabelSub || '').trim() || ''
@@ -1307,7 +1310,7 @@ export function BundleEditorPage({ mode }) {
             </>
           )}
 
-          {offerType === 'bundle' ? (
+          {offerType === 'bundle' && kind !== 'post_add_upsell' ? (
             <>
               <div>
                 <label className="text-sm font-medium text-slate-700">نوع الخصم</label>
