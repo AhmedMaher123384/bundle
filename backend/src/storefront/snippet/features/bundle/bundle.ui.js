@@ -497,6 +497,18 @@ function renderProductBanners(bundles) {
     const showPrice = !(b && b.showPrice === false);
     const showTiers = !(b && b.showTiers === false);
 
+    const settings = (b && b.settings) || {};
+    const req = Boolean(settings && settings.selectionRequired === true);
+    const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
+
     const selectedMinQty = pickMinQty(b);
     const items = normalizeItems(b);
     const itemsText = showItems && items.length ? buildItemsText(items) : "";
@@ -563,9 +575,14 @@ function renderProductBanners(bundles) {
       for (let j = 0; j < items.length; j += 1) {
         const item = items[j] || {};
         const isBase = Boolean(item.isBase);
-        const itemChecked = isBase ? true : hasItemSel ? itemSel && itemSel[String(j)] === true : false;
+        let pid = String(item.productId || "").trim();
+        const vid = String(item.variantId || "").trim();
+        if (!pid && vid && vid.indexOf("product:") === 0) pid = String(vid).slice("product:".length).trim();
+        const itemChecked = isBase ? true : hasItemSel ? itemSel && itemSel[String(j)] === true : includeSize ? include[pid] === true : !req;
         html +=
-          '<div class="bundle-app-product-item" data-item-index="' +
+          '<div class="bundle-app-product-item' +
+          (itemChecked ? " bundle-app-product-item--selected" : "") +
+          '" data-item-index="' +
           String(j) +
           '">' +
           '<div class="bundle-app-product-header">' +
@@ -640,14 +657,52 @@ function renderProductBanners(bundles) {
       const itemIndex = String(el.getAttribute("data-item-index") || "");
       if (!bid || itemIndex === "") return;
 
+      const bundle0 = arr.find((x) => String((x && x.id) || "") === bid) || null;
       const sel = typeof getBundleItemSelectionMap === "function" ? getBundleItemSelectionMap(bid) : null;
-      if (sel && typeof sel === "object") sel[itemIndex] = el.checked === true;
+      if (sel && typeof sel === "object") {
+        let hasAny = false;
+        for (const k in sel) {
+          if (Object.prototype.hasOwnProperty.call(sel, k)) {
+            hasAny = true;
+            break;
+          }
+        }
+
+        if (!hasAny && bundle0) {
+          const items0 = normalizeItems(bundle0);
+          const settings0 = (bundle0 && bundle0.settings) || {};
+          const req0 = Boolean(settings0 && settings0.selectionRequired === true);
+          const defIds0 = Array.isArray(settings0 && settings0.defaultSelectedProductIds) ? settings0.defaultSelectedProductIds : [];
+          const include0 = {};
+          let includeSize0 = 0;
+          for (let i0 = 0; i0 < defIds0.length; i0 += 1) {
+            const s0 = String(defIds0[i0] || "").trim();
+            if (!s0) continue;
+            if (!include0[s0]) includeSize0 += 1;
+            include0[s0] = true;
+          }
+
+          for (let j0 = 0; j0 < items0.length; j0 += 1) {
+            const it0 = items0[j0] || {};
+            if (it0.isBase === true) continue;
+            let pid0 = String(it0.productId || "").trim();
+            const vid0 = String(it0.variantId || "").trim();
+            if (!pid0 && vid0 && vid0.indexOf("product:") === 0) pid0 = String(vid0).slice("product:".length).trim();
+            const on0 = includeSize0 ? include0[pid0] === true : !req0;
+            sel[String(j0)] = on0 === true;
+          }
+        }
+
+        sel[itemIndex] = el.checked === true;
+      }
 
       if (el.checked) {
         selectedBundleId = bid;
         messageByBundleId[bid] = "";
 
-        const otherChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id]:not([data-bundle-id="' + bid + '"])');
+        const otherChecks = root.querySelectorAll(
+          'input.bundle-app-product-check[data-bundle-id]:not([data-bundle-id="' + bid + '"]):not([disabled])'
+        );
         const otherBundleIds = {};
         for (const o of otherChecks) {
           const obid = String(o.getAttribute("data-bundle-id") || "").trim();
@@ -659,7 +714,9 @@ function renderProductBanners(bundles) {
           if (typeof clearBundleItemSelection === "function") clearBundleItemSelection(ob);
         }
       } else {
-        const bundleChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id="' + bid + '"]');
+        const bundleChecks = root.querySelectorAll(
+          'input.bundle-app-product-check[data-bundle-id="' + bid + '"]:not([disabled])'
+        );
         let anyChecked = false;
         for (const b of bundleChecks) {
           if (b.checked) {
@@ -674,13 +731,33 @@ function renderProductBanners(bundles) {
     };
   }
 
+  const productItems = root.querySelectorAll(".bundle-app-product-item[data-item-index]");
+  for (const itemEl of productItems) {
+    itemEl.onclick = (e) => {
+      let t = e && e.target;
+      while (t && t !== itemEl) {
+        if (t && t.classList && t.classList.contains("bundle-app-product-checkwrap")) return;
+        if (t && t.classList && t.classList.contains("bundle-app-product-variants")) return;
+        if (t && t.getAttribute && t.getAttribute("data-action") === "pick-variant") return;
+        t = t.parentNode;
+      }
+
+      const cb = itemEl.querySelector("input.bundle-app-product-check[data-bundle-id][data-item-index]");
+      if (!cb || cb.disabled) return;
+      cb.checked = !cb.checked;
+      if (typeof cb.onchange === "function") cb.onchange();
+    };
+  }
+
   const btns = root.querySelectorAll('button.bundle-app-btn[data-action="apply-one"][data-bundle-id]');
   for (const btn of btns) {
     btn.onclick = () => {
       const bid = String(btn.getAttribute("data-bundle-id") || "");
       if (!bid || applying) return;
 
-      const bundleChecks = root.querySelectorAll('input.bundle-app-product-check[data-bundle-id="' + bid + '"]');
+      const bundleChecks = root.querySelectorAll(
+        'input.bundle-app-product-check[data-bundle-id="' + bid + '"]:not([disabled])'
+      );
       let anyChecked = false;
       for (const b of bundleChecks) {
         if (b.checked) {
@@ -771,17 +848,30 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
       }
     }
 
+    const settings = (bundle && bundle.settings) || {};
+    const req = Boolean(settings && settings.selectionRequired === true);
+    const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
+
     const selectedByItemIndex = {};
     const units = [];
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i] || {};
       const v = String(it.variantId || "").trim();
       const isBase = Boolean(it.isBase);
-      const on = isBase ? true : hasItemSel ? itemSel && itemSel[String(i)] === true : false;
+      let pid = String(it.productId || "").trim();
+      if (!pid && v && v.indexOf("product:") === 0) pid = String(v).slice("product:".length).trim();
+      const on = isBase ? true : hasItemSel ? itemSel && itemSel[String(i)] === true : includeSize ? include[pid] === true : !req;
       selectedByItemIndex[String(i)] = on === true;
       if (!on) continue;
       if (!isProductRef(v)) continue;
-      const pid = String(it.productId || "").trim();
       if (!pid) continue;
       const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
       for (let u = 0; u < qty; u += 1) {
