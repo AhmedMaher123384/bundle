@@ -247,7 +247,6 @@ var selectedTierByBundleId = {};
 var selectedItemIndexesByBundleId = {};
 var applying = false;
 var variantSelectionsByBundleId = {};
-var postAddShownByBundleId = {};
 var variantPickerCacheByBundleId = {};
 var variantPickerPendingByBundleId = {};
 
@@ -465,6 +464,14 @@ function triggerInCartVariantKey(variantId) {
   return "bundle_app_trigger_in_cart_variant:" + String(merchantId || "") + ":" + String(variantId || "");
 }
 
+function postAddDismissKey(triggerProductId) {
+  return "bundle_app_post_add_dismissed:" + String(merchantId || "") + ":" + String(triggerProductId || "");
+}
+
+function postAddDismissVariantKey(variantId) {
+  return "bundle_app_post_add_dismissed_variant:" + String(merchantId || "") + ":" + String(variantId || "");
+}
+
 function markTriggerInCart(triggerProductId) {
   try {
     const pid = String(triggerProductId || "").trim();
@@ -479,6 +486,37 @@ function markTriggerVariantInCart(variantId) {
     if (!vid) return;
     localStorage.setItem(triggerInCartVariantKey(vid), JSON.stringify({ ts: Date.now() }));
   } catch (e) {}
+}
+
+function markPostAddDismiss(triggerProductId, triggerVariantId) {
+  try {
+    const ts = Date.now();
+    const pid = String(triggerProductId || "").trim();
+    const vid = String(triggerVariantId || "").trim();
+    if (pid) localStorage.setItem(postAddDismissKey(pid), JSON.stringify({ ts: ts }));
+    if (vid) localStorage.setItem(postAddDismissVariantKey(vid), JSON.stringify({ ts: ts }));
+  } catch (e) {}
+}
+
+function clearTriggerMarks(triggerProductId, triggerVariantId) {
+  try {
+    const pid = String(triggerProductId || "").trim();
+    if (pid) localStorage.removeItem(triggerInCartKey(pid));
+  } catch (e0) {}
+  try {
+    const vid = String(triggerVariantId || "").trim();
+    if (vid) localStorage.removeItem(triggerInCartVariantKey(vid));
+  } catch (e1) {}
+}
+
+function dismissPostAddForTrigger(triggerProductId, triggerVariantId) {
+  try {
+    markPostAddDismiss(triggerProductId, triggerVariantId);
+    clearTriggerMarks(triggerProductId, triggerVariantId);
+  } catch (e) {}
+  try {
+    scheduleUpsellRefresh();
+  } catch (e2) {}
 }
 
 function scheduleUpsellRefresh() {
@@ -522,6 +560,55 @@ function hasRecentTriggerMark(triggerProductId, triggerVariantId) {
       if (m2 && now - m2.ts <= ttlMs) return true;
     }
     return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+function shouldShowPostAdd(triggerProductId, triggerVariantId) {
+  try {
+    const pid = String(triggerProductId || "").trim();
+    const vid = String(triggerVariantId || "").trim();
+    if (!pid && !vid) return false;
+
+    const now = Date.now();
+    const showTtlMs = 2 * 60 * 1000;
+
+    let addTs = 0;
+    if (pid) {
+      const m0 = loadTriggerMark(triggerInCartKey(pid));
+      if (m0 && Number.isFinite(m0.ts) && m0.ts > addTs) addTs = m0.ts;
+    }
+    if (vid) {
+      const m1 = loadTriggerMark(triggerInCartVariantKey(vid));
+      if (m1 && Number.isFinite(m1.ts) && m1.ts > addTs) addTs = m1.ts;
+    }
+    if (!addTs || !Number.isFinite(addTs)) return false;
+    if (now - addTs > showTtlMs) return false;
+
+    let disTs = 0;
+    if (pid) {
+      const d0 = loadTriggerMark(postAddDismissKey(pid));
+      if (d0 && Number.isFinite(d0.ts) && d0.ts > disTs) disTs = d0.ts;
+    }
+    if (vid) {
+      const d1 = loadTriggerMark(postAddDismissVariantKey(vid));
+      if (d1 && Number.isFinite(d1.ts) && d1.ts > disTs) disTs = d1.ts;
+    }
+    if (disTs && Number.isFinite(disTs) && disTs >= addTs) return false;
+
+    let pageLoadedAt = 0;
+    try {
+      pageLoadedAt = Number((g && g.BundleApp && g.BundleApp._pageLoadedAt) || 0);
+    } catch (eLoadAt) {
+      pageLoadedAt = 0;
+    }
+    if (Number.isFinite(pageLoadedAt) && pageLoadedAt > 0) {
+      const slackMs = 1500;
+      if (addTs < pageLoadedAt - slackMs) return false;
+    }
+
+    return true;
   } catch (e) {
     return false;
   }
@@ -2068,14 +2155,6 @@ async function applyBundleSelection(bundle) {
     return;
   }
 
-  if (kind === "post_add_upsell" && postAddShownByBundleId[bid]) {
-    messageByBundleId[bid] = "تم عرض الإضافة بالفعل";
-    try {
-      renderProductBanners(lastBundles || []);
-    } catch (e00) {}
-    return;
-  }
-
   selectedBundleId = bid;
   applying = true;
   try {
@@ -2103,7 +2182,11 @@ async function applyBundleSelection(bundle) {
       try {
         await addItemsToCart(items);
         messageByBundleId[bid] = "تمت إضافة المنتجات للسلة";
-        if (kind === "post_add_upsell") postAddShownByBundleId[bid] = true;
+        if (kind === "post_add_upsell") {
+          try {
+            dismissPostAddForTrigger(trigger, typeof findVariantId === "function" ? findVariantId() : "");
+          } catch (ePost) {}
+        }
       } catch (addErr) {
         markStoreClosed(addErr);
         const hm = humanizeCartError(addErr);
@@ -2323,6 +2406,10 @@ async function refreshProduct() {
     state.busy = true;
 
     try {
+      if (g && g.BundleApp && !g.BundleApp._pageLoadedAt) g.BundleApp._pageLoadedAt = Date.now();
+    } catch (eLoad) {}
+
+    try {
       ensureCartHooks();
     } catch (eHook) {}
     try {
@@ -2359,7 +2446,7 @@ async function refreshProduct() {
       if (hasPostAdd) {
         const pid = String(productId || "").trim();
         const vid = String(variantId || "").trim();
-        const ok = await hasTriggerInCart(pid, vid);
+        const ok = shouldShowPostAdd(pid, vid);
         if (!ok) bundles = bundles.filter((b) => String((b && b.kind) || "").trim() !== "post_add_upsell");
       }
     } catch (eGate) {}

@@ -31,8 +31,8 @@ function renderBundleCard_post_add_upsell(b) {
   else labelStyle += "background:rgba(255,255,255,.18);";
   if (labelText) labelStyle += "color:" + escHtml(labelText) + ";";
 
-  let html = "";
-  html +=
+  let card = "";
+  card +=
     '<div class="' +
     cls +
     '" style="' +
@@ -41,23 +41,23 @@ function renderBundleCard_post_add_upsell(b) {
     escHtml(bid) +
     '" data-kind="post_add_upsell">';
 
-  html += '<div class="bundle-app-kind-chip">إضافات مقترحة</div>';
+  card += '<div class="bundle-app-kind-chip">إضافات مقترحة</div>';
 
-  html += '<div class="bundle-app-row">';
-  html += '<div class="bundle-app-choice">';
-  html += '<div class="bundle-app-content">';
-  html += '<div class="bundle-app-head">';
-  html += '<div class="bundle-app-title">' + escHtml(title) + "</div>";
-  html += label ? '<div class="bundle-app-label" style="' + labelStyle + '">' + escHtml(label) + "</div>" : "";
-  html += "</div>";
-  html += subtitle ? '<div class="bundle-app-subtitle">' + escHtml(subtitle) + "</div>" : "";
-  html += labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "";
-  html += "</div>";
-  html += "</div>";
-  html += "</div>";
+  card += '<div class="bundle-app-row">';
+  card += '<div class="bundle-app-choice">';
+  card += '<div class="bundle-app-content">';
+  card += '<div class="bundle-app-head">';
+  card += '<div class="bundle-app-title">' + escHtml(title) + "</div>";
+  card += label ? '<div class="bundle-app-label" style="' + labelStyle + '">' + escHtml(label) + "</div>" : "";
+  card += "</div>";
+  card += subtitle ? '<div class="bundle-app-subtitle">' + escHtml(subtitle) + "</div>" : "";
+  card += labelSub ? '<div class="bundle-app-label-sub">' + escHtml(labelSub) + "</div>" : "";
+  card += "</div>";
+  card += "</div>";
+  card += "</div>";
 
   if (showItems && items.length) {
-    html += '<div class="bundle-app-products bundle-app-products--upsell">';
+    card += '<div class="bundle-app-products bundle-app-products--upsell">';
     for (let i1 = 0; i1 < items.length; i1 += 1) {
       const it1 = items[i1] || {};
       const v1 = String(it1.variantId || "").trim();
@@ -66,7 +66,7 @@ function renderBundleCard_post_add_upsell(b) {
       const name1 = String(it1.name || "").trim() || String(it1.productId || "").trim() || v1;
       const qty1 = Math.max(1, Math.floor(Number(it1.quantity || 1)));
       const img1 = String(it1.imageUrl || "").trim();
-      html +=
+      card +=
         '<div class="bundle-app-product bundle-app-product-item" data-item-index="' +
         escHtml(i1) +
         '">' +
@@ -102,10 +102,10 @@ function renderBundleCard_post_add_upsell(b) {
         "</div>" +
         "</div>";
     }
-    html += "</div>";
+    card += "</div>";
   }
 
-  html +=
+  card +=
     (msg ? '<div class="bundle-app-msg">' + escHtml(msg) + "</div>" : "") +
     '<button class="bundle-app-btn bundle-app-btn--upsell" type="button" data-action="apply-one" data-bundle-id="' +
     escHtml(bid) +
@@ -117,7 +117,19 @@ function renderBundleCard_post_add_upsell(b) {
     "</button>" +
     "</div>";
 
-  return html;
+  let sheet = "";
+  sheet += '<div class="bundle-app-bottomsheet" data-role="postadd-sheet" data-bundle-id="' + escHtml(bid) + '">';
+  sheet += '<div class="bundle-app-bottomsheet__panel" data-role="postadd-panel" role="dialog" aria-modal="true">';
+  sheet += '<div class="bundle-app-bottomsheet__head">';
+  sheet += '<div class="bundle-app-bottomsheet__title">إضافات مقترحة</div>';
+  sheet +=
+    '<button class="bundle-app-bottomsheet__close" type="button" data-action="close-postadd" data-bundle-id="' +
+    escHtml(bid) +
+    '" aria-label="إغلاق">×</button>';
+  sheet += "</div>";
+  sheet += '<div class="bundle-app-bottomsheet__content">' + card + "</div>";
+  sheet += "</div></div>";
+
+  return sheet;
 }
 `;
-

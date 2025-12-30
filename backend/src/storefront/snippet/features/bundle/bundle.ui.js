@@ -367,11 +367,16 @@ function renderProductBanners(bundles) {
   }
 
   let html = "";
+  let hasPostAdd = false;
   for (const b of arr) {
     const kind = String((b && b.kind) || "").trim();
     if (kind === "products_discount") html += renderBundleCard_products_discount(b);
     else if (kind === "products_no_discount") html += renderBundleCard_products_no_discount(b);
-    else if (kind === "post_add_upsell") html += renderBundleCard_post_add_upsell(b);
+    else if (kind === "post_add_upsell") {
+      if (hasPostAdd) continue;
+      hasPostAdd = true;
+      html += renderBundleCard_post_add_upsell(b);
+    }
     else html += renderBundleCard_quantity_discount(b);
   }
 
@@ -625,6 +630,59 @@ function renderProductBanners(bundles) {
       const bundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
       if (!bundle) return;
       applyBundleSelection(bundle);
+    };
+  }
+
+  const closeBtns = root.querySelectorAll('button[data-action="close-postadd"][data-bundle-id]');
+  for (const btn of closeBtns) {
+    btn.onclick = (e) => {
+      try {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+      } catch (e0) {}
+
+      const bid = String(btn.getAttribute("data-bundle-id") || "").trim();
+      if (!bid) return;
+      const bundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
+      const trigger = String((bundle && bundle.triggerProductId) || "").trim();
+      const vid = typeof findVariantId === "function" ? String(findVariantId() || "").trim() : "";
+      try {
+        dismissPostAddForTrigger(trigger, vid);
+      } catch (e1) {}
+
+      try {
+        if (String(selectedBundleId || "") === bid) selectedBundleId = null;
+        messageByBundleId[bid] = "";
+      } catch (e2) {}
+
+      const next = arr.filter((x) => String((x && x.id) || "") !== bid);
+      renderProductBanners(next);
+    };
+  }
+
+  const sheets = root.querySelectorAll('.bundle-app-bottomsheet[data-role="postadd-sheet"][data-bundle-id]');
+  for (const sh of sheets) {
+    sh.onclick = (e) => {
+      try {
+        const t = e && e.target ? e.target : null;
+        if (!t || t !== sh) return;
+      } catch (e0) {
+        return;
+      }
+      const bid = String(sh.getAttribute("data-bundle-id") || "").trim();
+      if (!bid) return;
+      const bundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
+      const trigger = String((bundle && bundle.triggerProductId) || "").trim();
+      const vid = typeof findVariantId === "function" ? String(findVariantId() || "").trim() : "";
+      try {
+        dismissPostAddForTrigger(trigger, vid);
+      } catch (e1) {}
+      try {
+        if (String(selectedBundleId || "") === bid) selectedBundleId = null;
+        messageByBundleId[bid] = "";
+      } catch (e2) {}
+      const next = arr.filter((x) => String((x && x.id) || "") !== bid);
+      renderProductBanners(next);
     };
   }
 }
