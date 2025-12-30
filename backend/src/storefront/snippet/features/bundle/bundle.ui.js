@@ -657,6 +657,8 @@ function renderProductBanners(bundles) {
       const itemIndex = String(el.getAttribute("data-item-index") || "");
       if (!bid || itemIndex === "") return;
 
+      selectedBundleId = bid;
+      messageByBundleId[bid] = "";
       const bundle0 = arr.find((x) => String((x && x.id) || "") === bid) || null;
       const sel = typeof getBundleItemSelectionMap === "function" ? getBundleItemSelectionMap(bid) : null;
       if (sel && typeof sel === "object") {
@@ -697,9 +699,6 @@ function renderProductBanners(bundles) {
       }
 
       if (el.checked) {
-        selectedBundleId = bid;
-        messageByBundleId[bid] = "";
-
         const otherChecks = root.querySelectorAll(
           'input.bundle-app-product-check[data-bundle-id]:not([data-bundle-id="' + bid + '"]):not([disabled])'
         );
@@ -743,8 +742,21 @@ function renderProductBanners(bundles) {
       }
 
       const cb = itemEl.querySelector("input.bundle-app-product-check[data-bundle-id][data-item-index]");
-      if (!cb || cb.disabled) return;
-      cb.checked = !cb.checked;
+      if (!cb) return;
+      const bid = String(cb.getAttribute("data-bundle-id") || "").trim();
+      if (bid) {
+        selectedBundleId = bid;
+        messageByBundleId[bid] = "";
+      }
+      if (cb.disabled) {
+        if (bid) renderProductBanners(arr);
+        return;
+      }
+      if (cb.checked) {
+        if (bid) renderProductBanners(arr);
+        return;
+      }
+      cb.checked = true;
       if (typeof cb.onchange === "function") cb.onchange();
     };
   }
@@ -850,6 +862,7 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
 
     const settings = (bundle && bundle.settings) || {};
     const req = Boolean(settings && settings.selectionRequired === true);
+    const pickerVisible = settings && settings.variantPickerVisible !== false;
     const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
     const include = {};
     let includeSize = 0;
@@ -871,11 +884,12 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
       const on = isBase ? true : hasItemSel ? itemSel && itemSel[String(i)] === true : includeSize ? include[pid] === true : !req;
       selectedByItemIndex[String(i)] = on === true;
       if (!on) continue;
-      if (!isProductRef(v)) continue;
       if (!pid) continue;
+      if (!pickerVisible) continue;
       const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
+      const defVid = v && !isProductRef(v) ? v : "";
       for (let u = 0; u < qty; u += 1) {
-        units.push({ productId: pid, key: pid + ":" + u, itemIndex: i });
+        units.push({ productId: pid, key: pid + ":" + u, itemIndex: i, defaultVariantId: defVid });
       }
     }
 
@@ -900,10 +914,21 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
 
     for (const u of units) {
       const list0 = varsByPid[u.productId] || [];
+      if (!sel) continue;
+      const cur = String(sel[u.key] || "").trim();
+      if (cur) continue;
+      const defVid = String(u.defaultVariantId || "").trim();
+      if (defVid) {
+        const ok = list0.some((x) => String((x && x.variantId) || "").trim() === defVid);
+        if (ok) {
+          sel[u.key] = defVid;
+          continue;
+        }
+      }
       if (list0.length === 1) {
         const only = list0[0] || {};
         const vid0 = String(only.variantId || "").trim();
-        if (vid0 && sel) sel[u.key] = vid0;
+        if (vid0) sel[u.key] = vid0;
       }
     }
 

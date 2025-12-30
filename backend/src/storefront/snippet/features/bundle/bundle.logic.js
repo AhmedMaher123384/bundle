@@ -974,6 +974,11 @@ function computeQtyItems(bundle, opts) {
     let baseQty = Math.max(1, Math.floor(Number(getPageQty() || 1)));
     if (Number.isFinite(qSel) && qSel > baseQty) baseQty = qSel;
 
+    const settings = (bundle && bundle.settings) || {};
+    const pickerVisible = settings && settings.variantPickerVisible !== false;
+    const bid = String((bundle && bundle.id) || "").trim();
+    const sel = bid ? getBundleVariantSelectionMap(bid) || {} : {};
+
     const items = [];
     for (let i = 0; i < comps.length; i++) {
       const c = comps[i] || {};
@@ -990,8 +995,6 @@ function computeQtyItems(bundle, opts) {
 
     const mode = String((opts && opts.mode) || "apply");
     if (mode === "preview") {
-      const bid = String((bundle && bundle.id) || "").trim();
-      const sel = getBundleVariantSelectionMap(bid) || {};
       const out = [];
       for (let j = 0; j < items.length; j++) {
         const it = items[j] || {};
@@ -1011,6 +1014,25 @@ function computeQtyItems(bundle, opts) {
             const useVid = pv2 || vid;
             out.push({ variantId: useVid, productId: ref || null, quantity: 1, isBase: it.isBase });
           }
+        } else if (pickerVisible) {
+          const ref = String(it.productId || "").trim();
+          const qty2 = Math.max(1, Math.floor(Number(it.quantity || 1)));
+          if (!ref) {
+            out.push(it);
+          } else {
+            const counts = {};
+            for (let u = 0; u < qty2; u++) {
+              const key = ref + ":" + u;
+              const pv = String(sel[key] || "").trim();
+              const useVid = pv || vid;
+              if (!useVid) continue;
+              counts[useVid] = (counts[useVid] || 0) + 1;
+            }
+            for (const k in counts) {
+              if (!Object.prototype.hasOwnProperty.call(counts, k)) continue;
+              out.push({ variantId: k, productId: ref || null, quantity: counts[k], isBase: it.isBase });
+            }
+          }
         } else {
           out.push(it);
         }
@@ -1018,7 +1040,31 @@ function computeQtyItems(bundle, opts) {
       return out;
     }
 
-    return items;
+    if (!pickerVisible) return items;
+    const out = [];
+    for (let j = 0; j < items.length; j++) {
+      const it = items[j] || {};
+      const vid = String(it.variantId || "").trim();
+      const ref = String(it.productId || "").trim();
+      const qty2 = Math.max(1, Math.floor(Number(it.quantity || 1)));
+      if (!vid || !ref || vid.indexOf("product:") === 0) {
+        out.push(it);
+        continue;
+      }
+      const counts = {};
+      for (let u = 0; u < qty2; u++) {
+        const key = ref + ":" + u;
+        const pv = String(sel[key] || "").trim();
+        const useVid = pv || vid;
+        if (!useVid) continue;
+        counts[useVid] = (counts[useVid] || 0) + 1;
+      }
+      for (const k in counts) {
+        if (!Object.prototype.hasOwnProperty.call(counts, k)) continue;
+        out.push({ variantId: k, productId: ref || null, quantity: counts[k], isBase: it.isBase });
+      }
+    }
+    return out;
   } catch (e) {
     return [];
   }
@@ -1108,7 +1154,23 @@ function computeProductsItems(bundle, opts) {
           }
         }
       } else {
-        out.push({ variantId: v, productId: pid2 || null, quantity: qty, isBase: Boolean(it2.isBase) });
+        const pickerVisible = settings && settings.variantPickerVisible !== false;
+        if (pickerVisible && pid2) {
+          const counts = {};
+          for (let u = 0; u < qty; u++) {
+            const key = pid2 + ":" + u;
+            const pv = String(sel[key] || "").trim();
+            const useVid = pv || v;
+            if (!useVid) continue;
+            counts[useVid] = (counts[useVid] || 0) + 1;
+          }
+          for (const k in counts) {
+            if (!Object.prototype.hasOwnProperty.call(counts, k)) continue;
+            out.push({ variantId: k, productId: pid2 || null, quantity: counts[k], isBase: Boolean(it2.isBase) });
+          }
+        } else {
+          out.push({ variantId: v, productId: pid2 || null, quantity: qty, isBase: Boolean(it2.isBase) });
+        }
       }
     }
 
@@ -1351,13 +1413,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
         escHtml(left) +
         "</strong></div>" +
         (right ? '<div class="bundle-app-muted">' + escHtml(right) + "</div>" : "") +
-        '</div><span class="bundle-app-checkwrap bundle-app-tier-checkwrap"><input class="bundle-app-tier-check" type="checkbox" data-bundle-id="' +
-        escHtml(bundleId) +
-        '" data-tier-minqty="' +
-        escHtml(r.minQty) +
-        '" ' +
-        (active ? "checked" : "") +
-        ' /><span class="bundle-app-checkmark"></span></span></label>';
+        "</div></label>";
     }
     return out;
   } catch (e) {
