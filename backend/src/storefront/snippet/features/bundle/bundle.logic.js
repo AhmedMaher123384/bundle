@@ -1973,7 +1973,7 @@ async function refreshProduct() {
 
     const variantId = findVariantId();
     const productId = findProductId();
-    const key = variantId ? "v:" + String(variantId) : productId ? "p:" + String(productId) : "";
+    const key = productId ? "p:" + String(productId) : variantId ? "v:" + String(variantId) : "";
     log("bundle-app: ids", { variantId: variantId, productId: productId });
     try {
       const pid0 = String(productId || "").trim();
@@ -1986,8 +1986,8 @@ async function refreshProduct() {
     } catch (eMeta0) {}
 
     let res = null;
-    if (variantId) res = await getProductBundlesByVariantId(variantId);
-    else if (productId) res = await getProductBundlesByProductId(productId);
+    if (productId) res = await getProductBundlesByProductId(productId);
+    else if (variantId) res = await getProductBundlesByVariantId(variantId);
     else {
       clearProductBanner();
       state.lastKey = "";
