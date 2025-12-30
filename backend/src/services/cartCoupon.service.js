@@ -26,8 +26,38 @@ function buildCouponCode(merchantId, cartHash) {
   return `B${sha256Hex(seed).slice(0, 15).toUpperCase()}`;
 }
 
-function formatDateOnly(date) {
+function formatDateOnlyUtc(date) {
   return new Date(date).toISOString().slice(0, 10);
+}
+
+function formatDateOnlyInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: String(timeZone || "UTC"),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(new Date(date));
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+    if (year && month && day) return `${year}-${month}-${day}`;
+    return formatDateOnlyUtc(date);
+  } catch {
+    return formatDateOnlyUtc(date);
+  }
+}
+
+function addDaysToDateOnly(dateOnly, days) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateOnly || "").trim());
+  if (!m) return String(dateOnly || "").trim();
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const delta = Number(days);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + (Number.isFinite(delta) ? delta : 0));
+  return dt.toISOString().slice(0, 10);
 }
 
 function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
@@ -89,13 +119,17 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
 
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
     is_apply_with_offer: true,
-    start_date: formatDateOnly(now),
-    expiry_date: formatDateOnly(expiresAt),
+    start_date: startDate,
+    expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
     include_product_ids: includeProductIdsForApi
@@ -249,13 +283,17 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
 
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
     is_apply_with_offer: true,
-    start_date: formatDateOnly(now),
-    expiry_date: formatDateOnly(expiresAt),
+    start_date: startDate,
+    expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
     include_product_ids: includeProductIdsForApi
