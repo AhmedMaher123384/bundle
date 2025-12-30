@@ -947,7 +947,12 @@ function normalizeItems(bundle) {
     const isBase = Boolean(c.isBase);
     const q = isBase ? Math.max(getPageQty(), baseMin) : Math.max(1, Math.floor(Number(c.quantity || 1)));
     if (!v) continue;
-    out.push({ variantId: v, productId: pid || null, quantity: q, isBase: isBase });
+    const name = c.name != null ? String(c.name || "").trim() || null : null;
+    const imageUrl = c.imageUrl != null ? String(c.imageUrl || "").trim() || null : null;
+    const price = c.price != null && Number.isFinite(Number(c.price)) ? Number(c.price) : null;
+    const attributes = c.attributes && typeof c.attributes === "object" && !Array.isArray(c.attributes) ? c.attributes : null;
+    const group = c.group != null ? String(c.group || "").trim() || null : null;
+    out.push({ variantId: v, productId: pid || null, quantity: q, isBase: isBase, name, imageUrl, price, attributes, group });
   }
   out.sort(function (a, b) {
     return String(a.variantId).localeCompare(String(b.variantId));

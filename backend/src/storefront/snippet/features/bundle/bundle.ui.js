@@ -571,7 +571,89 @@ function renderProductBanners(bundles) {
       (itemsText ? '<div class="bundle-app-items-summary">' + escHtml(itemsText) + "</div>" : "") +
       '<div class="bundle-app-products-section">';
 
-    
+    if (showItems && items.length) {
+      html += '<div class="bundle-app-products">';
+      for (let i1 = 0; i1 < items.length; i1 += 1) {
+        const it1 = items[i1] || {};
+        const v1 = String(it1.variantId || "").trim();
+        if (!v1) continue;
+        const isBase1 = Boolean(it1.isBase);
+        let pid1 = String(it1.productId || "").trim();
+        if (!pid1 && v1 && v1.indexOf("product:") === 0) pid1 = String(v1).slice("product:".length).trim();
+
+        const on1 = isBase1
+          ? true
+          : hasItemSel
+            ? itemSel && itemSel[String(i1)] === true
+            : includeSize
+              ? include[pid1] === true
+              : !req;
+
+        const name1 = String(it1.name || "").trim() || pid1 || v1;
+        const qty1 = Math.max(1, Math.floor(Number(it1.quantity || 1)));
+
+        let attrsText1 = "";
+        const attrs1 = it1.attributes;
+        if (attrs1 && typeof attrs1 === "object" && !Array.isArray(attrs1)) {
+          const parts1 = [];
+          for (const k1 in attrs1) {
+            if (!Object.prototype.hasOwnProperty.call(attrs1, k1)) continue;
+            const kk1 = String(k1 || "").trim();
+            const vv1 = attrs1[k1];
+            let vs1 = "";
+            if (Array.isArray(vv1)) {
+              const xs1 = vv1.map((x) => String(x || "").trim()).filter(Boolean);
+              vs1 = xs1.join(" / ");
+            } else if (vv1 != null && typeof vv1 === "object") {
+              const cand1 = String(vv1.value || vv1.name || vv1.label || "").trim();
+              vs1 = cand1 || String(vv1 || "").trim();
+            } else {
+              vs1 = String(vv1 == null ? "" : vv1).trim();
+            }
+            if (!kk1 || !vs1) continue;
+            parts1.push(kk1 + ": " + vs1);
+          }
+          attrsText1 = parts1.join(" • ");
+        }
+
+        const itemCls = "bundle-app-product-item" + (on1 ? " bundle-app-product-item--selected" : "");
+        html +=
+          '<div class="' +
+          itemCls +
+          '" data-item-index="' +
+          escHtml(i1) +
+          '">' +
+          '<div class="bundle-app-product-header">' +
+          '<div class="bundle-app-product-checkwrap">' +
+          '<input class="bundle-app-product-check" type="checkbox" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          escHtml(i1) +
+          '"' +
+          (on1 ? " checked" : "") +
+          (isBase1 ? " disabled" : "") +
+          "/>" +
+          '<div class="bundle-app-checkmark"></div>' +
+          "</div>" +
+          '<div class="bundle-app-product-info">' +
+          '<div class="bundle-app-product-name">' +
+          escHtml(name1) +
+          "</div>" +
+          '<div class="bundle-app-product-qty">' +
+          escHtml("الكمية: " + fmtNum(qty1)) +
+          "</div>" +
+          (attrsText1 ? '<div class="bundle-app-product-qty">' + escHtml(attrsText1) + "</div>" : "") +
+          "</div>" +
+          "</div>" +
+          '<div class="bundle-app-product-variants" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          escHtml(i1) +
+          '"></div>' +
+          "</div>";
+      }
+      html += "</div>";
+    }
 
     html +=
       "</div>" +
