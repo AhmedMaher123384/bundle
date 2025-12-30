@@ -73,41 +73,7 @@ function renderBundleCard_quantity_discount(b) {
 
   if (tiersHtml) html += '<div class="bundle-app-tiers bundle-app-tiers--quantity">' + tiersHtml + "</div>";
 
-  if (showItems && items.length) {
-    html += '<div class="bundle-app-products bundle-app-products--quantity">';
-    for (let i1 = 0; i1 < items.length; i1 += 1) {
-      const it1 = items[i1] || {};
-      const v1 = String(it1.variantId || "").trim();
-      if (!v1) continue;
-      const name1 = String(it1.name || "").trim() || String(it1.productId || "").trim() || v1;
-      const qty1 = Math.max(1, Math.floor(Number(it1.quantity || 1)));
-      const img1 = String(it1.imageUrl || "").trim();
-      html +=
-        '<div class="bundle-app-product bundle-app-product-item" data-item-index="' +
-        escHtml(i1) +
-        '">' +
-        '<div class="bundle-app-product__media">' +
-        (img1 ? '<img class="bundle-app-product__img" src="' + escHtml(img1) + '" alt="" />' : "") +
-        "</div>" +
-        '<div class="bundle-app-product__body">' +
-        '<div class="bundle-app-product__top">' +
-        '<div class="bundle-app-product__name">' +
-        escHtml(name1) +
-        "</div>" +
-        "</div>" +
-        '<div class="bundle-app-product__attrs">' +
-        escHtml("الكمية: " + fmtNum(qty1)) +
-        "</div>" +
-        '<div class="bundle-app-product-variants" data-bundle-id="' +
-        escHtml(bid) +
-        '" data-item-index="' +
-        escHtml(i1) +
-        '"></div>' +
-        "</div>" +
-        "</div>";
-    }
-    html += "</div>";
-  }
+ 
 
   html +=
     (priceText ? '<div class="bundle-app-price">' + escHtml(priceText) + "</div>" : "") +
