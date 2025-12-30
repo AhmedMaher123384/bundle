@@ -420,82 +420,6 @@ function isCartLikePage() {
   }
 }
 
-function findCartLikeTriggerProductId() {
-  try {
-    if (typeof loadPendingCoupon === "function") {
-      const p0 = loadPendingCoupon(String(lastTriggerProductId || "").trim()) || loadPendingCoupon("");
-      const t0 = String((p0 && p0.trigger) || "").trim();
-      if (t0) return t0;
-    }
-  } catch (e0) {}
-
-  try {
-    const prefix = "bundle_app_selected_bundle:" + String(merchantId || "") + ":";
-    let best = null;
-    let bestTs = 0;
-    const ls = window.localStorage;
-    if (!ls) return null;
-
-    for (let i = 0; i < ls.length; i += 1) {
-      const k = String(ls.key(i) || "");
-      if (!k || k.indexOf(prefix) !== 0) continue;
-      const raw = ls.getItem(k);
-      if (!raw) continue;
-      const j = JSON.parse(raw);
-      if (!j || typeof j !== "object") continue;
-      const ts = Number(j.ts || 0);
-      const trig = String(j.triggerProductId || j.trigger || "").trim() || String(k).slice(prefix.length).trim();
-      if (!trig) continue;
-      const tsv = Number.isFinite(ts) ? ts : 0;
-      if (!best || tsv >= bestTs) {
-        best = trig;
-        bestTs = tsv;
-      }
-    }
-
-    return best;
-  } catch (e1) {
-    return null;
-  }
-}
-
-function getCartLikeVariantIds(maxCount) {
-  const out = [];
-  try {
-    const cap = Math.max(1, Math.min(30, Math.floor(Number(maxCount || 12))));
-    const cart = window.salla && window.salla.cart;
-    const pools = [
-      cart && cart.items,
-      cart && cart.data && cart.data.items,
-      cart && cart.data && cart.data.cart && cart.data.cart.items,
-      window.salla && window.salla.data && window.salla.data.cart && window.salla.data.cart.items
-    ];
-
-    const seen = {};
-    for (let p = 0; p < pools.length; p += 1) {
-      const arr = pools[p];
-      if (!Array.isArray(arr) || !arr.length) continue;
-      for (let i = 0; i < arr.length; i += 1) {
-        const it = arr[i] || {};
-        const vid = String(
-          it.variant_id ||
-            it.variantId ||
-            it.sku_id ||
-            it.skuId ||
-            (it.variant && (it.variant.id || it.variant.variant_id || it.variant.variantId)) ||
-            it.id ||
-            ""
-        ).trim();
-        if (!vid || seen[vid]) continue;
-        seen[vid] = true;
-        out.push(vid);
-        if (out.length >= cap) return out;
-      }
-    }
-  } catch (e) {}
-  return out;
-}
-
 async function tryApplyCoupon(code) {
   const c = String(code || "").trim();
   if (!c) return false;
@@ -1494,10 +1418,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
         escHtml(left) +
         "</strong></div>" +
         (right ? '<div class="bundle-app-muted">' + escHtml(right) + "</div>" : "") +
-        "</div></label>" +
-        (active
-          ? '<div class="bundle-app-pickers bundle-app-pickers--inline" data-bundle-id="' + escHtml(bundleId) + '"></div>'
-          : "");
+        "</div></label>";
     }
     return out;
   } catch (e) {
@@ -1798,52 +1719,17 @@ async function refreshProduct() {
 
     const variantId = findVariantId();
     const productId = findProductId();
-    let key = variantId ? "v:" + String(variantId) : productId ? "p:" + String(productId) : "";
+    const key = variantId ? "v:" + String(variantId) : productId ? "p:" + String(productId) : "";
     log("bundle-app: ids", { variantId: variantId, productId: productId });
 
     let res = null;
     if (variantId) res = await getProductBundlesByVariantId(variantId);
     else if (productId) res = await getProductBundlesByProductId(productId);
     else {
-      const allowCart = isCartLikePage();
-      if (!allowCart) {
-        clearProductBanner();
-        state.lastKey = "";
-        state.lastSig = "";
-        return;
-      }
-
-      const trig = findCartLikeTriggerProductId();
-      if (trig) {
-        key = "cart:p:" + String(trig);
-        try {
-          res = await getProductBundlesByProductId(trig);
-        } catch (e0) {
-          res = null;
-        }
-      }
-
-      if (!(res && Array.isArray(res.bundles) && res.bundles.length)) {
-        const vids = getCartLikeVariantIds(12);
-        for (let i0 = 0; i0 < vids.length; i0 += 1) {
-          const v0 = String(vids[i0] || "").trim();
-          if (!v0) continue;
-          key = "cart:v:" + v0;
-          try {
-            res = await getProductBundlesByVariantId(v0);
-          } catch (e1) {
-            res = null;
-          }
-          if (res && Array.isArray(res.bundles) && res.bundles.length) break;
-        }
-      }
-
-      if (!(res && Array.isArray(res.bundles) && res.bundles.length)) {
-        clearProductBanner();
-        state.lastKey = key;
-        state.lastSig = "";
-        return;
-      }
+      clearProductBanner();
+      state.lastKey = "";
+      state.lastSig = "";
+      return;
     }
 
     const bundles = (res && res.bundles) || [];

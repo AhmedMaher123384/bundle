@@ -371,7 +371,7 @@ function renderProductBanners(bundles) {
     const items = normalizeItems(b);
     const itemsText = showItems && items.length ? buildItemsText(items) : "";
     const priceText = showPrice ? buildPriceText(b) : "";
-    const tiersHtml = showTiers ? buildTierRows(b, bid, selectedMinQty, checked) : "";
+    const tiersHtml = showTiers ? buildTierRows(b, bid, selectedMinQty) : "";
     const msg = String(messageByBundleId[bid] || "");
 
     const checked = bid === String(selectedBundleId || "");
@@ -498,13 +498,11 @@ function renderProductBanners(bundles) {
           '<div class="bundle-app-product__attrs">' +
           escHtml(attrsLine1) +
           "</div>" +
-          (tiersHtml
-            ? ""
-            : '<div class="bundle-app-product-variants" data-bundle-id="' +
-              escHtml(bid) +
-              '" data-item-index="' +
-              escHtml(i1) +
-              '"></div>') +
+          '<div class="bundle-app-product-variants" data-bundle-id="' +
+          escHtml(bid) +
+          '" data-item-index="' +
+          escHtml(i1) +
+          '"></div>' +
           "</div>" +
           "</div>";
       }
@@ -534,7 +532,6 @@ function renderProductBanners(bundles) {
       const bid = String(el.getAttribute("data-bundle-id") || "");
       const mq = Number(el.getAttribute("data-tier-minqty"));
       if (bid && Number.isFinite(mq) && mq >= 1) {
-        selectedBundleId = bid;
         selectedTierByBundleId[bid] = Math.floor(mq);
         messageByBundleId[bid] = "";
         renderProductBanners(arr);
@@ -729,11 +726,7 @@ function renderProductBanners(bundles) {
       const selBundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
       if (selCard && selBundle) {
         try {
-          if (selCard.querySelector('.bundle-app-pickers[data-bundle-id="' + bid + '"]')) {
-            ensureVariantPickersForCard(selCard, selBundle);
-          } else {
-            ensureVariantPickersForTraditionalCard(selCard, selBundle);
-          }
+          ensureVariantPickersForTraditionalCard(selCard, selBundle);
         } catch (e) {}
       }
     }
