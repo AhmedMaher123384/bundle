@@ -45,17 +45,75 @@
 .bundle-app-checkmark{width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,.86);background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-sizing:border-box}
 .bundle-app-check:checked + .bundle-app-checkmark{background:#fff;border-color:#fff}
 .bundle-app-check:checked + .bundle-app-checkmark:after{content:"";width:7px;height:12px;border:3px solid #0f172a;border-top:0;border-left:0;transform:rotate(45deg);margin-top:-1px}
-.bundle-app-tiers{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.bundle-app-tier{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:rgba(255,255,255,.14);border-radius:14px;padding:9px 10px;font-size:12px;line-height:1.25;cursor:pointer;user-select:none;transition:background .12s ease,transform .12s ease;color:inherit}
-.bundle-app-tier:hover{background:rgba(255,255,255,.2)}
-.bundle-app-tier--selected{background:rgba(255,255,255,.26);outline:2px solid rgba(255,255,255,.65)}
-.bundle-app-tier:active{transform:scale(.99)}
-.bundle-app-tier strong{font-weight:900}
+/* الحاوية العامة للـtiers */
+.bundle-app-tiers {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: #f0f4ff; /* خلفية خفيفة للطبقة */
+  padding: 8px;
+  border-radius: 10px;
+}
+
+/* كل Tier منفرد */
+.bundle-app-tier {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: #e8f5e9; /* لون مختلف عن الحاوية */
+  border-radius: 16px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.3;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  color: #2e3e2f; /* لون النص */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+
+/* تأثير عند hover */
+.bundle-app-tier:hover {
+  background-color: #c8e6c9; /* لون أغمق شوية */
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+}
+
+/* عند تحديد Tier */
+.bundle-app-tier--selected {
+  background-color: #a5d6a7; /* لون مميز للتحديد */
+  outline: 2px solid #66bb6a;
+  transform: scale(1.02);
+}
+
+/* عند الضغط على Tier */
+.bundle-app-tier:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* النصوص المهمة bold */
+.bundle-app-tier strong {
+  font-weight: 900;
+  color: #1b5e20; /* لون أقوى للنص */
+}
+
 .bundle-app-pickers{margin-top:12px;padding:12px;background:rgba(255,255,255,.14);border-radius:14px}
 .bundle-app-pickers--inline{margin-top:0}
 .bundle-app-tier-main{min-width:0;flex:1}
 .bundle-app-tier-checkwrap{margin-top:1px}
 .bundle-app-picker-hint{font-size:12px;opacity:.95;line-height:1.35}
+
+
+
+
+
+
+
+
+
 .bundle-app-announcement{position:sticky;top:0;z-index:100000;box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:center;padding:10px 44px;background:#0f172a;color:#fff;border-bottom:1px solid rgba(255,255,255,.12);text-align:center;border-radius:var(--bundle-app-announcement-radius,0px)}
 .bundle-app-announcement.is-not-sticky{position:relative}
 .bundle-app-announcement.is-not-selectable{user-select:none;-webkit-user-select:none}
