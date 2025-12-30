@@ -6,8 +6,11 @@
 .bundle-app-picker-hint{font-size:12px;opacity:.95}
 .bundle-app-picker-status{font-size:12px;opacity:.95;margin-top:6px}
 .bundle-app-variant-options{display:flex;flex-wrap:wrap;gap:8px}
-.bundle-app-variant-btn{appearance:none;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;cursor:pointer;line-height:1;display:inline-flex;align-items:center;gap:8px}
-.bundle-app-variant-btn.is-selected{background:rgba(255,255,255,.95);color:#111827;border-color:rgba(255,255,255,.95)}
+.bundle-app-variant-btn{appearance:none;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;cursor:pointer;line-height:1;display:inline-flex;align-items:center;gap:8px;transition:transform .12s ease,box-shadow .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
+.bundle-app-variant-btn:hover{background:rgba(255,255,255,.2)}
+.bundle-app-variant-btn:active{transform:translateY(1px)}
+.bundle-app-variant-btn:focus-visible{outline:3px solid rgba(255,255,255,.75);outline-offset:2px}
+.bundle-app-variant-btn.is-selected{background:#fff;color:#0f172a;border-color:#fff;box-shadow:0 14px 30px rgba(2,6,23,.22);transform:translateY(-1px)}
 .bundle-app-variant-btn:disabled{opacity:.75;cursor:not-allowed}
 .bundle-app-variant-swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.25)}
 .bundle-app-variant-swatch.is-image{background-size:cover;background-position:center}
