@@ -6,6 +6,8 @@ async function resolveProductRefItems(items, bundleId) {
     bid && variantSelectionsByBundleId[bid] && typeof variantSelectionsByBundleId[bid] === "object"
       ? variantSelectionsByBundleId[bid]
       : null;
+  const mqRaw = bid && selectedTierByBundleId && selectedTierByBundleId[bid] != null ? Number(selectedTierByBundleId[bid]) : 1;
+  const mq = Number.isFinite(mqRaw) && mqRaw >= 1 ? Math.floor(mqRaw) : 1;
 
   const arr = Array.isArray(items) ? items : [];
   const fixed = [];
@@ -63,7 +65,8 @@ async function resolveProductRefItems(items, bundleId) {
 
   for (const unit of units) {
     const vlist = (varsByPid[unit.productId] || []).filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
-    const preVal = pre ? String(pre[unit.key] || "").trim() : "";
+    const tierK = String(mq) + "|" + String(unit.key);
+    const preVal = pre ? String(pre[tierK] || pre[unit.key] || "").trim() : "";
     if (preVal) {
       const ok = vlist.some((x) => String((x && x.variantId) || "").trim() === preVal);
       if (ok) {
@@ -110,7 +113,11 @@ function applySelectionsToContainer(container, bundleId) {
     for (const row of rows) {
       const key = String(row.getAttribute("data-unit-key-row") || "").trim();
       if (!key) continue;
-      const val = String(sel[key] || "").trim();
+      let val = String(sel[key] || "").trim();
+      if (!val) {
+        const bar = key.indexOf("|");
+        if (bar > 0) val = String(sel[key.slice(bar + 1)] || "").trim();
+      }
 
       const btns = row.querySelectorAll('button[data-action="pick-variant"][data-variant-id]');
       for (const b of btns) {
@@ -142,7 +149,11 @@ function updatePickerStatus(container, bundleId) {
     for (const r of rows) {
       const key = String(r.getAttribute("data-unit-key-row") || "").trim();
       if (!key) continue;
-      const v = String(sel[key] || "").trim();
+      let v = String(sel[key] || "").trim();
+      if (!v) {
+        const bar = key.indexOf("|");
+        if (bar > 0) v = String(sel[key.slice(bar + 1)] || "").trim();
+      }
       if (v) chosen += 1;
     }
     const el = container.querySelector('[data-role="picker-status"]');
@@ -192,7 +203,8 @@ async function ensureVariantPickersForCard(card, bundle) {
     const container = card.querySelector('.bundle-app-pickers[data-bundle-id]');
     if (!container) return;
 
-    const sig = bundleVariantSig(bundle);
+    const mq = pickMinQty(bundle);
+    const sig = bundleVariantSig(bundle) + "|mq:" + String(mq);
     const cached = variantPickerCacheByBundleId[bid];
     if (cached && cached.sig === sig && cached.html != null) {
       container.innerHTML = cached.html;
@@ -250,7 +262,10 @@ async function ensureVariantPickersForCard(card, bundle) {
         if (list2.length === 1) {
           const only = list2[0] || {};
           const vid = String(only.variantId || "").trim();
-          if (vid) sel[unit.key] = vid;
+          if (vid && !readTierSelection(sel, mq, unit.key)) {
+            const sk0 = tierKey(mq, unit.key);
+            if (sk0) sel[sk0] = vid;
+          }
         } else if (list2.length > 1) {
           need.push(unit);
         }
@@ -269,6 +284,8 @@ async function ensureVariantPickersForCard(card, bundle) {
       for (const un of need) {
         const opts = (varsByPid[un.productId] || []).filter((y) => y && y.isActive === true && String(y.variantId || "").trim());
         if (!opts.length) continue;
+        const sk = tierKey(mq, un.key);
+        if (!sk) continue;
 
         html +=
           '<div class="bundle-app-picker-row">' +
@@ -276,18 +293,18 @@ async function ensureVariantPickersForCard(card, bundle) {
           escHtml("اختر فاريانت") +
           "</div>" +
           '<div class="bundle-app-variant-options" data-unit-key-row="' +
-          escHtml(un.key) +
+          escHtml(sk) +
           '">';
 
         for (const o of opts) {
           const vid = String((o && o.variantId) || "").trim();
           if (!vid) continue;
-          const on = String(sel[un.key] || "").trim() === vid;
+          const on = readTierSelection(sel, mq, un.key) === vid;
           html +=
             '<button type="button" class="bundle-app-variant-btn' +
             (on ? " is-selected" : "") +
             '" data-action="pick-variant" data-unit-key="' +
-            escHtml(un.key) +
+            escHtml(sk) +
             '" data-variant-id="' +
             escHtml(vid) +
             '" aria-pressed="' +
@@ -371,7 +388,7 @@ function renderProductBanners(bundles) {
     const items = normalizeItems(b);
     const itemsText = showItems && items.length ? buildItemsText(items) : "";
     const priceText = showPrice ? buildPriceText(b) : "";
-    const tiersHtml = showTiers ? buildTierRows(b, bid, selectedMinQty) : "";
+    const tiersHtml = showTiers ? buildTierRows(b, bid, selectedMinQty, true) : "";
     const msg = String(messageByBundleId[bid] || "");
 
     const checked = bid === String(selectedBundleId || "");
@@ -532,6 +549,24 @@ function renderProductBanners(bundles) {
       const bid = String(el.getAttribute("data-bundle-id") || "");
       const mq = Number(el.getAttribute("data-tier-minqty"));
       if (bid && Number.isFinite(mq) && mq >= 1) {
+        selectedBundleId = bid;
+        selectedTierByBundleId[bid] = Math.floor(mq);
+        messageByBundleId[bid] = "";
+        renderProductBanners(arr);
+      }
+    };
+  }
+
+  const tierChecks = root.querySelectorAll("input.bundle-app-tier-check[data-tier-minqty][data-bundle-id]");
+  for (const el of tierChecks) {
+    el.onclick = (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+    };
+    el.onchange = () => {
+      const bid = String(el.getAttribute("data-bundle-id") || "");
+      const mq = Number(el.getAttribute("data-tier-minqty"));
+      if (bid && Number.isFinite(mq) && mq >= 1) {
+        selectedBundleId = bid;
         selectedTierByBundleId[bid] = Math.floor(mq);
         messageByBundleId[bid] = "";
         renderProductBanners(arr);
@@ -726,7 +761,10 @@ function renderProductBanners(bundles) {
       const selBundle = arr.find((x) => String((x && x.id) || "") === bid) || null;
       if (selCard && selBundle) {
         try {
-          ensureVariantPickersForTraditionalCard(selCard, selBundle);
+          const showTiers = !(selBundle && selBundle.showTiers === false);
+          const hasTiers = showTiers && selBundle && selBundle.offer && Array.isArray(selBundle.offer.tiers) && selBundle.offer.tiers.length;
+          if (hasTiers) ensureVariantPickersForTierCard(selCard, selBundle);
+          else ensureVariantPickersForTraditionalCard(selCard, selBundle);
         } catch (e) {}
       }
     }
@@ -743,6 +781,9 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
     const variantContainers = card.querySelectorAll(".bundle-app-product-variants[data-bundle-id][data-item-index]");
     const items = normalizeItems(bundle);
     const sel = getBundleVariantSelectionMap(bid);
+    const mq = pickMinQty(bundle);
+    let baseQty = Math.max(1, Math.floor(Number(getPageQty() || 1)));
+    if (Number.isFinite(mq) && mq > baseQty) baseQty = mq;
     const itemSel = typeof getBundleItemSelectionMap === "function" ? getBundleItemSelectionMap(bid) : null;
     let hasItemSel = false;
     if (itemSel && typeof itemSel === "object") {
@@ -780,7 +821,7 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
       if (!on) continue;
       if (!pid) continue;
       if (!pickerVisible) continue;
-      const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
+      const qty = isBase ? baseQty : Math.max(1, Math.floor(Number(it.quantity || 1)));
       const defVid = v && !isProductRef(v) ? v : "";
       for (let u = 0; u < qty; u += 1) {
         units.push({ productId: pid, key: pid + ":" + u, itemIndex: i, defaultVariantId: defVid });
@@ -809,20 +850,24 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
     for (const u of units) {
       const list0 = varsByPid[u.productId] || [];
       if (!sel) continue;
-      const cur = String(sel[u.key] || "").trim();
+      const cur = readTierSelection(sel, mq, u.key);
       if (cur) continue;
       const defVid = String(u.defaultVariantId || "").trim();
       if (defVid) {
         const ok = list0.some((x) => String((x && x.variantId) || "").trim() === defVid);
         if (ok) {
-          sel[u.key] = defVid;
+          const sk0 = tierKey(mq, u.key);
+          if (sk0) sel[sk0] = defVid;
           continue;
         }
       }
       if (list0.length === 1) {
         const only = list0[0] || {};
         const vid0 = String(only.variantId || "").trim();
-        if (vid0) sel[u.key] = vid0;
+        if (vid0) {
+          const sk1 = tierKey(mq, u.key);
+          if (sk1) sel[sk1] = vid0;
+        }
       }
     }
 
@@ -851,11 +896,13 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
         const key = unit.key;
         const variants = varsByPid[pid] || [];
         if (!variants.length) continue;
-        const selectedVariantId = String((sel && sel[key]) || "").trim();
+        const selectedVariantId = readTierSelection(sel, mq, key);
+        const sk = tierKey(mq, key);
+        if (!sk) continue;
 
         html +=
           '<div class="bundle-app-picker-row" data-unit-key-row="' +
-          escHtml(key) +
+          escHtml(sk) +
           '">' +
           '<div class="bundle-app-variant-options">';
 
@@ -869,7 +916,7 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
             '" aria-pressed="' +
             (isSelected ? "true" : "false") +
             '" data-action="pick-variant" data-unit-key="' +
-            escHtml(key) +
+            escHtml(sk) +
             '" data-variant-id="' +
             escHtml(variantId) +
             '">' +
@@ -882,6 +929,172 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
 
       container.innerHTML = html;
       bindPickerContainer(container, bid);
+    }
+  } catch (e) {}
+}
+
+async function ensureVariantPickersForTierCard(card, bundle) {
+  try {
+    if (!card || !bundle) return;
+    ensurePickerStyles();
+    const bid = String(card.getAttribute("data-bundle-id") || "").trim();
+    if (!bid) return;
+
+    const tierContainers = card.querySelectorAll('.bundle-app-tier-pickers[data-bundle-id][data-tier-minqty]');
+    const open = card.querySelector('.bundle-app-tier-pickers.is-open[data-bundle-id][data-tier-minqty]');
+    for (const c of tierContainers) {
+      if (c !== open) c.innerHTML = "";
+    }
+
+    const variantContainers = card.querySelectorAll(".bundle-app-product-variants[data-bundle-id][data-item-index]");
+    for (const c of variantContainers) c.innerHTML = "";
+
+    if (!open) return;
+
+    const mqFromDom = Number(open.getAttribute("data-tier-minqty"));
+    const mq = Number.isFinite(mqFromDom) && mqFromDom >= 1 ? Math.floor(mqFromDom) : Math.max(1, Math.floor(Number(pickMinQty(bundle) || 1)));
+    let baseQty = Math.max(1, Math.floor(Number(getPageQty() || 1)));
+    if (Number.isFinite(mq) && mq > baseQty) baseQty = mq;
+
+    const settings = (bundle && bundle.settings) || {};
+    const req = Boolean(settings && settings.selectionRequired === true);
+    const pickerVisible = settings && settings.variantPickerVisible !== false;
+    if (!pickerVisible) {
+      open.innerHTML = "";
+      return;
+    }
+
+    const items = normalizeItems(bundle);
+    const sel = getBundleVariantSelectionMap(bid);
+    const itemSel = typeof getBundleItemSelectionMap === "function" ? getBundleItemSelectionMap(bid) : null;
+    let hasItemSel = false;
+    if (itemSel && typeof itemSel === "object") {
+      for (const k in itemSel) {
+        if (Object.prototype.hasOwnProperty.call(itemSel, k)) {
+          hasItemSel = true;
+          break;
+        }
+      }
+    }
+
+    const defIds = Array.isArray(settings && settings.defaultSelectedProductIds) ? settings.defaultSelectedProductIds : [];
+    const include = {};
+    let includeSize = 0;
+    for (let i0 = 0; i0 < defIds.length; i0 += 1) {
+      const s0 = String(defIds[i0] || "").trim();
+      if (!s0) continue;
+      if (!include[s0]) includeSize += 1;
+      include[s0] = true;
+    }
+
+    const units = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i] || {};
+      const v = String(it.variantId || "").trim();
+      const isBase = Boolean(it.isBase);
+      let pid = String(it.productId || "").trim();
+      if (!pid && v && v.indexOf("product:") === 0) pid = String(v).slice("product:".length).trim();
+      const on = isBase ? true : hasItemSel ? itemSel && itemSel[String(i)] === true : includeSize ? include[pid] === true : !req;
+      if (!on) continue;
+      if (!pid) continue;
+      const qty = isBase ? baseQty : Math.max(1, Math.floor(Number(it.quantity || 1)));
+      const defVid = v && !isProductRef(v) ? v : "";
+      for (let u = 0; u < qty; u += 1) {
+        units.push({ productId: pid, key: pid + ":" + u, defaultVariantId: defVid });
+      }
+    }
+
+    if (!units.length) {
+      open.innerHTML = "";
+      return;
+    }
+
+    pruneBundleSelections(sel, units);
+
+    const uniq = {};
+    for (const u of units) uniq[String(u.productId)] = true;
+    const pids = Object.keys(uniq);
+    const lists = await Promise.all(pids.map((pid) => getCachedVariants(pid)));
+    const varsByPid = {};
+    for (let i = 0; i < pids.length; i += 1) {
+      const pid = pids[i];
+      let list = Array.isArray(lists[i]) ? lists[i] : [];
+      list = list.filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+      varsByPid[pid] = list;
+    }
+
+    for (const u of units) {
+      const list0 = varsByPid[u.productId] || [];
+      if (!sel) continue;
+      const cur = readTierSelection(sel, mq, u.key);
+      if (cur) continue;
+      const defVid = String(u.defaultVariantId || "").trim();
+      if (defVid) {
+        const ok = list0.some((x) => String((x && x.variantId) || "").trim() === defVid);
+        if (ok) {
+          const sk0 = tierKey(mq, u.key);
+          if (sk0) sel[sk0] = defVid;
+          continue;
+        }
+      }
+      if (list0.length === 1) {
+        const only = list0[0] || {};
+        const vid0 = String(only.variantId || "").trim();
+        if (vid0) {
+          const sk1 = tierKey(mq, u.key);
+          if (sk1) sel[sk1] = vid0;
+        }
+      }
+    }
+
+    let html =
+      '<div class="bundle-app-pickers bundle-app-pickers--inline" data-bundle-id="' +
+      escHtml(bid) +
+      '">' +
+      '<div class="bundle-app-pickers-title">اختيار الفاريانت</div>' +
+      '<div class="bundle-app-picker-status" data-role="picker-status"></div>';
+
+    for (const unit of units) {
+      const pid = unit.productId;
+      const key = unit.key;
+      const variants = varsByPid[pid] || [];
+      if (!variants.length) continue;
+      const selectedVariantId = readTierSelection(sel, mq, key);
+      const sk = tierKey(mq, key);
+      if (!sk) continue;
+
+      html +=
+        '<div class="bundle-app-picker-row" data-unit-key-row="' +
+        escHtml(sk) +
+        '">' +
+        '<div class="bundle-app-variant-options">';
+
+      for (const v of variants) {
+        const variantId = String((v && v.variantId) || "").trim();
+        if (!variantId) continue;
+        const isSelected = selectedVariantId === variantId;
+        html +=
+          '<button type="button" class="bundle-app-variant-btn' +
+          (isSelected ? " is-selected" : "") +
+          '" aria-pressed="' +
+          (isSelected ? "true" : "false") +
+          '" data-action="pick-variant" data-unit-key="' +
+          escHtml(sk) +
+          '" data-variant-id="' +
+          escHtml(variantId) +
+          '">' +
+          (typeof variantOptionInnerHtml === "function" ? variantOptionInnerHtml(v) : "<span>" + escHtml(variantLabel(v)) + "</span>") +
+          "</button>";
+      }
+
+      html += "</div></div>";
+    }
+
+    html += "</div>";
+    open.innerHTML = html;
+    const pickerBox = open.querySelector('.bundle-app-pickers[data-bundle-id="' + bid + '"]');
+    if (pickerBox) {
+      bindPickerContainer(pickerBox, bid);
     }
   } catch (e) {}
 }

@@ -310,7 +310,10 @@ function pruneBundleSelections(sel, units) {
     for (let i = 0; i < units.length; i++) keep[String((units[i] && units[i].key) || "")] = true;
     for (const k in sel) {
       if (!Object.prototype.hasOwnProperty.call(sel, k)) continue;
-      if (!keep[k]) {
+      const kk = String(k || "");
+      const bar = kk.indexOf("|");
+      const unitKey = bar > 0 ? kk.slice(bar + 1) : "";
+      if (!keep[kk] && !(unitKey && keep[unitKey])) {
         try {
           delete sel[k];
         } catch (e) {
@@ -319,6 +322,29 @@ function pruneBundleSelections(sel, units) {
       }
     }
   } catch (e) {}
+}
+
+function tierKey(minQty, unitKey) {
+  const mq = Math.max(1, Math.floor(Number(minQty || 1)));
+  const k = String(unitKey || "").trim();
+  if (!k) return "";
+  return String(mq) + "|" + k;
+}
+
+function readTierSelection(sel, minQty, unitKey) {
+  try {
+    if (!sel || typeof sel !== "object") return "";
+    const k0 = String(unitKey || "").trim();
+    if (!k0) return "";
+    const k1 = tierKey(minQty, k0);
+    if (k1) {
+      const v1 = String(sel[k1] || "").trim();
+      if (v1) return v1;
+    }
+    return String(sel[k0] || "").trim();
+  } catch (e) {
+    return "";
+  }
 }
 
 function escHtml(input) {
@@ -1010,12 +1036,12 @@ function computeQtyItems(bundle, opts) {
           const qty2 = Math.max(1, Math.floor(Number(it.quantity || 1)));
           for (let u = 0; u < qty2; u++) {
             const key = ref + ":" + u;
-            const pv = String(sel[key] || "").trim();
+            const pv = readTierSelection(sel, qSel, key);
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
             const key2 = ref + ":" + p;
-            const pv2 = String(sel[key2] || "").trim();
+            const pv2 = readTierSelection(sel, qSel, key2);
             const useVid = pv2 || vid;
             out.push({ variantId: useVid, productId: ref || null, quantity: 1, isBase: it.isBase });
           }
@@ -1028,7 +1054,7 @@ function computeQtyItems(bundle, opts) {
             const counts = {};
             for (let u = 0; u < qty2; u++) {
               const key = ref + ":" + u;
-              const pv = String(sel[key] || "").trim();
+              const pv = readTierSelection(sel, qSel, key);
               const useVid = pv || vid;
               if (!useVid) continue;
               counts[useVid] = (counts[useVid] || 0) + 1;
@@ -1059,7 +1085,7 @@ function computeQtyItems(bundle, opts) {
       const counts = {};
       for (let u = 0; u < qty2; u++) {
         const key = ref + ":" + u;
-        const pv = String(sel[key] || "").trim();
+        const pv = readTierSelection(sel, qSel, key);
         const useVid = pv || vid;
         if (!useVid) continue;
         counts[useVid] = (counts[useVid] || 0) + 1;
@@ -1092,6 +1118,7 @@ function computeProductsItems(bundle, opts) {
 
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
+    const tierMinQty = pickMinQty(bundle);
     const selIdx = getBundleItemSelectionMap(bid) || {};
     let hasSelIdx = false;
     for (const k in selIdx) {
@@ -1135,12 +1162,12 @@ function computeProductsItems(bundle, opts) {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
             const key = pid2 + ":" + u;
-            const pv = String(sel[key] || "").trim();
+            const pv = readTierSelection(sel, tierMinQty, key);
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
             const key2 = pid2 + ":" + p;
-            const pv2 = String(sel[key2] || "").trim();
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
             if (!pv2 && settings && settings.variantRequired !== false) continue;
             out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
@@ -1149,7 +1176,7 @@ function computeProductsItems(bundle, opts) {
           const parts = [];
           for (let u2 = 0; u2 < qty; u2++) {
             const key3 = pid2 + ":" + u2;
-            const pv3 = String(sel[key3] || "").trim();
+            const pv3 = readTierSelection(sel, tierMinQty, key3);
             if (!pv3) pickedAll = false;
             parts.push(pv3 || v);
           }
@@ -1164,7 +1191,7 @@ function computeProductsItems(bundle, opts) {
           const counts = {};
           for (let u = 0; u < qty; u++) {
             const key = pid2 + ":" + u;
-            const pv = String(sel[key] || "").trim();
+            const pv = readTierSelection(sel, tierMinQty, key);
             const useVid = pv || v;
             if (!useVid) continue;
             counts[useVid] = (counts[useVid] || 0) + 1;
@@ -1205,6 +1232,7 @@ function computeNoDiscountItems(bundle, opts) {
 
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
+    const tierMinQty = pickMinQty(bundle);
     const selIdx = getBundleItemSelectionMap(bid) || {};
     let hasSelIdx = false;
     for (const k in selIdx) {
@@ -1248,18 +1276,18 @@ function computeNoDiscountItems(bundle, opts) {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
             const key = pid2 + ":" + u;
-            const pv = String(sel[key] || "").trim();
+            const pv = readTierSelection(sel, tierMinQty, key);
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
             const key2 = pid2 + ":" + p;
-            const pv2 = String(sel[key2] || "").trim();
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
             out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
             const key3 = pid2 + ":" + m;
-            const pv3 = String(sel[key3] || "").trim();
+            const pv3 = readTierSelection(sel, tierMinQty, key3);
             out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         }
@@ -1282,6 +1310,7 @@ function computePostAddItems(bundle, opts) {
     const baseItems = normalizeItems(bundle);
     const bid = String((bundle && bundle.id) || "").trim();
     const sel = getBundleVariantSelectionMap(bid) || {};
+    const tierMinQty = pickMinQty(bundle);
     const selIdx = getBundleItemSelectionMap(bid) || {};
     let hasSelIdx = false;
     for (const k in selIdx) {
@@ -1317,18 +1346,18 @@ function computePostAddItems(bundle, opts) {
           let pickedCount = 0;
           for (let u = 0; u < qty; u++) {
             const key = pid2 + ":" + u;
-            const pv = String(sel[key] || "").trim();
+            const pv = readTierSelection(sel, tierMinQty, key);
             if (pv) pickedCount++;
           }
           for (let p = 0; p < pickedCount; p++) {
             const key2 = pid2 + ":" + p;
-            const pv2 = String(sel[key2] || "").trim();
+            const pv2 = readTierSelection(sel, tierMinQty, key2);
             out.push({ variantId: pv2 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         } else {
           for (let m = 0; m < qty; m++) {
             const key3 = pid2 + ":" + m;
-            const pv3 = String(sel[key3] || "").trim();
+            const pv3 = readTierSelection(sel, tierMinQty, key3);
             out.push({ variantId: pv3 || v, productId: pid2 || null, quantity: 1, isBase: Boolean(it2.isBase) });
           }
         }
@@ -1394,7 +1423,7 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
       const o = Number(prc.originalTotal);
       const f = Number(prc.finalTotal);
       const d = Number(prc.discountAmount);
-      const left = "احمد " + fmtNum(r.minQty) + " ماهر";
+      const left = "عند " + fmtNum(r.minQty) + " قطع";
       let right = "";
       if (Number.isFinite(o) && Number.isFinite(f)) {
         right = "قبل " + fmtMoney(o) + " • بعد " + fmtMoney(f);
@@ -1404,10 +1433,11 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
           if (pct != null) right += " (" + fmtNum(pct) + "%)";
         }
       }
-      const active = Boolean(isBundleSelected && Number(selectedMinQty) === Number(r.minQty));
+      const active = Number(selectedMinQty) === Number(r.minQty);
       const cls = "bundle-app-tier" + (active ? " bundle-app-tier--selected" : "");
       out +=
-        '<label class="' +
+        '<div class="bundle-app-tier-wrap">' +
+        '<div class="' +
         cls +
         '" data-bundle-id="' +
         escHtml(bundleId) +
@@ -1418,7 +1448,26 @@ function buildTierRows(bundle, bundleId, selectedMinQty, isBundleSelected) {
         escHtml(left) +
         "</strong></div>" +
         (right ? '<div class="bundle-app-muted">' + escHtml(right) + "</div>" : "") +
-        "</div></label>";
+        "</div>" +
+        '<span class="bundle-app-checkwrap bundle-app-tier-checkwrap">' +
+        '<input class="bundle-app-check bundle-app-tier-check" type="checkbox" data-bundle-id="' +
+        escHtml(bundleId) +
+        '" data-tier-minqty="' +
+        escHtml(r.minQty) +
+        '" aria-label="اختيار هذا التير"' +
+        (active ? " checked" : "") +
+        "/>" +
+        '<span class="bundle-app-checkmark"></span>' +
+        "</span>" +
+        "</div>" +
+        '<div class="bundle-app-tier-pickers' +
+        (active ? " is-open" : "") +
+        '" data-bundle-id="' +
+        escHtml(bundleId) +
+        '" data-tier-minqty="' +
+        escHtml(r.minQty) +
+        '"></div>' +
+        "</div>";
     }
     return out;
   } catch (e) {
