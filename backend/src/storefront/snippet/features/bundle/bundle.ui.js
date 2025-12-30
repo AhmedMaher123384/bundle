@@ -702,6 +702,21 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
       const pid = pids[i];
       let list = Array.isArray(lists[i]) ? lists[i] : [];
       list = list.filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+      if (!list.length) {
+        list = [
+          {
+            variantId: "product:" + pid,
+            productId: pid,
+            cartProductId: pid,
+            cartOptions: null,
+            isActive: true,
+            name: null,
+            attributes: {},
+            imageUrl: null,
+            price: null
+          }
+        ];
+      }
       varsByPid[pid] = list;
     }
 
@@ -748,12 +763,22 @@ async function ensureVariantPickersForTraditionalCard(card, bundle) {
         continue;
       }
 
-      let html = '<div class="bundle-app-pickers-title">اختيار الفاريانت</div>';
+      const needUnits = [];
       for (const unit of itemUnits) {
+        const variants = varsByPid[unit.productId] || [];
+        if (variants.length > 1) needUnits.push(unit);
+      }
+      if (!needUnits.length) {
+        container.innerHTML = "";
+        continue;
+      }
+
+      let html = '<div class="bundle-app-pickers-title">اختيار الفاريانت</div>';
+      for (const unit of needUnits) {
         const pid = unit.productId;
         const key = unit.key;
         const variants = varsByPid[pid] || [];
-        if (!variants.length) continue;
+        if (variants.length <= 1) continue;
         const selectedVariantId = readTierSelection(sel, mq, key);
         const sk = tierKey(mq, key);
         if (!sk) continue;
@@ -878,6 +903,21 @@ async function ensureVariantPickersForTierCard(card, bundle) {
       const pid = pids[i];
       let list = Array.isArray(lists[i]) ? lists[i] : [];
       list = list.filter((x) => x && x.isActive === true && String(x.variantId || "").trim());
+      if (!list.length) {
+        list = [
+          {
+            variantId: "product:" + pid,
+            productId: pid,
+            cartProductId: pid,
+            cartOptions: null,
+            isActive: true,
+            name: null,
+            attributes: {},
+            imageUrl: null,
+            price: null
+          }
+        ];
+      }
       varsByPid[pid] = list;
     }
 
@@ -912,11 +952,21 @@ async function ensureVariantPickersForTierCard(card, bundle) {
       '<div class="bundle-app-pickers-title">اختيار الفاريانت</div>' +
       '<div class="bundle-app-picker-status" data-role="picker-status"></div>';
 
+    const needUnits = [];
     for (const unit of units) {
+      const variants0 = varsByPid[unit.productId] || [];
+      if (variants0.length > 1) needUnits.push(unit);
+    }
+    if (!needUnits.length) {
+      open.innerHTML = "";
+      return;
+    }
+
+    for (const unit of needUnits) {
       const pid = unit.productId;
       const key = unit.key;
       const variants = varsByPid[pid] || [];
-      if (!variants.length) continue;
+      if (variants.length <= 1) continue;
       const selectedVariantId = readTierSelection(sel, mq, key);
       const sk = tierKey(mq, key);
       if (!sk) continue;
