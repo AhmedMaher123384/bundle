@@ -49,8 +49,10 @@ async function resolveProductRefItems(items, bundleId) {
 
   const pidList = Object.keys(uniqPid);
   const varsByPid = {};
-  for (const pid3 of pidList) {
-    const vars = await getCachedVariants(pid3);
+  const lists = await Promise.all(pidList.map((pid3) => getCachedVariants(pid3)));
+  for (let i = 0; i < pidList.length; i += 1) {
+    const pid3 = pidList[i];
+    const vars = lists[i];
     let list = Array.isArray(vars) ? vars : [];
     if (!list.length) {
       list = [

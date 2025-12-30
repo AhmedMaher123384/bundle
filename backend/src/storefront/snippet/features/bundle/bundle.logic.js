@@ -960,6 +960,101 @@ function pctFrom(original, final) {
   }
 }
 
+var componentMetaByProductId = {};
+var componentMetaByVariantId = {};
+
+function canonProductId(pid, variantId) {
+  try {
+    let p = String(pid || "").trim();
+    const v = String(variantId || "").trim();
+    if (!p && v && v.indexOf("product:") === 0) p = v.slice("product:".length).trim();
+    if (p && p.indexOf("product:") === 0) p = p.slice("product:".length).trim();
+    return p;
+  } catch (e) {
+    return String(pid || "").trim();
+  }
+}
+
+function readMainProductMetaFromDom() {
+  try {
+    let name = "";
+    let imageUrl = "";
+
+    try {
+      const mt =
+        document.querySelector('meta[property="og:title"]') ||
+        document.querySelector('meta[name="twitter:title"]') ||
+        document.querySelector('meta[name="title"]');
+      if (mt) name = String(mt.getAttribute("content") || "").trim();
+    } catch (e0) {}
+    if (!name) {
+      try {
+        const h1 = document.querySelector("h1");
+        if (h1) name = String(h1.textContent || "").trim();
+      } catch (e1) {}
+    }
+
+    try {
+      const mi =
+        document.querySelector('meta[property="og:image"]') ||
+        document.querySelector('meta[name="twitter:image"]') ||
+        document.querySelector('meta[name="twitter:image:src"]');
+      if (mi) imageUrl = String(mi.getAttribute("content") || "").trim();
+    } catch (e2) {}
+    if (!imageUrl) {
+      try {
+        const img =
+          document.querySelector("img.product-image") ||
+          document.querySelector(".product img") ||
+          document.querySelector('[data-product-image] img,[data-product-gallery] img') ||
+          document.querySelector("main img");
+        if (img) imageUrl = String(img.getAttribute("src") || img.src || "").trim();
+      } catch (e3) {}
+    }
+
+    name = name ? name.slice(0, 220) : "";
+    imageUrl = imageUrl ? imageUrl.slice(0, 900) : "";
+    return { name: name || null, imageUrl: imageUrl || null };
+  } catch (e) {
+    return { name: null, imageUrl: null };
+  }
+}
+
+function rememberComponentMeta(variantId, productId, name, imageUrl) {
+  try {
+    const vid = String(variantId || "").trim();
+    const pid = String(productId || "").trim();
+    const nm = String(name || "").trim();
+    const img = String(imageUrl || "").trim();
+    if (pid) {
+      const cur = componentMetaByProductId[pid] && typeof componentMetaByProductId[pid] === "object" ? componentMetaByProductId[pid] : {};
+      if (nm) cur.name = nm;
+      if (img) cur.imageUrl = img;
+      componentMetaByProductId[pid] = cur;
+    }
+    if (vid) {
+      const cur2 = componentMetaByVariantId[vid] && typeof componentMetaByVariantId[vid] === "object" ? componentMetaByVariantId[vid] : {};
+      if (nm) cur2.name = nm;
+      if (img) cur2.imageUrl = img;
+      componentMetaByVariantId[vid] = cur2;
+    }
+  } catch (e) {}
+}
+
+function readComponentMeta(variantId, productId) {
+  try {
+    const vid = String(variantId || "").trim();
+    const pid = String(productId || "").trim();
+    const byVid = vid ? componentMetaByVariantId[vid] : null;
+    const byPid = pid ? componentMetaByProductId[pid] : null;
+    if (byVid && typeof byVid === "object") return byVid;
+    if (byPid && typeof byPid === "object") return byPid;
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function normalizeItems(bundle) {
   let comps = (bundle && bundle.components) || [];
   if (!Array.isArray(comps) || !comps.length) comps = (bundle && bundle.bundleItems) || [];
@@ -969,12 +1064,21 @@ function normalizeItems(bundle) {
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i] || {};
     const v = String(c.variantId || "").trim();
-    const pid = String(c.productId || "").trim();
+    const pidRaw = String(c.productId || "").trim();
+    const pid = canonProductId(pidRaw, v);
     const isBase = Boolean(c.isBase);
     const q = isBase ? Math.max(getPageQty(), baseMin) : Math.max(1, Math.floor(Number(c.quantity || 1)));
     if (!v) continue;
-    const name = c.name != null ? String(c.name || "").trim() || null : null;
-    const imageUrl = c.imageUrl != null ? String(c.imageUrl || "").trim() || null : null;
+    let name = c.name != null ? String(c.name || "").trim() || null : null;
+    let imageUrl = c.imageUrl != null ? String(c.imageUrl || "").trim() || null : null;
+    if (!name || !imageUrl) {
+      const m = readComponentMeta(v, pid);
+      if (m && typeof m === "object") {
+        if (!name && String(m.name || "").trim()) name = String(m.name || "").trim();
+        if (!imageUrl && String(m.imageUrl || "").trim()) imageUrl = String(m.imageUrl || "").trim();
+      }
+    }
+    rememberComponentMeta(v, pid, name, imageUrl);
     const price = c.price != null && Number.isFinite(Number(c.price)) ? Number(c.price) : null;
     const attributes = c.attributes && typeof c.attributes === "object" && !Array.isArray(c.attributes) ? c.attributes : null;
     const group = c.group != null ? String(c.group || "").trim() || null : null;
@@ -1871,6 +1975,15 @@ async function refreshProduct() {
     const productId = findProductId();
     const key = variantId ? "v:" + String(variantId) : productId ? "p:" + String(productId) : "";
     log("bundle-app: ids", { variantId: variantId, productId: productId });
+    try {
+      const pid0 = String(productId || "").trim();
+      const vid0 = String(variantId || "").trim();
+      const meta0 = readMainProductMetaFromDom();
+      if (meta0 && (meta0.name || meta0.imageUrl)) {
+        if (pid0) rememberComponentMeta("product:" + pid0, pid0, meta0.name, meta0.imageUrl);
+        if (vid0) rememberComponentMeta(vid0, pid0, meta0.name, meta0.imageUrl);
+      }
+    } catch (eMeta0) {}
 
     let res = null;
     if (variantId) res = await getProductBundlesByVariantId(variantId);
@@ -1889,6 +2002,26 @@ async function refreshProduct() {
       state.lastSig = "";
       return;
     }
+
+    try {
+      const uniqPid = {};
+      for (let bi = 0; bi < bundles.length; bi += 1) {
+        const its0 = normalizeItems(bundles[bi] || {});
+        for (let ii = 0; ii < its0.length; ii += 1) {
+          const it0 = its0[ii] || {};
+          const v0 = String(it0.variantId || "").trim();
+          if (!isProductRef(v0)) continue;
+          const pid = String(it0.productId || "").trim();
+          if (pid) uniqPid[pid] = true;
+        }
+      }
+      const pids = Object.keys(uniqPid);
+      for (let pi = 0; pi < pids.length; pi += 1) {
+        try {
+          getCachedVariants(pids[pi]);
+        } catch (ePre) {}
+      }
+    } catch (eWarm) {}
 
     let sig = "";
     for (let i = 0; i < bundles.length; i++) {

@@ -151,8 +151,8 @@
 .bundle-app-variant-btn:disabled{opacity:.75;cursor:not-allowed}
 .bundle-app-variant-swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.25)}
 .bundle-app-variant-swatch.is-image{background-size:cover;background-position:center}
-.bundle-app-variant-text{line-height:1.15}
-@media (max-width:480px){.bundle-app-variant-btn{width:100%;justify-content:flex-start}}
+.bundle-app-variant-text{line-height:1.15;max-width:240px;white-space:normal;word-break:break-word}
+@media (max-width:480px){.bundle-app-variant-btn{width:100%;justify-content:flex-start}.bundle-app-variant-text{max-width:100%}}
 .bundle-app-card{position:relative}
 .bundle-app-card:before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.12}
 .bundle-app-card[data-kind="quantity_discount"]:before{background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(255,255,255,0))}
