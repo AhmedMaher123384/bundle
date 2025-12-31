@@ -67,41 +67,6 @@ async function listProducts(sallaConfig, accessToken, params) {
   }
 }
 
-async function listCoupons(sallaConfig, accessToken, params) {
-  try {
-    const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.get("/admin/v2/coupons", {
-      params: {
-        page: params?.page,
-        per_page: params?.perPage,
-        keyword: params?.keyword
-      }
-    });
-    return response.data;
-  } catch (error) {
-    const status = error?.response?.status;
-    const details = error?.response?.data || error?.message;
-    throw new ApiError(status || 503, sallaErrorMessage("list coupons", status), { code: "SALLA_COUPONS_LIST_FAILED", details });
-  }
-}
-
-async function getCouponByCode(sallaConfig, accessToken, code) {
-  const c = String(code || "").trim();
-  if (!c) return null;
-  const upper = c.toUpperCase();
-  try {
-    const response = await listCoupons(sallaConfig, accessToken, { page: 1, perPage: 50, keyword: c });
-    const list = response?.data || response?.coupons || [];
-    const arr = Array.isArray(list) ? list : [];
-    const found = arr.find((x) => String(x?.code || "").trim().toUpperCase() === upper);
-    return found || null;
-  } catch (error) {
-    const status = error?.statusCode ?? error?.response?.status;
-    const details = error?.details ?? error?.response?.data ?? error?.message;
-    throw new ApiError(status || 503, sallaErrorMessage("fetch coupon", status), { code: "SALLA_COUPON_FETCH_FAILED", details });
-  }
-}
-
 async function getProductById(sallaConfig, accessToken, productId, params) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
@@ -168,8 +133,6 @@ async function getOrderById(sallaConfig, accessToken, orderId, params) {
 module.exports = {
   getStoreInfo,
   createCoupon,
-  getCouponByCode,
-  listCoupons,
   listProducts,
   getProductById,
   getProductVariant,

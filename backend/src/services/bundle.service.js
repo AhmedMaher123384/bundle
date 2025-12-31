@@ -464,10 +464,8 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       appliedRules.push({ type, value, minQty });
     }
 
-    const triggerProductId = String(bundle?.triggerProductId || "").trim();
     preEvaluations.push({
       bundle,
-      triggerProductId,
       matched,
       uses: applications.length,
       discountAmount,

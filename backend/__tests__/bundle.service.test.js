@@ -306,7 +306,7 @@ describe("bundle.service.evaluateBundles", () => {
     expect(result.applied.bundles).toHaveLength(1);
   });
 
-  test("applies multiple bundles even with same trigger product id", async () => {
+  test("applies multiple bundles for the same trigger product id", async () => {
     const bundleA = {
       _id: "b_a",
       merchantId: "m1",
