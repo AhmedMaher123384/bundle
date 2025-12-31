@@ -78,7 +78,9 @@ async function requestApplyBundle(bundleId, items) {
 }
 
 async function requestCartBanner(items) {
-  const payload = { items: Array.isArray(items) ? items : [] };
+  const payload = {
+    items: Array.isArray(items) ? items : []
+  };
   const u = buildUrl("/api/proxy/cart/banner", {});
   if (!u) return null;
   return fetchJson(u, {
@@ -957,10 +959,6 @@ async function readCartItems() {
     if (Array.isArray(obj.items)) return obj.items;
     if (obj.data) {
       if (Array.isArray(obj.data.items)) return obj.data.items;
-      if (obj.data.data) {
-        if (Array.isArray(obj.data.data.items)) return obj.data.data.items;
-        if (Array.isArray(obj.data.data.cart && obj.data.data.cart.items)) return obj.data.data.cart.items;
-      }
       if (Array.isArray(obj.data.cart && obj.data.cart.items)) return obj.data.cart.items;
     }
     if (Array.isArray(obj.cart && obj.cart.items)) return obj.cart.items;
@@ -978,10 +976,9 @@ async function readCartItems() {
     ]);
   }
 
-  var best = [];
   try {
     const direct = pickItems(cart.items || (cart.data && cart.data.items) || null);
-    if (direct && direct.length) best = direct;
+    if (direct && direct.length) return direct;
   } catch (e0) {}
 
   const candidates = [];
@@ -999,15 +996,14 @@ async function readCartItems() {
     try {
       const res = await withTimeout(candidates[i], 4500);
       const items = pickItems(res);
-      if (items && items.length && (!best || items.length > best.length)) best = items;
+      if (items && items.length) return items;
     } catch (e4) {}
   }
 
-  return best && best.length ? best : [];
+  return [];
 }
 
 function normalizeCartItemsForProxy(items) {
-  const out = [];
   const map = {};
   const arr = Array.isArray(items) ? items : [];
   for (let i = 0; i < arr.length; i += 1) {
@@ -1027,15 +1023,16 @@ function normalizeCartItemsForProxy(items) {
     const rawProductId = String(
       (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id || it.product.productId)) || "") || ""
     ).trim();
-    const vid = rawVariantId || (rawProductId ? "product:" + rawProductId : String((it && it.id) || "").trim());
+    const variantId = rawVariantId || (rawProductId ? "product:" + rawProductId : "");
     const qty = Number(it.quantity || it.qty || it.amount || 0);
-    if (!vid) continue;
+    if (!variantId) continue;
     if (!Number.isFinite(qty) || qty <= 0) continue;
-    map[vid] = (map[vid] || 0) + Math.floor(qty);
+    map[variantId] = (map[variantId] || 0) + Math.floor(qty);
   }
-  for (const vid in map) {
-    if (!Object.prototype.hasOwnProperty.call(map, vid)) continue;
-    out.push({ variantId: String(vid), quantity: Math.floor(Number(map[vid] || 0)) });
+  const out = [];
+  for (const k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+    out.push({ variantId: String(k), quantity: Math.floor(Number(map[k] || 0)) });
   }
   out.sort(function (a, b) {
     return String(a.variantId || "").localeCompare(String(b.variantId || ""));
@@ -2284,9 +2281,6 @@ async function applyBundleSelection(bundle) {
 
     const prev = loadSelection(trigger);
     try {
-      await tryClearCoupon();
-    } catch (eClr0) {}
-    try {
       clearPendingCoupon(trigger);
     } catch (eClr1) {}
 
@@ -2297,15 +2291,6 @@ async function applyBundleSelection(bundle) {
         renderProductBanners(lastBundles || []);
       } catch (e03) {}
       return;
-    }
-
-    var beforeCount = 0;
-    try {
-      var beforeRaw = await readCartItems();
-      var beforeProxy = normalizeCartItemsForProxy(beforeRaw);
-      beforeCount = beforeProxy && beforeProxy.length ? beforeProxy.length : 0;
-    } catch (eBefore) {
-      beforeCount = 0;
     }
 
     try {
@@ -2344,38 +2329,9 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      const expectedVariantIds = [];
-      for (let iE = 0; iE < items.length; iE += 1) {
-        const vE = String(((items[iE] || {}).variantId) || "").trim();
-        if (vE && vE.indexOf("product:") !== 0) expectedVariantIds.push(vE);
-      }
-      function sleep(ms) {
-        return new Promise(function (r) {
-          setTimeout(r, Math.max(0, Number(ms || 0)));
-        });
-      }
-      let cartItemsRaw = [];
-      let proxyItems = [];
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        cartItemsRaw = await readCartItems();
-        proxyItems = normalizeCartItemsForProxy(cartItemsRaw);
-        if (proxyItems && proxyItems.length) {
-          if (beforeCount && proxyItems.length < beforeCount) {
-            await sleep(250 + attempt * 200);
-            continue;
-          }
-          if (!expectedVariantIds.length) break;
-          const seen = {};
-          for (let iS = 0; iS < proxyItems.length; iS += 1) seen[String(proxyItems[iS].variantId)] = true;
-          const allPresent = expectedVariantIds.every(function (v) {
-            return Boolean(seen[String(v)]);
-          });
-          if (allPresent) break;
-        }
-        await sleep(250 + attempt * 200);
-      }
-      if (proxyItems && proxyItems.length) res = await requestCartBanner(proxyItems);
-      else res = await requestApplyBundle(bid, items);
+      const cartItems = await readCartItems();
+      const payload = normalizeCartItemsForProxy(cartItems);
+      res = await requestCartBanner(payload);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
@@ -2441,7 +2397,7 @@ async function applyBundleSelection(bundle) {
                 applied: res.applied || null,
                 couponCode: res.couponCode || null,
                 discountAmount: res.discountAmount != null ? res.discountAmount : null,
-                kind: res.kind || null
+                kind: kind || null
               },
               12000
             );
