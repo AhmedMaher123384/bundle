@@ -67,24 +67,6 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   );
 }
 
-function resolveBundleSpecificProductIds(bundle, evaluationResult) {
-  if (!bundle || !evaluationResult) return [];
-  
-  const bundleId = String(bundle._id || bundle.bundleId || "").trim();
-  if (!bundleId) return [];
-  
-  const appliedBundles = evaluationResult?.applied?.bundles || [];
-  const targetBundle = appliedBundles.find(b => String(b.bundleId) === bundleId);
-  
-  if (!targetBundle || !targetBundle.matchedProductIds) return [];
-  
-  return Array.from(new Set(
-    (Array.isArray(targetBundle.matchedProductIds) ? targetBundle.matchedProductIds : [])
-      .map((v) => String(v || "").trim())
-      .filter(Boolean)
-  )).filter((v) => /^\d+$/.test(v));
-}
-
 async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
   const now = new Date();
   const existing = await CartCoupon.findOne({
@@ -506,140 +488,10 @@ async function expireOldCoupons() {
   await CartCoupon.updateMany({ status: { $in: ["issued", "superseded"] }, expiresAt: { $lte: now } }, { $set: { status: "expired" } });
 }
 
-async function issueOrReuseBundleSpecificCoupons(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
-  const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
-  const { cartHash } = computeCartHash(cartItems);
-  
-  const appliedBundles = evaluationResult?.applied?.bundles || [];
-  if (!appliedBundles.length) return [];
-  
-  const bundleCoupons = [];
-  
-  for (const bundleData of appliedBundles) {
-    const bundleId = String(bundleData.bundleId || "").trim();
-    if (!bundleId) continue;
-    
-    const bundleHash = `${cartHash}:${bundleId}`;
-    const existing = await getActiveIssuedCoupon(merchant._id, bundleHash);
-    
-    if (existing) {
-      await markOtherIssuedCouponsSuperseded(merchant._id, bundleHash);
-      bundleCoupons.push({
-        bundleId,
-        coupon: existing,
-        reused: true
-      });
-      continue;
-    }
-    
-    const discountAmount = Number(bundleData.discountAmount || 0);
-    if (!Number.isFinite(discountAmount) || discountAmount <= 0) continue;
-    
-    const includeProductIds = Array.from(new Set(
-      (Array.isArray(bundleData.matchedProductIds) ? bundleData.matchedProductIds : [])
-        .map((v) => String(v || "").trim())
-        .filter(Boolean)
-    )).filter((v) => /^\d+$/.test(v));
-    
-    if (!includeProductIds.length) continue;
-    
-    const includeProductIdsNumeric = includeProductIds
-      .map((v) => Number.parseInt(String(v), 10))
-      .filter((n) => Number.isFinite(n) && n > 0);
-    const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
-    
-    const appliedRule = Array.isArray(bundleData.appliedRules) && bundleData.appliedRules[0] ? bundleData.appliedRules[0] : null;
-    const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
-    const pct = Number.isFinite(pctRaw) && pctRaw > 0
-      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
-      : null;
-    
-    const now = new Date();
-    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-    const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
-    const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
-    let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
-    if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
-    
-    const basePayload = {
-      free_shipping: false,
-      exclude_sale_products: false,
-      is_apply_with_offer: true,
-      start_date: startDate,
-      expiry_date: expiryDate,
-      usage_limit: 1,
-      usage_limit_per_user: 1,
-      include_product_ids: includeProductIdsForApi
-    };
-    
-    const preferPercentage = Boolean(pct != null);
-    let createdCoupon = null;
-    let lastError = null;
-    
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const code = buildCouponCode(merchant.merchantId, bundleHash);
-      const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
-      const percentagePayload = pct != null ? { ...basePayload, code, type: "percentage", amount: pct } : null;
-      const payload = preferPercentage && percentagePayload ? percentagePayload : fixedPayload;
-      
-      try {
-        const response = await createCoupon(config.salla, merchantAccessToken, payload);
-        createdCoupon = response?.data ?? null;
-        break;
-      } catch (err) {
-        lastError = err;
-        if (err instanceof ApiError && err.statusCode === 409) continue;
-        if (err instanceof ApiError && err.statusCode === 422 && preferPercentage && percentagePayload && payload === percentagePayload) {
-          try {
-            const response = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
-            createdCoupon = response?.data ?? null;
-            break;
-          } catch (err2) {
-            lastError = err2;
-            if (err2 instanceof ApiError && err2.statusCode === 409) continue;
-          }
-        }
-        break;
-      }
-    }
-    
-    if (!createdCoupon) {
-      console.warn(`Failed to create bundle-specific coupon for bundle ${bundleId}:`, lastError?.message || "Unknown error");
-      continue;
-    }
-    
-    const record = await CartCoupon.create({
-      merchantId: merchant._id,
-      cartHash: bundleHash,
-      code: createdCoupon.code,
-      sallaCouponId: createdCoupon.id,
-      discountAmount,
-      discountType: preferPercentage && pct ? "percentage" : "fixed",
-      discountValue: preferPercentage && pct ? pct : discountAmount,
-      includeProductIds,
-      bundleId,
-      status: "issued",
-      issuedAt: now,
-      expiresAt,
-      createdAt: now,
-      updatedAt: now
-    });
-    
-    bundleCoupons.push({
-      bundleId,
-      coupon: record,
-      reused: false
-    });
-  }
-  
-  return bundleCoupons;
-}
-
 module.exports = {
   computeCartHash,
   issueOrReuseCouponForCart,
   issueOrReuseCouponForCartVerbose,
-  issueOrReuseBundleSpecificCoupons,
   extractCouponCodeFromOrderPayload,
   extractOrderId,
   markCouponRedeemed,

@@ -2321,23 +2321,11 @@ async function applyBundleSelection(bundle) {
     }
 
     if (res && res.ok) {
-      // Handle both single coupon (legacy) and multiple bundle coupons (new)
-      const bundleCoupons = res.bundleCoupons || [];
-      const primaryCoupon = bundleCoupons.length > 0 ? bundleCoupons[0] : null;
-      const cc = primaryCoupon ? primaryCoupon.code : (res && (res.couponCode || (res.coupon && res.coupon.code))) || "";
-      
+      const cc = (res && (res.couponCode || (res.coupon && res.coupon.code))) || "";
       if (cc) {
         try {
           g.BundleApp._couponAutoApplyUntil = Date.now() + 90000;
         } catch (e03100) {}
-        
-        // Store all bundle coupons for potential future use
-        if (bundleCoupons.length > 0) {
-          try {
-            g.BundleApp._bundleCoupons = bundleCoupons;
-          } catch (e03100b) {}
-        }
-        
         savePendingCoupon(trigger, { code: String(cc), ts: Date.now() });
         messageByBundleId[bid] = "تمت إضافة الباقة للسلة • جاري تفعيل الخصم";
         try {
@@ -2364,7 +2352,6 @@ async function applyBundleSelection(bundle) {
                 couponIssueDetails: res.couponIssueDetails || null,
                 applied: res.applied || null,
                 couponCode: res.couponCode || null,
-                bundleCoupons: res.bundleCoupons || null,
                 discountAmount: res.discountAmount != null ? res.discountAmount : null,
                 kind: res.kind || null
               },
