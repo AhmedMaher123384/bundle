@@ -65,9 +65,10 @@ async function getProductBundlesByProductId(productId) {
 
 async function requestApplyBundle(bundleId, items) {
   const payload = {
+    bundleId: String(bundleId || ""),
     items: Array.isArray(items) ? items : []
   };
-  const u = buildUrl("/api/proxy/cart/banner", {});
+  const u = buildUrl("/api/proxy/bundles/apply", {});
   if (!u) return null;
   return fetchJson(u, {
     method: "POST",
@@ -2229,6 +2230,12 @@ async function applyBundleSelection(bundle) {
     }
 
     const prev = loadSelection(trigger);
+    try {
+      await tryClearCoupon();
+    } catch (eClr0) {}
+    try {
+      clearPendingCoupon(trigger);
+    } catch (eClr1) {}
     if (prev && prev.bundleId && String(prev.bundleId) !== bid && Array.isArray(prev.items) && prev.items.length) {
       try {
         removeItemsFromCart(prev.items);
@@ -2280,49 +2287,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      let applyItems = items;
-      try {
-        const sleep = function (ms) {
-          return new Promise(function (r) {
-            setTimeout(function () {
-              r(true);
-            }, Math.max(0, Number(ms || 0)));
-          });
-        };
-
-        for (let a = 0; a < 3; a += 1) {
-          const cartItems = await readCartItems();
-          if (cartItems && Array.isArray(cartItems) && cartItems.length) {
-            const byVariant = new Map();
-            for (let i = 0; i < cartItems.length; i += 1) {
-              const it = cartItems[i] || {};
-              const vid = String(
-                (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id) || ""
-              ).trim();
-              const qtyRaw = Number(
-                it.quantity || it.qty || it.amount || (it.pivot && (it.pivot.quantity || it.pivot.qty)) || 0
-              );
-              const qty = Math.max(0, Math.floor(Number.isFinite(qtyRaw) ? qtyRaw : 0));
-              if (!vid || qty <= 0) continue;
-              byVariant.set(vid, (byVariant.get(vid) || 0) + qty);
-            }
-
-            const payload = [];
-            for (const [variantId, quantity] of byVariant.entries()) {
-              payload.push({ variantId: String(variantId), quantity: Math.max(1, Math.floor(Number(quantity || 1))) });
-            }
-
-            if (payload.length) {
-              applyItems = payload;
-              break;
-            }
-          }
-          await sleep(250 + a * 250);
-        }
-      } catch (eCart) {}
-
-      if (!applyItems || !Array.isArray(applyItems) || !applyItems.length) applyItems = items;
-      res = await requestApplyBundle(bid, applyItems);
+      res = await requestApplyBundle(bid, items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
