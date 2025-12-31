@@ -433,6 +433,83 @@ describe("bundle.service.evaluateBundles", () => {
       variantSnapshotById
     );
 
+    expect(result.applied.totalDiscount).toBe(20);
+    expect(result.applied.bundles).toHaveLength(1);
+    expect(result.applied.bundles.map((b) => b.bundleId).sort()).toEqual(["b_b"]);
+    expect(Log.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies multiple bundles when cart can allocate items without overlap", async () => {
+    const bundleA = {
+      _id: "b_a",
+      merchantId: "m1",
+      status: "active",
+      triggerProductId: "p1",
+      name: "A",
+      components: [
+        { variantId: "v1", quantity: 1, group: "A" },
+        { variantId: "v2", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "percentage",
+        value: 10,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    const bundleB = {
+      _id: "b_b",
+      merchantId: "m1",
+      status: "active",
+      triggerProductId: "p1",
+      name: "B",
+      components: [
+        { variantId: "v3", quantity: 1, group: "A" },
+        { variantId: "v4", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "fixed",
+        value: 20,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleA, bundleB])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([
+      ["v1", { variantId: "v1", productId: "p1", price: 100, isActive: true }],
+      ["v2", { variantId: "v2", productId: "p2", price: 50, isActive: true }],
+      ["v3", { variantId: "v3", productId: "p3", price: 70, isActive: true }],
+      ["v4", { variantId: "v4", productId: "p4", price: 30, isActive: true }]
+    ]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [
+        { variantId: "v1", quantity: 1 },
+        { variantId: "v2", quantity: 1 },
+        { variantId: "v3", quantity: 1 },
+        { variantId: "v4", quantity: 1 }
+      ],
+      variantSnapshotById
+    );
+
     expect(result.applied.totalDiscount).toBe(35);
     expect(result.applied.bundles).toHaveLength(2);
     expect(result.applied.bundles.map((b) => b.bundleId).sort()).toEqual(["b_a", "b_b"]);
