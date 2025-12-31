@@ -61,10 +61,10 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.code.length).toBeLessThanOrEqual(16);
     expect(record.status).toBe("issued");
     expect(record.discountAmount).toBe(10);
-    expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
+    expect(record.includeProductIds).toEqual([]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
+    expect(payload && payload.include_product_ids).toBeUndefined();
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -103,6 +103,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     const payload = createCoupon.mock.calls[0]?.[2] || null;
     expect(payload && payload.type).toBe("percentage");
     expect(payload && payload.amount).toBe(20);
+    expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
   });
 
   test("reissues when existing coupon type differs from desired type", async () => {

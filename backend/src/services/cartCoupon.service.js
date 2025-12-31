@@ -130,12 +130,18 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   }
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  if (!includeProductIds.length) return null;
+  const shouldScopeToProducts = sallaType === "percentage";
+  if (shouldScopeToProducts && !includeProductIds.length) return null;
+  const storedIncludeProductIds = shouldScopeToProducts ? includeProductIds : [];
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     const existingType = String(existing?.sallaType || "").trim().toLowerCase();
-    if (existingType === sallaType && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
+    if (
+      existingType === sallaType &&
+      amountsMatch(existing?.discountAmount, discountAmount) &&
+      sameStringIdSet(existing?.includeProductIds, storedIncludeProductIds)
+    ) {
       await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
       return existing;
     }
@@ -155,9 +161,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     start_date: startDate,
     expiry_date: expiryDate,
     usage_limit: 1,
-    usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    usage_limit_per_user: 1
   };
+  if (shouldScopeToProducts) basePayload.include_product_ids = includeProductIds;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
@@ -200,7 +206,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
             status: "issued",
             sallaType,
             discountAmount,
-            includeProductIds,
+            includeProductIds: storedIncludeProductIds,
             expiresAt,
             lastSeenAt: now
           },
@@ -252,7 +258,9 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  if (!includeProductIds.length) {
+  const shouldScopeToProducts = sallaType === "percentage";
+  const storedIncludeProductIds = shouldScopeToProducts ? includeProductIds : [];
+  if (shouldScopeToProducts && !includeProductIds.length) {
     return fail("NO_MATCHED_PRODUCTS", {
       matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
     });
@@ -260,7 +268,11 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     const existingType = String(existing?.sallaType || "").trim().toLowerCase();
-    if (existingType === sallaType && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
+    if (
+      existingType === sallaType &&
+      amountsMatch(existing?.discountAmount, discountAmount) &&
+      sameStringIdSet(existing?.includeProductIds, storedIncludeProductIds)
+    ) {
       await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
       return { coupon: existing, failure: null, reused: true };
     }
@@ -280,9 +292,9 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     start_date: startDate,
     expiry_date: expiryDate,
     usage_limit: 1,
-    usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    usage_limit_per_user: 1
   };
+  if (shouldScopeToProducts) basePayload.include_product_ids = includeProductIds;
 
   let lastCreateError = null;
 
@@ -348,7 +360,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
             status: "issued",
             sallaType,
             discountAmount,
-            includeProductIds,
+            includeProductIds: storedIncludeProductIds,
             expiresAt,
             lastSeenAt: now
           },
