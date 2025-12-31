@@ -18,5 +18,6 @@ describe("storefront bundle snippet", () => {
 
     expect(snippet).toMatch(/addCoupon\(\{\s*code\s*:\s*c\s*\}\)/);
     expect(snippet).toMatch(/addCoupon\(\{\s*coupon_code\s*:\s*c\s*\}\)/);
+    expect(snippet).toMatch(/\/api\/proxy\/cart\/banner/);
   });
 });
