@@ -995,7 +995,7 @@ function normalizeProxyCartItems(rawItems) {
     const map = {};
     for (var i = 0; i < (rawItems || []).length; i += 1) {
       const it = rawItems[i] || {};
-      const vid = String((it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id) || "").trim();
+      const vid = String((it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || (it.sku && it.sku.id)) || "").trim();
       const qty = Number(it.quantity || it.qty || it.amount || 0);
       if (!vid || !Number.isFinite(qty) || qty <= 0) continue;
       const q = Math.max(1, Math.floor(qty));
@@ -1021,7 +1021,7 @@ function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
       (it && (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id)))) || ""
     ).trim();
     const vid = String(
-      (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || ""
+      (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || (it.sku && it.sku.id))) || ""
     ).trim();
     const trgPid = String(triggerProductId || "").trim();
     const trgVid = String(triggerVariantId || "").trim();
@@ -2319,7 +2319,37 @@ async function applyBundleSelection(bundle) {
         cartRaw = [];
       }
       var cartItems = normalizeProxyCartItems(cartRaw);
-      res = await requestApplyBundle(bid, cartItems && cartItems.length ? cartItems : items);
+      var selItems = normalizeProxyCartItems(items);
+      var merged = [];
+      try {
+        var mergedMap = {};
+        var a0 = cartItems && cartItems.length ? cartItems : [];
+        var b0 = selItems && selItems.length ? selItems : [];
+        for (var ii = 0; ii < a0.length; ii += 1) {
+          var itA = a0[ii] || {};
+          var vA = String(itA.variantId || "").trim();
+          var qA = Number(itA.quantity || 0);
+          if (!vA || !Number.isFinite(qA) || qA <= 0) continue;
+          mergedMap[vA] = Math.max(mergedMap[vA] || 0, Math.floor(qA));
+        }
+        for (var jj = 0; jj < b0.length; jj += 1) {
+          var itB = b0[jj] || {};
+          var vB = String(itB.variantId || "").trim();
+          var qB = Number(itB.quantity || 0);
+          if (!vB || !Number.isFinite(qB) || qB <= 0) continue;
+          mergedMap[vB] = Math.max(mergedMap[vB] || 0, Math.floor(qB));
+        }
+        for (var k in mergedMap) {
+          if (!Object.prototype.hasOwnProperty.call(mergedMap, k)) continue;
+          merged.push({ variantId: String(k), quantity: Math.max(1, Math.floor(Number(mergedMap[k] || 0))) });
+        }
+        merged.sort(function (a, b) {
+          return String(a.variantId || "").localeCompare(String(b.variantId || ""));
+        });
+      } catch (eMerge) {
+        merged = cartItems && cartItems.length ? cartItems : selItems;
+      }
+      res = await requestApplyBundle(bid, merged && merged.length ? merged : selItems);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
