@@ -437,7 +437,7 @@ export function BundleEditorPage({ mode }) {
         value: offerType === 'quantity' ? Number(primaryTier?.value || 0) : normalizedDiscountValue,
         ...(offerType === 'quantity' ? { tiers: qtyTiersNormalized } : {}),
         eligibility: { mustIncludeAllGroups, minCartQty: requiredQty },
-        limits: { maxUsesPerOrder: 50 },
+        limits: { maxUsesPerOrder: offerType === 'quantity' ? 50 : 1 },
       },
       presentation,
       settings: {
