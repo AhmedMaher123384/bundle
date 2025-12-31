@@ -77,10 +77,18 @@ async function requestApplyBundle(bundleId, items) {
               it.sku_id ||
               it.skuId ||
               (it.variant && (it.variant.id || it.variant.variant_id)) ||
-              it.id ||
               ""
           ).trim() || "";
-        const qRaw = it.quantity != null ? it.quantity : it.qty != null ? it.qty : it.amount != null ? it.amount : null;
+        const qRaw =
+          it.quantity != null
+            ? it.quantity
+            : it.qty != null
+              ? it.qty
+              : it.item_quantity != null
+                ? it.item_quantity
+                : (it.pivot && it.pivot.quantity != null)
+                  ? it.pivot.quantity
+                  : null;
         const q = Math.max(0, Math.floor(Number(qRaw || 0)));
         if (!vid || !Number.isFinite(q) || q <= 0) continue;
         map[vid] = (map[vid] || 0) + q;
@@ -152,10 +160,18 @@ async function syncCartDiscount(reasonBundleId) {
               it.sku_id ||
               it.skuId ||
               (it.variant && (it.variant.id || it.variant.variant_id)) ||
-              it.id ||
               ""
           ).trim() || "";
-        const qRaw = it.quantity != null ? it.quantity : it.qty != null ? it.qty : it.amount != null ? it.amount : null;
+        const qRaw =
+          it.quantity != null
+            ? it.quantity
+            : it.qty != null
+              ? it.qty
+              : it.item_quantity != null
+                ? it.item_quantity
+                : (it.pivot && it.pivot.quantity != null)
+                  ? it.pivot.quantity
+                  : null;
         const q = Math.max(0, Math.floor(Number(qRaw || 0)));
         if (!vid || !Number.isFinite(q) || q <= 0) continue;
         map[vid] = (map[vid] || 0) + q;

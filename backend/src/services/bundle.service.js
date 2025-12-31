@@ -201,7 +201,13 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
       if (!picked) continue;
       if (!best || picked.cost < best.cost) best = picked;
     }
-    if (!best) return null;
+    if (!best || !best.lines?.length) return null;
+    for (const line of best.lines) {
+      availableQtyByVariant.set(
+        String(line.variantId),
+        Math.max(0, Math.floor(Number(availableQtyByVariant.get(String(line.variantId)) || 0))) - Math.max(0, Math.floor(Number(line.quantity || 0)))
+      );
+    }
     return best.lines;
   }
 
