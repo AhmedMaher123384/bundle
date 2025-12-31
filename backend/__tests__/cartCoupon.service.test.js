@@ -68,7 +68,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 
-  test("uses fixed coupon even when applied rule is percentage", async () => {
+  test("uses percentage coupon when applied rule is percentage", async () => {
     CartCoupon.findOne.mockResolvedValueOnce(null);
     CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
     createCoupon.mockResolvedValue({ data: { id: 123 } });
@@ -101,10 +101,11 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
 
     expect(record.status).toBe("issued");
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.type).toBe("fixed");
+    expect(payload && payload.type).toBe("percentage");
+    expect(payload && payload.amount).toBe(20);
   });
 
-  test("reuses existing fixed coupon when scope and amount match", async () => {
+  test("reissues when existing coupon type differs from desired type", async () => {
     const existing = {
       _id: "cc-existing",
       code: "BEXISTINGCODE000",
@@ -116,6 +117,16 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     };
     CartCoupon.findOne.mockResolvedValueOnce(existing);
     CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+    createCoupon.mockResolvedValue({ data: { id: 123 } });
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc1",
+      couponId: String(doc?.$set?.couponId || ""),
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      sallaType: String(doc?.$set?.sallaType || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || []
+    }));
 
     const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
 
@@ -123,6 +134,37 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
     const evaluationResult = {
       applied: { totalDiscount: 10, matchedProductIds: ["101", "202"], rule: { type: "percentage", value: 20 } }
+    };
+
+    const record = await issueOrReuseCouponForCart(config, merchant, "accessToken", [{ variantId: "v1", quantity: 1 }], evaluationResult, {
+      ttlHours: 24
+    });
+
+    expect(record).not.toBe(existing);
+    expect(createCoupon).toHaveBeenCalledTimes(1);
+    const payload = createCoupon.mock.calls[0]?.[2] || null;
+    expect(payload && payload.type).toBe("percentage");
+  });
+
+  test("reuses existing percentage coupon when scope and amount match", async () => {
+    const existing = {
+      _id: "cc-existing",
+      code: "BEXISTINGCODE000",
+      status: "issued",
+      sallaType: "percentage",
+      discountAmount: 25.5,
+      includeProductIds: ["101", "202"],
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    CartCoupon.findOne.mockResolvedValueOnce(existing);
+    CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+    const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
+
+    const config = { salla: {}, security: {} };
+    const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
+    const evaluationResult = {
+      applied: { totalDiscount: 25.5, matchedProductIds: ["101", "202"], rule: { type: "percentage", value: 20 } }
     };
 
     const record = await issueOrReuseCouponForCart(config, merchant, "accessToken", [{ variantId: "v1", quantity: 1 }], evaluationResult, {
