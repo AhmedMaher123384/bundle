@@ -1007,28 +1007,17 @@ function normalizeCartItemsForProxy(items) {
   const arr = Array.isArray(items) ? items : [];
   for (let i = 0; i < arr.length; i += 1) {
     const it = arr[i] || {};
-    const vid = String(
-      (it.variant_id ||
-        it.variantId ||
-        it.sku_id ||
-        it.skuId ||
-        (it.variant && it.variant.id) ||
-        it.id ||
-        "") ||
-        ""
+    const rawVariantId = String(
+      (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || "") || ""
     ).trim();
-    const qtyRaw =
-      it.quantity != null
-        ? it.quantity
-        : it.qty != null
-          ? it.qty
-          : it.pivot && it.pivot.quantity != null
-            ? it.pivot.quantity
-            : null;
-    const qty = Math.max(1, Math.floor(Number(qtyRaw || 0)));
+    const rawProductId = String(
+      (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id || it.product.productId)) || "") || ""
+    ).trim();
+    const vid = rawVariantId || (rawProductId ? "product:" + rawProductId : String((it && it.id) || "").trim());
+    const qty = Number(it.quantity || it.qty || it.amount || 0);
     if (!vid) continue;
     if (!Number.isFinite(qty) || qty <= 0) continue;
-    map[vid] = (map[vid] || 0) + qty;
+    map[vid] = (map[vid] || 0) + Math.floor(qty);
   }
   for (const vid in map) {
     if (!Object.prototype.hasOwnProperty.call(map, vid)) continue;
