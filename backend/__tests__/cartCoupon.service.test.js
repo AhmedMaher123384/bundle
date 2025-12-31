@@ -62,6 +62,13 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.discountAmount).toBe(10);
     expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
+    expect(createCoupon.mock.calls[0][2]).toEqual(
+      expect.objectContaining({
+        type: "fixed",
+        amount: 10,
+        include_product_ids: ["101", "202"]
+      })
+    );
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 });
