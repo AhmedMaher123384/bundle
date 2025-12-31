@@ -111,11 +111,29 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
-  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
-  const pct =
-    Number.isFinite(pctRaw) && pctRaw > 0
-      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
-      : null;
+  let pct = null;
+
+  if (appliedRule && String(appliedRule.type || "").trim() === "percentage") {
+    const pctRaw = Number(appliedRule.value);
+    if (Number.isFinite(pctRaw) && pctRaw > 0) {
+      pct = Math.max(1, Math.min(100, Math.round(pctRaw)));
+    }
+  } else if (!appliedRule && evaluationResult?.applied?.bundles?.length > 1) {
+    const totalDiscount = evaluationResult.applied.totalDiscount;
+    const appliedBundles = evaluationResult.applied.bundles;
+    
+    let totalMatchedSubtotal = 0;
+    for (const b of appliedBundles) {
+      totalMatchedSubtotal += Number(b.subtotal || 0);
+    }
+
+    if (totalMatchedSubtotal > 0) {
+      const weightedPct = (totalDiscount / totalMatchedSubtotal) * 100;
+      // We round UP to ensure the user gets at least the discount they expect, 
+      // or round normally. Let's round normally but ensure it's at least 1.
+      pct = Math.max(1, Math.min(100, Math.round(weightedPct)));
+    }
+  }
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
