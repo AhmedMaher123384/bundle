@@ -67,7 +67,7 @@ describe("bundle.service.evaluateBundles", () => {
     expect(Log.create).toHaveBeenCalledTimes(1);
   });
 
-  test("does not apply bundles when trigger product is not in cart", async () => {
+  test("applies bundle even when trigger product is not in cart", async () => {
     const bundleDoc = {
       _id: "b_trigger_miss",
       merchantId: "m1",
@@ -113,12 +113,12 @@ describe("bundle.service.evaluateBundles", () => {
       variantSnapshotById
     );
 
-    expect(result.applied.totalDiscount).toBe(0);
-    expect(result.applied.bundles).toHaveLength(0);
+    expect(result.applied.totalDiscount).toBe(15);
+    expect(result.applied.bundles).toHaveLength(1);
     expect(result.bundles).toHaveLength(1);
-    expect(result.bundles[0].matched).toBe(false);
-    expect(result.bundles[0].applied).toBe(false);
-    expect(Log.create).toHaveBeenCalledTimes(0);
+    expect(result.bundles[0].matched).toBe(true);
+    expect(result.bundles[0].applied).toBe(true);
+    expect(Log.create).toHaveBeenCalledTimes(1);
   });
 
   test("supports product refs (product:ID) to match any variant of the product", async () => {
