@@ -60,13 +60,6 @@ function addDaysToDateOnly(dateOnly, days) {
   return dt.toISOString().slice(0, 10);
 }
 
-function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
-  const ids = evaluationResult?.applied?.matchedProductIds || [];
-  return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
-    /^\d+$/.test(v)
-  );
-}
-
 function sameStringIdSet(a, b) {
   const aa = Array.isArray(a) ? a : [];
   const bb = Array.isArray(b) ? b : [];
@@ -114,28 +107,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
-
-  const appliedRule = evaluationResult?.applied?.rule || null;
-  const appliedRuleType = String(appliedRule?.type || "")
-    .trim()
-    .toLowerCase();
-
-  let sallaType = "fixed";
-  let sallaAmount = discountAmount;
-  let includeProductIds = [];
-  let maximumAmount = null;
-
-  if (appliedRuleType === "percentage") {
-    const pct = Number(appliedRule?.value);
-    if (Number.isFinite(pct) && pct > 0) {
-      sallaType = "percentage";
-      sallaAmount = Math.max(0, Math.min(100, pct));
-      includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-      maximumAmount = discountAmount;
-    }
-  }
-
-  const storedIncludeProductIds = includeProductIds;
+  const sallaType = "fixed";
+  const sallaAmount = discountAmount;
+  const storedIncludeProductIds = [];
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
@@ -166,8 +140,6 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     usage_limit: 1,
     usage_limit_per_user: 1
   };
-  if (maximumAmount != null) basePayload.maximum_amount = maximumAmount;
-  if (includeProductIds.length) basePayload.include_product_ids = includeProductIds;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
@@ -249,27 +221,9 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
-
-  const appliedRule = evaluationResult?.applied?.rule || null;
-  const appliedRuleType = String(appliedRule?.type || "")
-    .trim()
-    .toLowerCase();
-
-  let sallaType = "fixed";
-  let sallaAmount = discountAmount;
-  let includeProductIds = [];
-  let maximumAmount = null;
-
-  if (appliedRuleType === "percentage") {
-    const pct = Number(appliedRule?.value);
-    if (Number.isFinite(pct) && pct > 0) {
-      sallaType = "percentage";
-      sallaAmount = Math.max(0, Math.min(100, pct));
-      includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-      maximumAmount = discountAmount;
-    }
-  }
-  const storedIncludeProductIds = includeProductIds;
+  const sallaType = "fixed";
+  const sallaAmount = discountAmount;
+  const storedIncludeProductIds = [];
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
@@ -300,8 +254,6 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     usage_limit: 1,
     usage_limit_per_user: 1
   };
-  if (maximumAmount != null) basePayload.maximum_amount = maximumAmount;
-  if (includeProductIds.length) basePayload.include_product_ids = includeProductIds;
 
   let lastCreateError = null;
 

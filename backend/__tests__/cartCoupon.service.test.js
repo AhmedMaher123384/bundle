@@ -101,12 +101,12 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
 
     expect(record.status).toBe("issued");
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.type).toBe("percentage");
-    expect(payload && payload.amount).toBe(20);
-    expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
+    expect(payload && payload.type).toBe("fixed");
+    expect(payload && payload.amount).toBe(25.5);
+    expect(payload && payload.include_product_ids).toBeUndefined();
   });
 
-  test("reissues when existing coupon type differs from desired type", async () => {
+  test("reissues when existing coupon scope differs from desired scope", async () => {
     const existing = {
       _id: "cc-existing",
       code: "BEXISTINGCODE000",
@@ -144,10 +144,10 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record).not.toBe(existing);
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.type).toBe("percentage");
+    expect(payload && payload.type).toBe("fixed");
   });
 
-  test("reuses existing percentage coupon when scope and amount match", async () => {
+  test("reissues when existing coupon type differs from desired type", async () => {
     const existing = {
       _id: "cc-existing",
       code: "BEXISTINGCODE000",
@@ -159,6 +159,16 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     };
     CartCoupon.findOne.mockResolvedValueOnce(existing);
     CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+    createCoupon.mockResolvedValue({ data: { id: 123 } });
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc1",
+      couponId: String(doc?.$set?.couponId || ""),
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      sallaType: String(doc?.$set?.sallaType || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || []
+    }));
 
     const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
 
@@ -172,8 +182,10 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
       ttlHours: 24
     });
 
-    expect(record).toBe(existing);
-    expect(createCoupon).toHaveBeenCalledTimes(0);
+    expect(record).not.toBe(existing);
+    expect(createCoupon).toHaveBeenCalledTimes(1);
+    const payload = createCoupon.mock.calls[0]?.[2] || null;
+    expect(payload && payload.type).toBe("fixed");
   });
 
   test("reissues coupon when existing coupon is missing sallaType", async () => {
