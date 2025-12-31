@@ -466,12 +466,10 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     }
 
     const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
 
     preEvaluations.push({
       bundle,
       triggerProductId,
-      groupKey,
       matched,
       uses: applications.length,
       discountAmount,
@@ -482,22 +480,13 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  const bestByGroup = new Map();
-  for (const ev of preEvaluations) {
-    if (!ev.matched) continue;
-    const prev = bestByGroup.get(ev.groupKey);
-    if (!prev || ev.discountAmount > prev.discountAmount) bestByGroup.set(ev.groupKey, ev);
-  }
-
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
-  let totalEligibleSubtotal = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    const isBest = bestByGroup.get(ev.groupKey) === ev;
-    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    const applied = Boolean(ev.matched && ev.discountAmount > 0);
     if (applied) {
       appliedBundles.push({
         bundleId: String(ev.bundle._id),
@@ -509,7 +498,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
         appliedRules: ev.appliedRules
       });
       totalDiscount += ev.discountAmount;
-      totalEligibleSubtotal += Number(ev.eligibleSubtotal || 0);
       for (const pid of ev.matchedProductIds) appliedProductIds.add(pid);
 
       await Log.create({
@@ -532,6 +520,14 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
+  const cartLines = buildCartVariantLines(normalized, variantSnapshotById);
+  let eligibleSubtotal = 0;
+  for (const l of cartLines) {
+    const pid = String(l?.productId || "").trim();
+    if (!pid || !appliedProductIds.has(pid)) continue;
+    eligibleSubtotal += Number(l.unitPrice) * Number(l.quantity);
+  }
+
   return {
     cart: normalized,
     cartSnapshotHash,
@@ -540,7 +536,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       bundles: appliedBundles,
       matchedProductIds: Array.from(appliedProductIds),
       totalDiscount: appliedBundles.length ? Number(totalDiscount.toFixed(2)) : 0,
-      eligibleSubtotal: appliedBundles.length ? Number(totalEligibleSubtotal.toFixed(2)) : 0,
+      eligibleSubtotal: appliedBundles.length ? Number(eligibleSubtotal.toFixed(2)) : 0,
       rule: (() => {
         const rules = [];
         const keys = new Set();

@@ -73,4 +73,52 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     );
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
+
+  test("caps maximum_amount to eligible subtotal when discount exceeds subtotal", async () => {
+    CartCoupon.findOne.mockResolvedValueOnce(null);
+    CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+    createCoupon.mockResolvedValue({ data: { id: 123 } });
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc1",
+      couponId: String(doc?.$set?.couponId || ""),
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || []
+    }));
+
+    const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
+
+    const config = { salla: {}, security: {} };
+    const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
+
+    const evaluationResult = {
+      applied: {
+        totalDiscount: 100,
+        eligibleSubtotal: 33,
+        matchedProductIds: ["101"]
+      }
+    };
+
+    const record = await issueOrReuseCouponForCart(
+      config,
+      merchant,
+      "accessToken",
+      [{ variantId: "v1", quantity: 1 }],
+      evaluationResult,
+      { ttlHours: 24 }
+    );
+
+    expect(record.status).toBe("issued");
+    expect(record.discountAmount).toBe(33);
+    expect(createCoupon).toHaveBeenCalledTimes(1);
+    expect(createCoupon.mock.calls[0][2]).toEqual(
+      expect.objectContaining({
+        type: "percentage",
+        amount: 100,
+        maximum_amount: 33,
+        include_product_ids: ["101"]
+      })
+    );
+  });
 });

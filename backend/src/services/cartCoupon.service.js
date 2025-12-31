@@ -117,9 +117,12 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
   const eligibleSubtotal = resolveEligibleSubtotalFromEvaluation(evaluationResult);
-  const pct = eligibleSubtotal != null ? computeCappedPercentage(discountAmount, eligibleSubtotal) : null;
+  if (eligibleSubtotal == null) return null;
+
+  const rawDiscountAmount = Number(Number(totalDiscount).toFixed(2));
+  const discountAmount = Number(Math.min(rawDiscountAmount, eligibleSubtotal).toFixed(2));
+  const pct = computeCappedPercentage(discountAmount, eligibleSubtotal);
   if (pct == null) return null;
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
@@ -231,9 +234,14 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null });
   }
 
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
   const eligibleSubtotal = resolveEligibleSubtotalFromEvaluation(evaluationResult);
-  const pct = eligibleSubtotal != null ? computeCappedPercentage(discountAmount, eligibleSubtotal) : null;
+  if (eligibleSubtotal == null) {
+    return fail("NO_ELIGIBLE_SUBTOTAL", { eligibleSubtotal: eligibleSubtotal ?? null });
+  }
+
+  const rawDiscountAmount = Number(Number(totalDiscount).toFixed(2));
+  const discountAmount = Number(Math.min(rawDiscountAmount, eligibleSubtotal).toFixed(2));
+  const pct = computeCappedPercentage(discountAmount, eligibleSubtotal);
   if (pct == null) {
     return fail("NO_ELIGIBLE_SUBTOTAL", { eligibleSubtotal: eligibleSubtotal ?? null });
   }
