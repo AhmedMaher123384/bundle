@@ -267,7 +267,8 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
-  const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
+  const maxUsesPerOrder = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
+  const maxUses = rules?.eligibility?.mustIncludeAllGroups === false ? 1 : maxUsesPerOrder;
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 
@@ -429,8 +430,7 @@ async function loadActiveBundlesForStore(storeId) {
   return Bundle.find({
     storeId: s,
     status: "active",
-    deletedAt: null,
-    triggerProductId: { $nin: [null, ""] }
+    deletedAt: null
   })
     .sort({ updatedAt: -1, _id: -1 })
     .lean();
@@ -472,7 +472,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById, options
     }
 
     const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
+    const groupKey = `bundle:${String(bundle?._id)}`;
 
     preEvaluations.push({
       bundle,
