@@ -1,22 +1,64 @@
 module.exports = [
   `
 async function fetchJson(url, opts) {
-  const r = await fetch(url, opts);
-  const t = await r.text();
-  let j = null;
+  const o0 = opts && typeof opts === "object" ? Object.assign({}, opts) : {};
+  const timeoutMs = Number(o0.timeoutMs || 0);
   try {
-    j = t ? JSON.parse(t) : null;
-  } catch (e) {
-    throw new Error("Invalid JSON response");
+    delete o0.timeoutMs;
+  } catch (e0) {}
+
+  let timer = 0;
+  let ctrl = null;
+  if (timeoutMs > 0) {
+    try {
+      if (typeof AbortController !== "undefined") ctrl = new AbortController();
+    } catch (e1) {
+      ctrl = null;
+    }
   }
-  if (!r.ok) {
-    const msg = (j && j.message) || "HTTP " + r.status;
-    const err = new Error(msg);
-    err.status = r.status;
-    err.details = j;
-    throw err;
+  if (ctrl) {
+    try {
+      o0.signal = ctrl.signal;
+    } catch (e2) {}
+    timer = setTimeout(function () {
+      try {
+        ctrl.abort();
+      } catch (e3) {}
+    }, Math.max(1, Math.floor(timeoutMs)));
   }
-  return j;
+
+  try {
+    const r = await fetch(url, o0);
+    const t = await r.text();
+    let j = null;
+    try {
+      j = t ? JSON.parse(t) : null;
+    } catch (e) {
+      throw new Error("Invalid JSON response");
+    }
+    if (!r.ok) {
+      const msg = (j && j.message) || "HTTP " + r.status;
+      const err = new Error(msg);
+      err.status = r.status;
+      err.details = j;
+      throw err;
+    }
+    return j;
+  } catch (e4) {
+    const name = String((e4 && e4.name) || "").toLowerCase();
+    const msg = String((e4 && e4.message) || "").toLowerCase();
+    const aborted = name === "aborterror" || msg === "aborted" || msg.indexOf("aborted") !== -1;
+    if (aborted) {
+      const err = new Error("timeout");
+      err.status = 408;
+      throw err;
+    }
+    throw e4;
+  } finally {
+    try {
+      if (timer) clearTimeout(timer);
+    } catch (e5) {}
+  }
 }
 
 function getBackendOrigin() {
@@ -86,7 +128,8 @@ async function requestCartBanner(items) {
   return fetchJson(u, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    timeoutMs: 10000
   });
 }
 
@@ -148,7 +191,33 @@ function isProbablyBundleAppCouponCode(code) {
   return false;
 }
 
-var _bundleCartCouponState = { timer: 0, inFlight: false, lastKey: "" };
+function updatePendingCouponMessage(kind, bundleIdOverride) {
+  try {
+    const bid = String(bundleIdOverride != null ? bundleIdOverride : selectedBundleId || "").trim();
+    if (!bid) return;
+    const cur = String((messageByBundleId && messageByBundleId[bid]) || "").trim();
+    if (cur.indexOf("جاري تفعيل الخصم") === -1) return;
+
+    let next = cur;
+    const k = String(kind || "").trim();
+    if (k === "applied") next = "تم تطبيق الخصم";
+    else if (k === "no_discount") next = "تمت إضافة الباقة للسلة. لا يوجد خصم لهذه الباقة.";
+    else if (k === "coupon_issue_failed") next = "تمت إضافة الباقة للسلة لكن تعذر إصدار كوبون الخصم";
+    else if (k === "conflict_coupon") next = "يوجد كوبون آخر في السلة. احذفه لتفعيل خصم الباقة";
+    else if (k === "timeout") next = "تمت إضافة الباقة للسلة. افتح السلة لتطبيق الخصم";
+    else if (k === "failed") next = "تمت إضافة الباقة للسلة لكن تعذر تفعيل الخصم";
+
+    if (!next || next === cur) return;
+    try {
+      messageByBundleId[bid] = next;
+    } catch (e0) {}
+    try {
+      if (typeof renderProductBanners === "function") renderProductBanners(typeof lastBundles !== "undefined" ? lastBundles || [] : []);
+    } catch (e1) {}
+  } catch (e) {}
+}
+
+var _bundleCartCouponState = { timer: 0, uiTimer: 0, inFlight: false, lastKey: "", lastUiBundleId: "" };
 
 async function evaluateCartAndSyncCoupon() {
   const st = _bundleCartCouponState;
@@ -171,14 +240,20 @@ async function evaluateCartAndSyncCoupon() {
     if (key === st.lastKey) return;
 
     const res = await requestCartBanner(items);
-    if (!res || res.ok !== true) return;
+    if (!res || res.ok !== true) {
+      updatePendingCouponMessage("failed", st.lastUiBundleId);
+      return;
+    }
     st.lastKey = key;
 
     const nextCode = String(res.couponCode || "").trim();
     const hasDiscount = Boolean(res.hasDiscount && nextCode);
+    const couponIssueFailed = Boolean(res.couponIssueFailed);
     const cur = getCurrentCouponCode();
 
     if (!hasDiscount) {
+      if (couponIssueFailed) updatePendingCouponMessage("coupon_issue_failed", st.lastUiBundleId);
+      else updatePendingCouponMessage("no_discount", st.lastUiBundleId);
       if (cur && isProbablyBundleAppCouponCode(cur)) {
         try {
           await tryClearCoupon();
@@ -187,25 +262,39 @@ async function evaluateCartAndSyncCoupon() {
       return;
     }
 
-    if (cur && cur === nextCode) return;
+    if (cur && cur === nextCode) {
+      updatePendingCouponMessage("applied", st.lastUiBundleId);
+      try {
+        if (g && g.BundleApp) g.BundleApp._lastBundleCouponCode = nextCode;
+      } catch (eSet0) {}
+      return;
+    }
     const ok = await tryApplyCoupon(nextCode);
     if (!ok) {
-      if (cur && !isProbablyBundleAppCouponCode(cur)) return;
+      if (cur && !isProbablyBundleAppCouponCode(cur)) {
+        updatePendingCouponMessage("conflict_coupon", st.lastUiBundleId);
+        return;
+      }
       try {
         await tryClearCoupon();
       } catch (e2) {}
       const ok2 = await tryApplyCoupon(nextCode);
       if (ok2) {
+        updatePendingCouponMessage("applied", st.lastUiBundleId);
         try {
           if (g && g.BundleApp) g.BundleApp._lastBundleCouponCode = nextCode;
         } catch (eSet2) {}
+      } else {
+        updatePendingCouponMessage("failed", st.lastUiBundleId);
       }
       return;
     }
+    updatePendingCouponMessage("applied", st.lastUiBundleId);
     try {
       if (g && g.BundleApp) g.BundleApp._lastBundleCouponCode = nextCode;
     } catch (eSet) {}
   } catch (e) {
+    updatePendingCouponMessage("failed", st.lastUiBundleId);
     try {
       warn("bundle-app: cart coupon eval failed", e && (e.details || e.message || e));
     } catch (e2) {}
@@ -219,6 +308,20 @@ function scheduleCartCouponEvaluation(immediate) {
     const st = _bundleCartCouponState;
     if (st.timer) clearTimeout(st.timer);
     st.timer = 0;
+    if (immediate === true) {
+      const bid = String(selectedBundleId || "").trim();
+      if (bid) {
+        st.lastUiBundleId = bid;
+        try {
+          if (st.uiTimer) clearTimeout(st.uiTimer);
+        } catch (eU0) {}
+        st.uiTimer = setTimeout(function () {
+          try {
+            updatePendingCouponMessage("timeout", bid);
+          } catch (eU1) {}
+        }, 12000);
+      }
+    }
     const delay = immediate === true ? 80 : 450;
     st.timer = setTimeout(function () {
       try {
