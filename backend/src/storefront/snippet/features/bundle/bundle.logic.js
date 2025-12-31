@@ -1008,7 +1008,16 @@ function normalizeCartItemsForProxy(items) {
   for (let i = 0; i < arr.length; i += 1) {
     const it = arr[i] || {};
     const rawVariantId = String(
-      (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || "") || ""
+      (it.variant_id ||
+        it.variantId ||
+        it.variantID ||
+        it.sku_id ||
+        it.skuId ||
+        (it.sku && (it.sku.id || it.sku.sku_id || it.sku.skuId || it.sku.variant_id || it.sku.variantId)) ||
+        (it.variant && (it.variant.id || it.variant.variant_id || it.variant.variantId)) ||
+        it.id ||
+        "") ||
+        ""
     ).trim();
     const rawProductId = String(
       (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id || it.product.productId)) || "") || ""
