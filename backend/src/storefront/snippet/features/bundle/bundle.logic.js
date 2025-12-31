@@ -77,6 +77,19 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
+async function requestCartBanner(items) {
+  const payload = {
+    items: Array.isArray(items) ? items : []
+  };
+  const u = buildUrl("/api/proxy/cart/banner", {});
+  if (!u) return null;
+  return fetchJson(u, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -988,6 +1001,53 @@ async function readCartItems() {
   }
 
   return [];
+}
+
+function cartItemVariantId(it) {
+  try {
+    const v = String(
+      (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || (it.sku && it.sku.id) || it.id)) || ""
+    ).trim();
+    return v || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function cartItemQuantity(it) {
+  try {
+    const raw =
+      (it && (it.quantity != null ? it.quantity : it.qty != null ? it.qty : it.count != null ? it.count : it.amount != null ? it.amount : null)) || null;
+    const q = typeof raw === "object" && raw ? Number(raw.value ?? raw.amount ?? raw.qty ?? raw.count) : Number(raw);
+    if (!Number.isFinite(q) || q <= 0) return 1;
+    return Math.max(1, Math.floor(q));
+  } catch (e) {
+    return 1;
+  }
+}
+
+function normalizeProxyCartItems(rawCartItems) {
+  try {
+    const map = {};
+    for (let i = 0; i < (rawCartItems || []).length; i += 1) {
+      const it = rawCartItems[i] || {};
+      const v = cartItemVariantId(it);
+      if (!v) continue;
+      const q = cartItemQuantity(it);
+      map[v] = (map[v] || 0) + q;
+    }
+    const out = [];
+    for (const k in map) {
+      if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+      out.push({ variantId: String(k), quantity: Math.max(1, Math.floor(Number(map[k] || 1))) });
+    }
+    out.sort(function (a, b) {
+      return String(a.variantId || "").localeCompare(String(b.variantId || ""));
+    });
+    return out;
+  } catch (e) {
+    return [];
+  }
 }
 
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
@@ -2287,7 +2347,16 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      res = await requestApplyBundle(bid, items);
+      var cartPayload = null;
+      try {
+        var cartItemsRaw = await readCartItems();
+        var normalized = normalizeProxyCartItems(cartItemsRaw);
+        cartPayload = normalized && normalized.length ? normalized : null;
+      } catch (eCart) {
+        cartPayload = null;
+      }
+      if (!cartPayload || !cartPayload.length) cartPayload = items;
+      res = await requestCartBanner(cartPayload);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);

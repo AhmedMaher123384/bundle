@@ -117,6 +117,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
+  const includeProductIdNumbers = includeProductIds.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
@@ -142,7 +143,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: includeProductIdNumbers
   };
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -230,6 +231,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
     });
   }
+  const includeProductIdNumbers = includeProductIds.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     const existingType = String(existing?.sallaType || "").trim().toLowerCase();
@@ -254,7 +256,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: includeProductIdNumbers
   };
 
   let lastCreateError = null;
