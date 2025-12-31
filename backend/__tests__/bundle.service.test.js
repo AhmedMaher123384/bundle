@@ -306,7 +306,7 @@ describe("bundle.service.evaluateBundles", () => {
     expect(result.applied.bundles).toHaveLength(1);
   });
 
-  test("stacks bundles even if they share the same trigger product id", async () => {
+  test("applies only one bundle per trigger product id", async () => {
     const bundleA = {
       _id: "b_a",
       merchantId: "m1",
@@ -373,59 +373,9 @@ describe("bundle.service.evaluateBundles", () => {
       variantSnapshotById
     );
 
-    expect(result.applied.totalDiscount).toBe(35);
-    expect(result.applied.bundles).toHaveLength(2);
-    expect(result.applied.bundles.map((b) => b.bundleId).sort()).toEqual(["b_a", "b_b"]);
-    expect(Log.create).toHaveBeenCalledTimes(2);
-  });
-
-  test("mustIncludeAllGroups=false applies at most once even if maxUsesPerOrder is higher", async () => {
-    const bundleDoc = {
-      _id: "b_one_use",
-      merchantId: "m1",
-      status: "active",
-      name: "One Use Only",
-      components: [
-        { variantId: "v1", quantity: 1, group: "A" },
-        { variantId: "v2", quantity: 1, group: "B" }
-      ],
-      rules: {
-        type: "percentage",
-        value: 10,
-        eligibility: { mustIncludeAllGroups: false, minCartQty: 1 },
-        limits: { maxUsesPerOrder: 10 }
-      },
-      toObject() {
-        return { ...this };
-      }
-    };
-
-    Bundle.find.mockReturnValue({
-      sort: jest.fn().mockReturnValue({
-        lean: jest.fn().mockResolvedValue([bundleDoc])
-      })
-    });
-
-    Log.create.mockResolvedValue({});
-
-    const variantSnapshotById = new Map([
-      ["v1", { variantId: "v1", productId: "p1", price: 100, isActive: true }],
-      ["v2", { variantId: "v2", productId: "p2", price: 50, isActive: true }]
-    ]);
-
-    const { evaluateBundles } = require("../src/services/bundle.service");
-
-    const result = await evaluateBundles(
-      { _id: "merchantObjectId", merchantId: "m1" },
-      [
-        { variantId: "v1", quantity: 1 },
-        { variantId: "v2", quantity: 1 }
-      ],
-      variantSnapshotById
-    );
-
-    expect(result.applied.totalDiscount).toBe(5);
+    expect(result.applied.totalDiscount).toBe(20);
     expect(result.applied.bundles).toHaveLength(1);
+    expect(result.applied.bundles[0].bundleId).toBe("b_b");
     expect(Log.create).toHaveBeenCalledTimes(1);
   });
 });

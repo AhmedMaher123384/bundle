@@ -201,13 +201,7 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
       if (!picked) continue;
       if (!best || picked.cost < best.cost) best = picked;
     }
-    if (!best || !best.lines?.length) return null;
-    for (const line of best.lines) {
-      availableQtyByVariant.set(
-        String(line.variantId),
-        Math.max(0, Math.floor(Number(availableQtyByVariant.get(String(line.variantId)) || 0))) - Math.max(0, Math.floor(Number(line.quantity || 0)))
-      );
-    }
+    if (!best) return null;
     return best.lines;
   }
 
@@ -267,8 +261,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
-  const maxUsesPerOrder = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
-  const maxUses = rules?.eligibility?.mustIncludeAllGroups === false ? 1 : maxUsesPerOrder;
+  const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 
@@ -430,13 +423,14 @@ async function loadActiveBundlesForStore(storeId) {
   return Bundle.find({
     storeId: s,
     status: "active",
-    deletedAt: null
+    deletedAt: null,
+    triggerProductId: { $nin: [null, ""] }
   })
     .sort({ updatedAt: -1, _id: -1 })
     .lean();
 }
 
-async function evaluateBundles(merchant, cartItems, variantSnapshotById, options) {
+async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   if (!merchant?._id) throw new ApiError(400, "Invalid merchant", { code: "INVALID_MERCHANT" });
   const storeId = String(merchant?.merchantId || "").trim();
   if (!storeId) throw new ApiError(400, "Invalid merchant storeId", { code: "INVALID_STORE_ID" });
@@ -445,7 +439,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById, options
   const bundles = await loadActiveBundlesForStore(storeId);
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
-  const shouldLog = options?.log !== false;
 
   const preEvaluations = [];
   for (const bundle of bundles) {
@@ -472,7 +465,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById, options
     }
 
     const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = `bundle:${String(bundle?._id)}`;
+    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
 
     preEvaluations.push({
       bundle,
@@ -514,15 +507,13 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById, options
       totalDiscount += ev.discountAmount;
       for (const pid of ev.matchedProductIds) appliedProductIds.add(pid);
 
-      if (shouldLog) {
-        await Log.create({
-          merchantId: merchant._id,
-          bundleId: ev.bundle._id,
-          matchedVariants: ev.matchedVariants,
-          cartSnapshotHash,
-          createdAt: new Date()
-        });
-      }
+      await Log.create({
+        merchantId: merchant._id,
+        bundleId: ev.bundle._id,
+        matchedVariants: ev.matchedVariants,
+        cartSnapshotHash,
+        createdAt: new Date()
+      });
     }
 
     evaluations.push({
