@@ -439,6 +439,9 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const bundles = await loadActiveBundlesForStore(storeId);
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
+  const cartLines = buildCartVariantLines(normalized, variantSnapshotById);
+  const cartSubtotalRaw = cartLines.reduce((acc, l) => acc + Number(l.unitPrice) * Number(l.quantity), 0);
+  const cartSubtotal = Number.isFinite(cartSubtotalRaw) && cartSubtotalRaw > 0 ? Number(cartSubtotalRaw) : 0;
 
   const preEvaluations = [];
   for (const bundle of bundles) {
@@ -521,7 +524,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     applied: {
       bundles: appliedBundles,
       matchedProductIds: Array.from(appliedProductIds),
-      totalDiscount: appliedBundles.length ? Number(totalDiscount.toFixed(2)) : 0,
+      totalDiscount: appliedBundles.length ? Number(Math.min(cartSubtotal, totalDiscount).toFixed(2)) : 0,
       rule: (() => {
         const rules = [];
         const keys = new Set();
