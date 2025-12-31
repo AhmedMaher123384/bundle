@@ -67,6 +67,22 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   );
 }
 
+function resolveEligibleSubtotalFromEvaluation(evaluationResult) {
+  const n = Number(evaluationResult?.applied?.eligibleSubtotal);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Number(n.toFixed(2));
+}
+
+function computeCappedPercentage(discountAmount, eligibleSubtotal) {
+  const disc = Number(discountAmount);
+  const sub = Number(eligibleSubtotal);
+  if (!Number.isFinite(disc) || disc <= 0) return null;
+  if (!Number.isFinite(sub) || sub <= 0) return null;
+  const pct = Math.ceil((disc / sub) * 100);
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  return Math.max(1, Math.min(100, pct));
+}
+
 async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
   const now = new Date();
   const existing = await CartCoupon.findOne({
@@ -102,17 +118,13 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  const eligibleSubtotal = resolveEligibleSubtotalFromEvaluation(evaluationResult);
+  const pct = eligibleSubtotal != null ? computeCappedPercentage(discountAmount, eligibleSubtotal) : null;
+  if (pct == null) return null;
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
   const includeProductIdsForApi = includeProductIds;
-
-  const appliedRule = evaluationResult?.applied?.rule || null;
-  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
-  const pct =
-    Number.isFinite(pctRaw) && pctRaw > 0
-      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
-      : null;
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -129,20 +141,18 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi
+    include_product_ids: includeProductIdsForApi,
+    maximum_amount: discountAmount,
+    show_maximum_amount: false
   };
-  const preferPercentage = Boolean(pct != null);
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
-    const percentagePayload = pct != null ? { ...basePayload, code, type: "percentage", amount: pct } : null;
-    const firstPayload = preferPercentage && percentagePayload ? percentagePayload : fixedPayload;
-    const secondPayload = preferPercentage && percentagePayload ? fixedPayload : percentagePayload;
+    const percentagePayload = { ...basePayload, code, type: "percentage", amount: pct };
 
     let sallaCouponId = null;
     try {
-      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, firstPayload);
+      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, percentagePayload);
       sallaCouponId = createdCouponResponse?.data?.id ?? null;
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 409) {
@@ -150,58 +160,22 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        let created = false;
-
-        if (firstPayload.type === "fixed") {
-          const floored = Math.floor(discountAmount);
-          if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
-            try {
-              const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
-              sallaCouponId = createdCouponResponse?.data?.id ?? null;
-              created = true;
-            } catch (e2) {
-              if (e2 instanceof ApiError && e2.statusCode === 409) continue;
-              if (!(e2 instanceof ApiError) || e2.statusCode !== 422) throw e2;
-            }
-          }
-        }
-
-        if (!created && secondPayload) {
+        const flooredMax = Math.floor(discountAmount);
+        if (Number.isFinite(flooredMax) && flooredMax >= 1 && flooredMax < discountAmount) {
           try {
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, secondPayload);
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, {
+              ...percentagePayload,
+              maximum_amount: flooredMax
+            });
             sallaCouponId = createdCouponResponse?.data?.id ?? null;
-            created = true;
-          } catch (e3) {
-            if (e3 instanceof ApiError && e3.statusCode === 409) continue;
-            if (e3 instanceof ApiError && e3.statusCode === 422) {
-              if (secondPayload.type === "fixed") {
-                const secondAmount = Number(secondPayload.amount);
-                const floored = Math.floor(secondAmount);
-                if (Number.isFinite(floored) && floored >= 1 && floored < secondAmount) {
-                  try {
-                    const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, {
-                      ...secondPayload,
-                      amount: floored
-                    });
-                    sallaCouponId = createdCouponResponse?.data?.id ?? null;
-                    created = true;
-                  } catch (e4) {
-                    if (e4 instanceof ApiError && e4.statusCode === 409) continue;
-                    if (e4 instanceof ApiError && e4.statusCode === 422) return null;
-                    throw e4;
-                  }
-                } else {
-                  return null;
-                }
-              } else {
-                return null;
-              }
-            }
-            throw e3;
+          } catch (e2) {
+            if (e2 instanceof ApiError && e2.statusCode === 409) continue;
+            if (e2 instanceof ApiError && e2.statusCode === 422) return null;
+            throw e2;
           }
+        } else {
+          return null;
         }
-
-        if (!created) return null;
       } else {
         throw err;
       }
@@ -258,6 +232,11 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  const eligibleSubtotal = resolveEligibleSubtotalFromEvaluation(evaluationResult);
+  const pct = eligibleSubtotal != null ? computeCappedPercentage(discountAmount, eligibleSubtotal) : null;
+  if (pct == null) {
+    return fail("NO_ELIGIBLE_SUBTOTAL", { eligibleSubtotal: eligibleSubtotal ?? null });
+  }
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {
@@ -267,13 +246,6 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   const includeProductIdsForApi = includeProductIds;
-
-  const appliedRule = evaluationResult?.applied?.rule || null;
-  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
-  const pct =
-    Number.isFinite(pctRaw) && pctRaw > 0
-      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
-      : null;
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -290,24 +262,22 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi
+    include_product_ids: includeProductIdsForApi,
+    maximum_amount: discountAmount,
+    show_maximum_amount: false
   };
-  const preferPercentage = Boolean(pct != null);
 
   let lastCreateError = null;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
-    const percentagePayload = pct != null ? { ...basePayload, code, type: "percentage", amount: pct } : null;
-    const firstPayload = preferPercentage && percentagePayload ? percentagePayload : fixedPayload;
-    const secondPayload = preferPercentage && percentagePayload ? fixedPayload : percentagePayload;
+    const percentagePayload = { ...basePayload, code, type: "percentage", amount: pct };
 
     let sallaCouponId = null;
     const triedPayloads = [];
     try {
-      triedPayloads.push(firstPayload);
-      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, firstPayload);
+      triedPayloads.push(percentagePayload);
+      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, percentagePayload);
       sallaCouponId = createdCouponResponse?.data?.id ?? null;
     } catch (err) {
       lastCreateError = err;
@@ -316,76 +286,26 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        let created = false;
-
-        if (firstPayload.type === "fixed") {
-          const floored = Math.floor(discountAmount);
-          if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
-            try {
-              triedPayloads.push({ ...fixedPayload, amount: floored });
-              const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
-              sallaCouponId = createdCouponResponse?.data?.id ?? null;
-              created = true;
-            } catch (e2) {
-              lastCreateError = e2;
-              if (e2 instanceof ApiError && e2.statusCode === 409) continue;
-              if (!(e2 instanceof ApiError) || e2.statusCode !== 422) throw e2;
-            }
-          }
-        }
-
-        if (!created && secondPayload) {
+        const flooredMax = Math.floor(discountAmount);
+        if (Number.isFinite(flooredMax) && flooredMax >= 1 && flooredMax < discountAmount) {
           try {
-            triedPayloads.push(secondPayload);
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, secondPayload);
+            const p2 = { ...percentagePayload, maximum_amount: flooredMax };
+            triedPayloads.push(p2);
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, p2);
             sallaCouponId = createdCouponResponse?.data?.id ?? null;
-            created = true;
-          } catch (e3) {
-            lastCreateError = e3;
-            if (e3 instanceof ApiError && e3.statusCode === 409) continue;
-            if (e3 instanceof ApiError && e3.statusCode === 422) {
-              if (secondPayload.type === "fixed") {
-                const secondAmount = Number(secondPayload.amount);
-                const floored = Math.floor(secondAmount);
-                if (Number.isFinite(floored) && floored >= 1 && floored < secondAmount) {
-                  try {
-                    const p4 = { ...secondPayload, amount: floored };
-                    triedPayloads.push(p4);
-                    const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, p4);
-                    sallaCouponId = createdCouponResponse?.data?.id ?? null;
-                    created = true;
-                  } catch (e4) {
-                    lastCreateError = e4;
-                    if (e4 instanceof ApiError && e4.statusCode === 409) continue;
-                    if (e4 instanceof ApiError && e4.statusCode === 422) {
-                      return fail("SALLA_COUPON_CREATE_FAILED", {
-                        statusCode: 422,
-                        error: e4.details ?? null,
-                        triedPayloads
-                      });
-                    }
-                    throw e4;
-                  }
-                } else {
-                  return fail("SALLA_COUPON_CREATE_FAILED", {
-                    statusCode: 422,
-                    error: e3.details ?? null,
-                    triedPayloads
-                  });
-                }
-              } else {
-                return fail("SALLA_COUPON_CREATE_FAILED", {
-                  statusCode: 422,
-                  error: e3.details ?? null,
-                  triedPayloads
-                });
-              }
+          } catch (e2) {
+            lastCreateError = e2;
+            if (e2 instanceof ApiError && e2.statusCode === 409) continue;
+            if (e2 instanceof ApiError && e2.statusCode === 422) {
+              return fail("SALLA_COUPON_CREATE_FAILED", {
+                statusCode: 422,
+                error: e2.details ?? null,
+                triedPayloads
+              });
             }
-            throw e3;
+            throw e2;
           }
-        }
-
-        if (!created) {
+        } else {
           return fail("SALLA_COUPON_CREATE_FAILED", {
             statusCode: 422,
             error: err.details ?? null,

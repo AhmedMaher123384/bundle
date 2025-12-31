@@ -1432,6 +1432,9 @@ function createApiRouter(config) {
 
         evaluation.applied = {
           totalDiscount: draft?.applied ? Number(draft.discountAmount || 0) : 0,
+          eligibleSubtotal: Array.isArray(draft?.applications)
+            ? Number(draft.applications.reduce((acc, a) => acc + Number(a?.subtotal || 0), 0).toFixed(2))
+            : 0,
           matchedProductIds: Array.isArray(draft?.matchedProductIds) ? draft.matchedProductIds : [],
           rule: appliedRule
         };
@@ -1461,6 +1464,7 @@ function createApiRouter(config) {
         const value = Number(offer?.value ?? 0);
         evaluation.applied = {
           totalDiscount: Number(discountAmount.toFixed(2)),
+          eligibleSubtotal: Number(subtotal.toFixed(2)),
           matchedProductIds,
           rule: type && Number.isFinite(value) && value >= 0 ? { type, value } : null
         };

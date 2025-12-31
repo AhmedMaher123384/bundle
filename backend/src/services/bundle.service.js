@@ -445,6 +445,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
     const matched = applications.length > 0;
     const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
+    const eligibleSubtotal = applications.reduce((acc, a) => acc + Number(a.subtotal || 0), 0);
 
     const matchedVariants = Array.from(new Set(applications.flatMap((a) => a.matchedVariants || []))).filter(Boolean);
     const matchedProductIds = Array.from(new Set(applications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
@@ -474,6 +475,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       matched,
       uses: applications.length,
       discountAmount,
+      eligibleSubtotal,
       matchedVariants,
       matchedProductIds,
       appliedRules
@@ -490,6 +492,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
+  let totalEligibleSubtotal = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
@@ -500,11 +503,13 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
         bundleId: String(ev.bundle._id),
         uses: ev.uses,
         discountAmount: Number(ev.discountAmount.toFixed(2)),
+        eligibleSubtotal: Number((Number(ev.eligibleSubtotal || 0) || 0).toFixed(2)),
         matchedVariants: ev.matchedVariants,
         matchedProductIds: ev.matchedProductIds,
         appliedRules: ev.appliedRules
       });
       totalDiscount += ev.discountAmount;
+      totalEligibleSubtotal += Number(ev.eligibleSubtotal || 0);
       for (const pid of ev.matchedProductIds) appliedProductIds.add(pid);
 
       await Log.create({
@@ -535,6 +540,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       bundles: appliedBundles,
       matchedProductIds: Array.from(appliedProductIds),
       totalDiscount: appliedBundles.length ? Number(totalDiscount.toFixed(2)) : 0,
+      eligibleSubtotal: appliedBundles.length ? Number(totalEligibleSubtotal.toFixed(2)) : 0,
       rule: (() => {
         const rules = [];
         const keys = new Set();

@@ -40,6 +40,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     const evaluationResult = {
       applied: {
         totalDiscount: 10,
+        eligibleSubtotal: 33,
         matchedProductIds: ["101", "202"]
       }
     };
@@ -64,8 +65,9 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(createCoupon).toHaveBeenCalledTimes(1);
     expect(createCoupon.mock.calls[0][2]).toEqual(
       expect.objectContaining({
-        type: "fixed",
-        amount: 10,
+        type: "percentage",
+        amount: 31,
+        maximum_amount: 10,
         include_product_ids: ["101", "202"]
       })
     );
