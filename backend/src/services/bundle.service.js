@@ -261,9 +261,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
-  const rawMaxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
-  const kind = String(bundle?.kind || "").trim();
-  const maxUses = kind === "products_discount" || kind === "products_no_discount" || kind === "post_add_upsell" ? 1 : rawMaxUses;
+  const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 

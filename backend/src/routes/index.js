@@ -1466,24 +1466,16 @@ function createApiRouter(config) {
         };
       }
 
-      const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
-      const issued = shouldIssueCoupon
-        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
-        : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
-      const coupon = issued?.coupon || null;
-      const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
-
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
         bundleId: String(bValue.bundleId),
         kind,
-        hasDiscount,
-        discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-        couponCode: hasDiscount ? coupon.code : null,
-        couponIssueFailed,
-        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
+        hasDiscount: Boolean(discountAmount > 0),
+        discountAmount: Number(discountAmount.toFixed(2)),
+        couponCode: null,
+        couponIssueFailed: false,
+        couponIssueDetails: null,
         applied: evaluation?.applied || null
       });
     } catch (err) {

@@ -64,7 +64,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.include_product_ids).toEqual([101, 202]);
+    expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 
