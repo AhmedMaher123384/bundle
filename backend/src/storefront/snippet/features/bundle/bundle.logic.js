@@ -1040,6 +1040,88 @@ function normalizeCartItemsForProxy(items) {
   return out;
 }
 
+function normalizeBundleItemsForProxy(items) {
+  const map = {};
+  const arr = Array.isArray(items) ? items : [];
+  for (let i = 0; i < arr.length; i += 1) {
+    const it = arr[i] || {};
+    const variantId = String((it.variantId || it.variant_id || "") || "").trim();
+    const productId = String((it.productId || it.product_id || "") || "").trim();
+    const ref = variantId || (productId ? "product:" + productId : "");
+    const qty = Number(it.quantity || it.qty || it.amount || 0);
+    if (!ref) continue;
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    map[ref] = (map[ref] || 0) + Math.floor(qty);
+  }
+  const out = [];
+  for (const k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+    out.push({ variantId: String(k), quantity: Math.floor(Number(map[k] || 0)) });
+  }
+  out.sort(function (a, b) {
+    return String(a.variantId || "").localeCompare(String(b.variantId || ""));
+  });
+  return out;
+}
+
+function mergeProxyCartItems(a, b) {
+  const map = {};
+  const aa = Array.isArray(a) ? a : [];
+  const bb = Array.isArray(b) ? b : [];
+  for (let i = 0; i < aa.length; i += 1) {
+    const it = aa[i] || {};
+    const vid = String(it.variantId || "").trim();
+    const qty = Number(it.quantity || 0);
+    if (!vid || !Number.isFinite(qty) || qty <= 0) continue;
+    map[vid] = (map[vid] || 0) + Math.floor(qty);
+  }
+  for (let j = 0; j < bb.length; j += 1) {
+    const it2 = bb[j] || {};
+    const vid2 = String(it2.variantId || "").trim();
+    const qty2 = Number(it2.quantity || 0);
+    if (!vid2 || !Number.isFinite(qty2) || qty2 <= 0) continue;
+    map[vid2] = (map[vid2] || 0) + Math.floor(qty2);
+  }
+  const out = [];
+  for (const k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+    out.push({ variantId: String(k), quantity: Math.floor(Number(map[k] || 0)) });
+  }
+  out.sort(function (x, y) {
+    return String(x.variantId || "").localeCompare(String(y.variantId || ""));
+  });
+  return out;
+}
+
+async function readProxyCartItemsWithRetries(fallbackBundleItems) {
+  function sleep(ms) {
+    return new Promise(function (r) {
+      setTimeout(r, Math.max(0, Number(ms || 0)));
+    });
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const cartItems = await readCartItems();
+      const payload = normalizeCartItemsForProxy(cartItems);
+      if (payload && payload.length) {
+        try {
+          if (g && g.BundleApp) g.BundleApp._lastProxyCartItems = payload;
+        } catch (e0) {}
+        return payload;
+      }
+    } catch (e1) {}
+    await sleep(250 + attempt * 250);
+  }
+  let last = null;
+  try {
+    last = g && g.BundleApp && g.BundleApp._lastProxyCartItems ? g.BundleApp._lastProxyCartItems : null;
+  } catch (e2) {
+    last = null;
+  }
+  const fromAdded = normalizeBundleItemsForProxy(fallbackBundleItems);
+  return mergeProxyCartItems(last, fromAdded);
+}
+
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
   try {
     const pid = String(
@@ -2329,8 +2411,18 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      const cartItems = await readCartItems();
-      const payload = normalizeCartItemsForProxy(cartItems);
+      const payload = await readProxyCartItemsWithRetries(items);
+      if (!payload || !payload.length) {
+        messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن تعذر قراءة السلة لتجهيز الخصم";
+        try {
+          clearPendingCoupon(trigger);
+        } catch (e03100a0) {}
+        applying = false;
+        try {
+          renderProductBanners(lastBundles || []);
+        } catch (e03100a1) {}
+        return;
+      }
       res = await requestCartBanner(payload);
     } catch (reqErr) {
       markStoreClosed(reqErr);
