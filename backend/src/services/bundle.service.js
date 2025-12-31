@@ -464,13 +464,8 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       appliedRules.push({ type, value, minQty });
     }
 
-    const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
-
     preEvaluations.push({
       bundle,
-      triggerProductId,
-      groupKey,
       matched,
       uses: applications.length,
       discountAmount,
@@ -480,21 +475,13 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  const bestByGroup = new Map();
-  for (const ev of preEvaluations) {
-    if (!ev.matched) continue;
-    const prev = bestByGroup.get(ev.groupKey);
-    if (!prev || ev.discountAmount > prev.discountAmount) bestByGroup.set(ev.groupKey, ev);
-  }
-
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    const isBest = bestByGroup.get(ev.groupKey) === ev;
-    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    const applied = Boolean(ev.matched && ev.discountAmount > 0);
     if (applied) {
       appliedBundles.push({
         bundleId: String(ev.bundle._id),

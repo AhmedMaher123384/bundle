@@ -2286,11 +2286,6 @@ async function applyBundleSelection(bundle) {
     try {
       clearPendingCoupon(trigger);
     } catch (eClr1) {}
-    if (prev && prev.bundleId && String(prev.bundleId) !== bid && Array.isArray(prev.items) && prev.items.length) {
-      try {
-        removeItemsFromCart(prev.items);
-      } catch (eRem0) {}
-    }
 
     if (storeClosedNow()) {
       messageByBundleId[bid] = "لم يتم إضافة الباقة (المتجر مغلق حالياً)";

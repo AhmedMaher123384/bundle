@@ -306,7 +306,7 @@ describe("bundle.service.evaluateBundles", () => {
     expect(result.applied.bundles).toHaveLength(1);
   });
 
-  test("applies only one bundle per trigger product id", async () => {
+  test("applies multiple bundles even with same trigger product id", async () => {
     const bundleA = {
       _id: "b_a",
       merchantId: "m1",
@@ -373,9 +373,9 @@ describe("bundle.service.evaluateBundles", () => {
       variantSnapshotById
     );
 
-    expect(result.applied.totalDiscount).toBe(20);
-    expect(result.applied.bundles).toHaveLength(1);
-    expect(result.applied.bundles[0].bundleId).toBe("b_b");
-    expect(Log.create).toHaveBeenCalledTimes(1);
+    expect(result.applied.totalDiscount).toBe(35);
+    expect(result.applied.bundles).toHaveLength(2);
+    expect(result.applied.bundles.map((b) => b.bundleId).sort()).toEqual(["b_a", "b_b"]);
+    expect(Log.create).toHaveBeenCalledTimes(2);
   });
 });
