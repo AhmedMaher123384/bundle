@@ -99,7 +99,11 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   }
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
-  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
+  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
+    // If no discount, we should make sure no old bundle coupon is active
+    await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+    return null;
+  }
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
 
@@ -118,7 +122,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     if (Number.isFinite(pctRaw) && pctRaw > 0) {
       pct = Math.max(1, Math.min(100, Math.round(pctRaw)));
     }
-  } else if (!appliedRule && evaluationResult?.applied?.bundles?.length > 1) {
+  } else if (evaluationResult?.applied?.bundles?.length > 0) {
     const totalDiscount = evaluationResult.applied.totalDiscount;
     const appliedBundles = evaluationResult.applied.bundles;
     
@@ -129,9 +133,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
     if (totalMatchedSubtotal > 0) {
       const weightedPct = (totalDiscount / totalMatchedSubtotal) * 100;
-      // We round UP to ensure the user gets at least the discount they expect, 
-      // or round normally. Let's round normally but ensure it's at least 1.
-      pct = Math.max(1, Math.min(100, Math.round(weightedPct)));
+      // We round UP to the nearest integer to ensure the discount amount is at least the target.
+      // Salla only accepts integer percentages for coupons.
+      pct = Math.max(1, Math.min(100, Math.ceil(weightedPct)));
     }
   }
 
@@ -152,7 +156,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     usage_limit_per_user: 1,
     include_product_ids: includeProductIdsForApi
   };
-  const preferPercentage = Boolean(pct != null);
+  const preferPercentage = true; // ALWAYS prefer percentage to avoid cart-wide application issues with fixed amounts
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);

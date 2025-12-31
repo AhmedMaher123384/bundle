@@ -789,8 +789,13 @@ function isCartLikePage() {
 }
 
 async function tryApplyCoupon(code) {
-  const c = String(code || "").trim();
-  if (!c) return false;
+  if (!code) {
+    // If no code is provided, try to remove existing bundle coupon if possible
+    // Note: Salla JS SDK doesn't always have a clear removeCoupon, 
+    // but applying an empty string or a special method might work.
+    return false;
+  }
+  const c = String(code).trim();
   if (storeClosedNow()) return false;
   try {
     const cart = window.salla && window.salla.cart;
@@ -833,6 +838,9 @@ async function tryApplyCoupon(code) {
     function buildCandidates() {
       var fns = [];
       if (cart) {
+        if (typeof cart.removeCoupon === "function" && !c) {
+          fns.push({ label: "cart.removeCoupon()", fn: function () { return cart.removeCoupon(); } });
+        }
         if (typeof cart.applyCoupon === "function") fns.push({ label: "cart.applyCoupon(string)", fn: function () { return cart.applyCoupon(c); } });
         if (typeof cart.addCoupon === "function") {
           fns.push({ label: "cart.addCoupon({code})", fn: function () { return cart.addCoupon({ code: c }); } });
