@@ -957,6 +957,10 @@ async function readCartItems() {
     if (Array.isArray(obj.items)) return obj.items;
     if (obj.data) {
       if (Array.isArray(obj.data.items)) return obj.data.items;
+      if (obj.data.data) {
+        if (Array.isArray(obj.data.data.items)) return obj.data.data.items;
+        if (Array.isArray(obj.data.data.cart && obj.data.data.cart.items)) return obj.data.data.cart.items;
+      }
       if (Array.isArray(obj.data.cart && obj.data.cart.items)) return obj.data.cart.items;
     }
     if (Array.isArray(obj.cart && obj.cart.items)) return obj.cart.items;
@@ -974,9 +978,10 @@ async function readCartItems() {
     ]);
   }
 
+  var best = [];
   try {
     const direct = pickItems(cart.items || (cart.data && cart.data.items) || null);
-    if (direct && direct.length) return direct;
+    if (direct && direct.length) best = direct;
   } catch (e0) {}
 
   const candidates = [];
@@ -994,11 +999,11 @@ async function readCartItems() {
     try {
       const res = await withTimeout(candidates[i], 4500);
       const items = pickItems(res);
-      if (items && items.length) return items;
+      if (items && items.length && (!best || items.length > best.length)) best = items;
     } catch (e4) {}
   }
 
-  return [];
+  return best && best.length ? best : [];
 }
 
 function normalizeCartItemsForProxy(items) {
@@ -2294,6 +2299,15 @@ async function applyBundleSelection(bundle) {
       return;
     }
 
+    var beforeCount = 0;
+    try {
+      var beforeRaw = await readCartItems();
+      var beforeProxy = normalizeCartItemsForProxy(beforeRaw);
+      beforeCount = beforeProxy && beforeProxy.length ? beforeProxy.length : 0;
+    } catch (eBefore) {
+      beforeCount = 0;
+    }
+
     try {
       await addItemsToCart(items);
     } catch (addErr2) {
@@ -2346,6 +2360,10 @@ async function applyBundleSelection(bundle) {
         cartItemsRaw = await readCartItems();
         proxyItems = normalizeCartItemsForProxy(cartItemsRaw);
         if (proxyItems && proxyItems.length) {
+          if (beforeCount && proxyItems.length < beforeCount) {
+            await sleep(250 + attempt * 200);
+            continue;
+          }
           if (!expectedVariantIds.length) break;
           const seen = {};
           for (let iS = 0; iS < proxyItems.length; iS += 1) seen[String(proxyItems[iS].variantId)] = true;
