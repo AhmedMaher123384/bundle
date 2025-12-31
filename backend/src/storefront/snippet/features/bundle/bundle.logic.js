@@ -77,6 +77,19 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
+async function requestCartBanner(items) {
+  const payload = {
+    items: Array.isArray(items) ? items : []
+  };
+  const u = buildUrl("/api/proxy/cart/banner", {});
+  if (!u) return null;
+  return fetchJson(u, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -2287,7 +2300,72 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      res = await requestApplyBundle(bid, items);
+      function extractCartVariantId(it) {
+        return String(
+          (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || ""
+        ).trim();
+      }
+
+      function extractCartQuantity(it) {
+        const q = Number((it && (it.quantity || it.qty || (it.pivot && it.pivot.quantity))) || 0);
+        return Number.isFinite(q) ? Math.floor(q) : 0;
+      }
+
+      function normalizeCartItemsForBackend(cartItems) {
+        const byVariant = {};
+        for (let i = 0; i < (cartItems || []).length; i += 1) {
+          const it = cartItems[i] || {};
+          const vid = extractCartVariantId(it);
+          const qty = extractCartQuantity(it);
+          if (!vid || !qty || qty <= 0) continue;
+          byVariant[vid] = (byVariant[vid] || 0) + qty;
+        }
+        const out = [];
+        const keys = Object.keys(byVariant);
+        keys.sort();
+        for (let j = 0; j < keys.length; j += 1) {
+          const k = keys[j];
+          const q = byVariant[k];
+          if (!k || !q || q <= 0) continue;
+          out.push({ variantId: k, quantity: q });
+        }
+        return out;
+      }
+
+      function hasAllAddedItems(cartBackendItems, addedItems) {
+        try {
+          const set = new Set((cartBackendItems || []).map((x) => String((x && x.variantId) || "").trim()).filter(Boolean));
+          for (let i = 0; i < (addedItems || []).length; i += 1) {
+            const v = String((addedItems[i] && addedItems[i].variantId) || "").trim();
+            if (v && !set.has(v)) return false;
+          }
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function sleep(ms) {
+        return new Promise(function (r) {
+          setTimeout(r, Math.max(0, Number(ms || 0)));
+        });
+      }
+
+      let cartBackendItems = [];
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        let cartItemsRaw = [];
+        try {
+          cartItemsRaw = await readCartItems();
+        } catch (eCart0) {
+          cartItemsRaw = [];
+        }
+        cartBackendItems = normalizeCartItemsForBackend(cartItemsRaw);
+        if (cartBackendItems.length && hasAllAddedItems(cartBackendItems, items)) break;
+        if (attempt < 4) await sleep(350 + attempt * 250);
+      }
+
+      const payloadItems = cartBackendItems && cartBackendItems.length ? cartBackendItems : items;
+      res = await requestCartBanner(payloadItems);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);

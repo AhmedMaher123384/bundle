@@ -19,4 +19,21 @@ describe("storefront bundle snippet", () => {
     expect(snippet).toMatch(/addCoupon\(\{\s*code\s*:\s*c\s*\}\)/);
     expect(snippet).toMatch(/addCoupon\(\{\s*coupon_code\s*:\s*c\s*\}\)/);
   });
+
+  test("uses cart banner endpoint to compute combined discount", () => {
+    const css = readSnippetCss();
+    const ctx = {
+      parts: [],
+      merchantId: "m1",
+      token: "t1",
+      cssBase: css.cssBase,
+      cssPickers: css.cssPickers,
+      cssTraditional: css.cssTraditional
+    };
+
+    mountBundle(ctx);
+    const snippet = ctx.parts.join("");
+
+    expect(snippet).toContain("/api/proxy/cart/banner");
+  });
 });
