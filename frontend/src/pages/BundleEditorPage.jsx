@@ -77,6 +77,7 @@ export function BundleEditorPage({ mode }) {
   const [offerType, setOfferType] = useState('quantity')
   const [discountType, setDiscountType] = useState('percentage')
   const [discountValue, setDiscountValue] = useState(10)
+  const [postAddDiscountEnabled, setPostAddDiscountEnabled] = useState(false)
 
   const [baseVariantId, setBaseVariantId] = useState(null)
   const [baseRefMode, setBaseRefMode] = useState('product')
@@ -144,6 +145,7 @@ export function BundleEditorPage({ mode }) {
         setKind(effectiveKind)
         setDiscountType(String(found?.rules?.type || 'percentage'))
         setDiscountValue(Number(found?.rules?.value || 0))
+        setPostAddDiscountEnabled(effectiveKind === 'post_add_upsell' && Number(found?.rules?.value || 0) > 0)
         setBaseVariantId(cover)
         setBaseRefMode(isProductRef(cover) ? 'product' : 'variant')
         setPresentationTitle(String(found?.presentation?.title || '').trim())
@@ -222,7 +224,11 @@ export function BundleEditorPage({ mode }) {
       setDiscountType('fixed')
       setDiscountValue(0)
     }
-  }, [kind, offerType])
+    if (kind === 'post_add_upsell' && postAddDiscountEnabled !== true) {
+      setDiscountType('percentage')
+      setDiscountValue(0)
+    }
+  }, [kind, offerType, postAddDiscountEnabled])
 
   const effectiveProductId = useMemo(() => {
     if (routeProductId) return routeProductId
@@ -407,7 +413,7 @@ export function BundleEditorPage({ mode }) {
     }
 
     const mustIncludeAllGroups = !(kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell')
-    const noDiscountKind = kind === 'products_no_discount' || kind === 'post_add_upsell'
+    const noDiscountKind = kind === 'products_no_discount' || (kind === 'post_add_upsell' && postAddDiscountEnabled !== true)
     const normalizedDiscountType = noDiscountKind ? 'fixed' : discountType
     const normalizedDiscountValue = noDiscountKind ? 0 : Number(discountValue || 0)
 
@@ -454,6 +460,7 @@ export function BundleEditorPage({ mode }) {
     kind,
     name,
     offerType,
+    postAddDiscountEnabled,
     presentationBadgeColor,
     presentationBannerColor,
     presentationCta,
@@ -507,7 +514,8 @@ export function BundleEditorPage({ mode }) {
     if (offerType === 'quantity') {
       const bestTier = qtyTiersNormalized.length ? qtyTiersNormalized[qtyTiersNormalized.length - 1] : null
       if (bestTier) badge = bestTier.type === 'percentage' ? `${bestTier.value}%` : `${bestTier.value}`
-    } else if (kind !== 'products_no_discount' && kind !== 'post_add_upsell' && ruleType === 'percentage') badge = `${Number(draft?.rules?.value || 0)}%`
+    } else if (kind !== 'products_no_discount' && !(kind === 'post_add_upsell' && postAddDiscountEnabled !== true) && ruleType === 'percentage')
+      badge = `${Number(draft?.rules?.value || 0)}%`
     else if (ruleType === 'fixed') badge = `${Number(draft?.rules?.value || 0)}`
 
     const kindDefaultTitle =
@@ -523,7 +531,7 @@ export function BundleEditorPage({ mode }) {
 
     const title =
       String(presentationTitle || '').trim() ||
-      (badge && kind !== 'products_no_discount' && kind !== 'post_add_upsell'
+      (badge && kind !== 'products_no_discount' && !(kind === 'post_add_upsell' && postAddDiscountEnabled !== true)
         ? `${String(draft?.name || 'باقة')} - وفر ${badge}`
         : kindDefaultTitle)
     const subtitle = String(presentationSubtitle || '').trim() || ''
@@ -570,6 +578,7 @@ export function BundleEditorPage({ mode }) {
     draft,
     kind,
     offerType,
+    postAddDiscountEnabled,
     presentationBannerColor,
     presentationCta,
     presentationCtaBgColor,
@@ -1309,6 +1318,51 @@ export function BundleEditorPage({ mode }) {
               ) : null}
             </>
           )}
+
+          {offerType === 'bundle' && kind === 'post_add_upsell' ? (
+            <>
+              <div className="md:col-span-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={postAddDiscountEnabled === true}
+                    onChange={(e) => setPostAddDiscountEnabled(e.target.checked)}
+                    disabled={saving || activating}
+                  />
+                  <span className="text-slate-700">تفعيل خصم على Upsell بعد الإضافة</span>
+                </label>
+              </div>
+
+              {postAddDiscountEnabled ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">نوع الخصم</label>
+                    <select
+                      value={discountType}
+                      onChange={(e) => setDiscountType(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                    >
+                      <option value="percentage">خصم %</option>
+                      <option value="fixed">خصم ثابت</option>
+                      <option value="bundle_price">سعر ثابت للباندل</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">
+                      {discountType === 'bundle_price' ? 'السعر النهائي للباندل' : 'قيمة الخصم'}
+                    </label>
+                    <input
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(Number(e.target.value || 0))}
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none ring-slate-900/10 focus:ring-4"
+                      inputMode="decimal"
+                    />
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : null}
 
           {offerType === 'bundle' && kind !== 'post_add_upsell' ? (
             <>

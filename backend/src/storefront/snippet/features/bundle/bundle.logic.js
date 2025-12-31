@@ -2174,11 +2174,19 @@ async function applyBundleSelection(bundle) {
       applying = false;
       try {
         renderProductBanners(lastBundles || []);
-      } catch (e000) {}
+    } catch (e000) {}
       return;
     }
 
-    if (kind === "products_no_discount" || kind === "post_add_upsell") {
+    const postAddHasDiscount = (() => {
+      if (kind !== "post_add_upsell") return false;
+      const offer = (bundle && bundle.offer) || null;
+      const t = String((offer && offer.type) || "").trim();
+      const v = Number(offer && offer.value);
+      return Boolean(t && Number.isFinite(v) && v > 0);
+    })();
+
+    if (kind === "products_no_discount" || (kind === "post_add_upsell" && !postAddHasDiscount)) {
       try {
         await addItemsToCart(items);
         messageByBundleId[bid] = "تمت إضافة المنتجات للسلة";
@@ -2261,6 +2269,12 @@ async function applyBundleSelection(bundle) {
     try {
       renderProductBanners(lastBundles || []);
     } catch (e0300) {}
+
+    if (kind === "post_add_upsell") {
+      try {
+        dismissPostAddForTrigger(trigger, typeof findVariantId === "function" ? findVariantId() : "");
+      } catch (ePost2) {}
+    }
 
     if (!canDiscount) {
       messageByBundleId[bid] = "تمت إضافة الباقة للسلة (اختر الفاريانت لتفعيل الخصم)";

@@ -335,16 +335,23 @@ function createApiRouter(config) {
     const type = String(offer?.type || "").trim();
     const value = Number(offer?.value ?? 0);
     const bestTier = Array.isArray(pricing?.tiers) && pricing.tiers.length ? pricing.tiers[pricing.tiers.length - 1] : null;
-    const badge =
-      bestTier && bestTier.type === "percentage"
-        ? `${bestTier.value}%`
-        : bestTier && bestTier.type === "fixed"
-          ? `${bestTier.value}`
-          : type === "percentage"
-            ? `${value}%`
-            : type === "fixed"
-              ? `${value}`
-              : null;
+    const badge = (() => {
+      if (bestTier && bestTier.type === "percentage") {
+        const v = Number(bestTier.value);
+        return Number.isFinite(v) && v > 0 ? `${v}%` : null;
+      }
+      if (bestTier && bestTier.type === "fixed") {
+        const v = Number(bestTier.value);
+        return Number.isFinite(v) && v > 0 ? `${v}` : null;
+      }
+      if (type === "percentage") {
+        return Number.isFinite(value) && value > 0 ? `${value}%` : null;
+      }
+      if (type === "fixed") {
+        return Number.isFinite(value) && value > 0 ? `${value}` : null;
+      }
+      return null;
+    })();
 
     const presentation = bundle?.presentation || {};
     const rawKind = String(bundle?.kind || "").trim();
