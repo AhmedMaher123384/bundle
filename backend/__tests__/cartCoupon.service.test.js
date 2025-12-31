@@ -28,6 +28,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
       couponId: String(doc?.$set?.couponId || ""),
       code: String(doc?.$set?.code || ""),
       status: String(doc?.$set?.status || ""),
+      sallaType: String(doc?.$set?.sallaType || ""),
       discountAmount: Number(doc?.$set?.discountAmount || 0),
       includeProductIds: doc?.$set?.includeProductIds || []
     }));
@@ -63,7 +64,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.includeProductIds.sort()).toEqual(["101", "202"]);
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
-    expect(payload && payload.include_product_ids).toEqual([101, 202]);
+    expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -76,6 +77,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
       couponId: String(doc?.$set?.couponId || ""),
       code: String(doc?.$set?.code || ""),
       status: String(doc?.$set?.status || ""),
+      sallaType: String(doc?.$set?.sallaType || ""),
       discountAmount: Number(doc?.$set?.discountAmount || 0),
       includeProductIds: doc?.$set?.includeProductIds || []
     }));
@@ -98,6 +100,73 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     });
 
     expect(record.status).toBe("issued");
+    const payload = createCoupon.mock.calls[0]?.[2] || null;
+    expect(payload && payload.type).toBe("fixed");
+  });
+
+  test("reuses existing fixed coupon when scope and amount match", async () => {
+    const existing = {
+      _id: "cc-existing",
+      code: "BEXISTINGCODE000",
+      status: "issued",
+      sallaType: "fixed",
+      discountAmount: 10,
+      includeProductIds: ["101", "202"],
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    CartCoupon.findOne.mockResolvedValueOnce(existing);
+    CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+    const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
+
+    const config = { salla: {}, security: {} };
+    const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
+    const evaluationResult = {
+      applied: { totalDiscount: 10, matchedProductIds: ["101", "202"], rule: { type: "percentage", value: 20 } }
+    };
+
+    const record = await issueOrReuseCouponForCart(config, merchant, "accessToken", [{ variantId: "v1", quantity: 1 }], evaluationResult, {
+      ttlHours: 24
+    });
+
+    expect(record).toBe(existing);
+    expect(createCoupon).toHaveBeenCalledTimes(0);
+  });
+
+  test("reissues coupon when existing coupon is missing sallaType", async () => {
+    const existing = {
+      _id: "cc-existing",
+      code: "BEXISTINGCODE000",
+      status: "issued",
+      discountAmount: 10,
+      includeProductIds: ["101", "202"],
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    CartCoupon.findOne.mockResolvedValueOnce(existing);
+    CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+    createCoupon.mockResolvedValue({ data: { id: 123 } });
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc1",
+      couponId: String(doc?.$set?.couponId || ""),
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      sallaType: String(doc?.$set?.sallaType || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || []
+    }));
+
+    const { issueOrReuseCouponForCart } = require("../src/services/cartCoupon.service");
+
+    const config = { salla: {}, security: {} };
+    const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
+    const evaluationResult = { applied: { totalDiscount: 10, matchedProductIds: ["101", "202"] } };
+
+    const record = await issueOrReuseCouponForCart(config, merchant, "accessToken", [{ variantId: "v1", quantity: 1 }], evaluationResult, {
+      ttlHours: 24
+    });
+
+    expect(record.status).toBe("issued");
+    expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
     expect(payload && payload.type).toBe("fixed");
   });

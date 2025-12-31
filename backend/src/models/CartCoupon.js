@@ -7,6 +7,7 @@ const CartCouponSchema = new mongoose.Schema(
     couponId: { type: String },
     code: { type: String, required: true },
     status: { type: String, required: true, enum: ["issued", "redeemed", "superseded", "expired"], index: true },
+    sallaType: { type: String },
     discountAmount: { type: Number, required: true },
     includeProductIds: { type: [String], default: [] },
     expiresAt: { type: Date, required: true, index: true },
