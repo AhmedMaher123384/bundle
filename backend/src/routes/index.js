@@ -10,7 +10,7 @@ const { ApiError } = require("../utils/apiError");
 const { fetchVariantsSnapshotReport } = require("../services/sallaCatalog.service");
 const { findMerchantByMerchantId } = require("../services/merchant.service");
 const bundleService = require("../services/bundle.service");
-const { issueOrReuseCouponForCartVerbose } = require("../services/cartCoupon.service");
+const { issueOrReuseCouponForCartVerbose, issueOrReuseBundleSpecificCoupons } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
 const { readSnippetCss } = require("../storefront/snippet/styles");
@@ -1273,32 +1273,47 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
-      const coupon = issued?.coupon || null;
-
+      
+      // Create bundle-specific coupons instead of one combined coupon
+      const bundleCoupons = await issueOrReuseBundleSpecificCoupons(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
+      
+      // Get the primary coupon (highest discount) for backward compatibility
+      const primaryCoupon = bundleCoupons.length > 0 
+        ? bundleCoupons.reduce((best, current) => 
+            (current.coupon.discountAmount > best.coupon.discountAmount) ? current : best)
+        : null;
+      
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
-      const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(!coupon && discountAmount > 0);
+      const hasDiscount = Boolean(bundleCoupons.length > 0 && discountAmount > 0);
+      const couponIssueFailed = Boolean(evaluation?.applied?.bundles?.length > 0 && bundleCoupons.length === 0);
       const messages = [];
       if (!items.length) messages.push({ level: "info", code: "CART_EMPTY", message: "Cart has no items." });
       if (!hasDiscount && !couponIssueFailed) messages.push({ level: "info", code: "NO_BUNDLE_APPLIED", message: "No bundle discounts apply to this cart." });
-      if (couponIssueFailed) messages.push({ level: "warn", code: "COUPON_ISSUE_FAILED", message: "Discount exists but coupon could not be issued." });
+      if (couponIssueFailed) messages.push({ level: "warn", code: "COUPON_ISSUE_FAILED", message: "Bundle discounts exist but coupons could not be issued." });
 
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-        couponCode: hasDiscount ? coupon.code : null,
+        couponCode: hasDiscount ? primaryCoupon.coupon.code : null,
+        bundleCoupons: hasDiscount ? bundleCoupons.map(bc => ({
+          bundleId: bc.bundleId,
+          code: bc.coupon.code,
+          discountAmount: bc.coupon.discountAmount,
+          discountType: bc.coupon.discountType,
+          discountValue: bc.coupon.discountValue,
+          productIds: bc.coupon.includeProductIds
+        })) : [],
         couponIssueFailed,
-        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
+        couponIssueDetails: couponIssueFailed ? { reason: "BUNDLE_COUPON_CREATION_FAILED" } : null,
         banner: hasDiscount
           ? {
               title: "خصم الباقة اتفعل",
               cta: "تطبيق الخصم",
               bannerColor: "#16a34a",
               badgeColor: "#16a34a",
-              couponCode: coupon.code,
+              couponCode: primaryCoupon.coupon.code,
               discountAmount: Number(discountAmount.toFixed(2)),
               autoApply: true
             }
@@ -1467,12 +1482,34 @@ function createApiRouter(config) {
       }
 
       const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
-      const issued = shouldIssueCoupon
-        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
-        : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
-      const coupon = issued?.coupon || null;
-      const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
+      
+      // Create bundle-specific coupon for this single bundle
+      let bundleCoupons = [];
+      let couponIssueFailed = false;
+      let couponIssueDetails = null;
+      
+      if (shouldIssueCoupon) {
+        // Create a mock evaluation result for single bundle
+        const singleBundleEvaluation = {
+          applied: {
+            bundles: [{
+              bundleId: String(bValue.bundleId),
+              discountAmount: discountAmount,
+              matchedProductIds: evaluation.applied.matchedProductIds,
+              appliedRules: evaluation.applied.rule ? [evaluation.applied.rule] : []
+            }],
+            totalDiscount: discountAmount,
+            matchedProductIds: evaluation.applied.matchedProductIds
+          }
+        };
+        
+        bundleCoupons = await issueOrReuseBundleSpecificCoupons(config, merchant, merchant.accessToken, items, singleBundleEvaluation, { ttlHours: 24 });
+        couponIssueFailed = bundleCoupons.length === 0;
+        couponIssueDetails = couponIssueFailed ? { reason: "BUNDLE_COUPON_CREATION_FAILED" } : null;
+      }
+      
+      const primaryCoupon = bundleCoupons.length > 0 ? bundleCoupons[0] : null;
+      const hasDiscount = Boolean(primaryCoupon && discountAmount > 0);
 
       return res.json({
         ok: true,
@@ -1481,9 +1518,17 @@ function createApiRouter(config) {
         kind,
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-        couponCode: hasDiscount ? coupon.code : null,
+        couponCode: hasDiscount ? primaryCoupon.coupon.code : null,
+        bundleCoupons: hasDiscount ? bundleCoupons.map(bc => ({
+          bundleId: bc.bundleId,
+          code: bc.coupon.code,
+          discountAmount: bc.coupon.discountAmount,
+          discountType: bc.coupon.discountType,
+          discountValue: bc.coupon.discountValue,
+          productIds: bc.coupon.includeProductIds
+        })) : [],
         couponIssueFailed,
-        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
+        couponIssueDetails,
         applied: evaluation?.applied || null
       });
     } catch (err) {

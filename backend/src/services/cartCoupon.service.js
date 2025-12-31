@@ -61,17 +61,28 @@ function addDaysToDateOnly(dateOnly, days) {
 }
 
 function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
-  const bundles = evaluationResult?.applied?.bundles || [];
-  const allIds = [];
-  if (evaluationResult?.applied?.matchedProductIds) {
-    allIds.push(...evaluationResult.applied.matchedProductIds);
-  }
-  for (const b of bundles) {
-    if (Array.isArray(b.matchedProductIds)) {
-      allIds.push(...b.matchedProductIds);
-    }
-  }
-  return Array.from(new Set(allIds.map((v) => String(v || "").trim()).filter(Boolean))).filter((v) => /^\d+$/.test(v));
+  const ids = evaluationResult?.applied?.matchedProductIds || [];
+  return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
+    /^\d+$/.test(v)
+  );
+}
+
+function resolveBundleSpecificProductIds(bundle, evaluationResult) {
+  if (!bundle || !evaluationResult) return [];
+  
+  const bundleId = String(bundle._id || bundle.bundleId || "").trim();
+  if (!bundleId) return [];
+  
+  const appliedBundles = evaluationResult?.applied?.bundles || [];
+  const targetBundle = appliedBundles.find(b => String(b.bundleId) === bundleId);
+  
+  if (!targetBundle || !targetBundle.matchedProductIds) return [];
+  
+  return Array.from(new Set(
+    (Array.isArray(targetBundle.matchedProductIds) ? targetBundle.matchedProductIds : [])
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+  )).filter((v) => /^\d+$/.test(v));
 }
 
 async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
@@ -106,48 +117,23 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   }
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
-  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    // If no discount, we should make sure no old bundle coupon is active
-    await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-    return null;
-  }
+  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
-  
-  // Ensure we have numeric IDs for Salla API
-  const includeProductIdsForApi = includeProductIds
-    .map((id) => {
-      const parsed = parseInt(id, 10);
-      return isNaN(parsed) ? id : parsed;
-    });
+  const includeProductIdsNumeric = includeProductIds
+    .map((v) => Number.parseInt(String(v), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
-  let pct = null;
-
-  if (appliedRule && String(appliedRule.type || "").trim() === "percentage") {
-    const pctRaw = Number(appliedRule.value);
-    if (Number.isFinite(pctRaw) && pctRaw > 0) {
-      pct = Math.max(1, Math.min(100, Math.round(pctRaw)));
-    }
-  } else if (evaluationResult?.applied?.bundles?.length > 0) {
-    const totalDiscount = evaluationResult.applied.totalDiscount;
-    const appliedBundles = evaluationResult.applied.bundles;
-    
-    let totalMatchedSubtotal = 0;
-    for (const b of appliedBundles) {
-      totalMatchedSubtotal += Number(b.subtotal || 0);
-    }
-
-    if (totalMatchedSubtotal > 0) {
-      const weightedPct = (totalDiscount / totalMatchedSubtotal) * 100;
-      // We round UP to the nearest integer to ensure the discount amount is at least the target.
-      // Salla only accepts integer percentages for coupons.
-      pct = Math.max(1, Math.min(100, Math.ceil(weightedPct)));
-    }
-  }
+  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
+  const pct =
+    Number.isFinite(pctRaw) && pctRaw > 0
+      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
+      : null;
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -164,10 +150,9 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi,
-    applied_in: "product" // Explicitly restrict to products
+    include_product_ids: includeProductIdsForApi
   };
-  const preferPercentage = true; // ALWAYS prefer percentage to avoid cart-wide application issues with fixed amounts
+  const preferPercentage = Boolean(pct != null);
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
@@ -302,34 +287,17 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     });
   }
 
-  const includeProductIdsForApi = includeProductIds
-    .map((id) => {
-      const parsed = parseInt(id, 10);
-      return isNaN(parsed) ? id : parsed;
-    });
+  const includeProductIdsNumeric = includeProductIds
+    .map((v) => Number.parseInt(String(v), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
 
   const appliedRule = evaluationResult?.applied?.rule || null;
-  let pct = null;
-
-  if (appliedRule && String(appliedRule.type || "").trim() === "percentage") {
-    const pctRaw = Number(appliedRule.value);
-    if (Number.isFinite(pctRaw) && pctRaw > 0) {
-      pct = Math.max(1, Math.min(100, Math.round(pctRaw)));
-    }
-  } else if (evaluationResult?.applied?.bundles?.length > 0) {
-    const totalDiscountVal = evaluationResult.applied.totalDiscount;
-    const appliedBundles = evaluationResult.applied.bundles;
-    
-    let totalMatchedSubtotal = 0;
-    for (const b of appliedBundles) {
-      totalMatchedSubtotal += Number(b.subtotal || 0);
-    }
-
-    if (totalMatchedSubtotal > 0) {
-      const weightedPct = (totalDiscountVal / totalMatchedSubtotal) * 100;
-      pct = Math.max(1, Math.min(100, Math.ceil(weightedPct)));
-    }
-  }
+  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
+  const pct =
+    Number.isFinite(pctRaw) && pctRaw > 0
+      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
+      : null;
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -346,10 +314,9 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi,
-    applied_in: "product"
+    include_product_ids: includeProductIdsForApi
   };
-  const preferPercentage = true;
+  const preferPercentage = Boolean(pct != null);
 
   let lastCreateError = null;
 
@@ -539,10 +506,140 @@ async function expireOldCoupons() {
   await CartCoupon.updateMany({ status: { $in: ["issued", "superseded"] }, expiresAt: { $lte: now } }, { $set: { status: "expired" } });
 }
 
+async function issueOrReuseBundleSpecificCoupons(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
+  const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
+  const { cartHash } = computeCartHash(cartItems);
+  
+  const appliedBundles = evaluationResult?.applied?.bundles || [];
+  if (!appliedBundles.length) return [];
+  
+  const bundleCoupons = [];
+  
+  for (const bundleData of appliedBundles) {
+    const bundleId = String(bundleData.bundleId || "").trim();
+    if (!bundleId) continue;
+    
+    const bundleHash = `${cartHash}:${bundleId}`;
+    const existing = await getActiveIssuedCoupon(merchant._id, bundleHash);
+    
+    if (existing) {
+      await markOtherIssuedCouponsSuperseded(merchant._id, bundleHash);
+      bundleCoupons.push({
+        bundleId,
+        coupon: existing,
+        reused: true
+      });
+      continue;
+    }
+    
+    const discountAmount = Number(bundleData.discountAmount || 0);
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) continue;
+    
+    const includeProductIds = Array.from(new Set(
+      (Array.isArray(bundleData.matchedProductIds) ? bundleData.matchedProductIds : [])
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+    )).filter((v) => /^\d+$/.test(v));
+    
+    if (!includeProductIds.length) continue;
+    
+    const includeProductIdsNumeric = includeProductIds
+      .map((v) => Number.parseInt(String(v), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
+    
+    const appliedRule = Array.isArray(bundleData.appliedRules) && bundleData.appliedRules[0] ? bundleData.appliedRules[0] : null;
+    const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
+    const pct = Number.isFinite(pctRaw) && pctRaw > 0
+      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
+      : null;
+    
+    const now = new Date();
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+    const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+    let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+    if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+    
+    const basePayload = {
+      free_shipping: false,
+      exclude_sale_products: false,
+      is_apply_with_offer: true,
+      start_date: startDate,
+      expiry_date: expiryDate,
+      usage_limit: 1,
+      usage_limit_per_user: 1,
+      include_product_ids: includeProductIdsForApi
+    };
+    
+    const preferPercentage = Boolean(pct != null);
+    let createdCoupon = null;
+    let lastError = null;
+    
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const code = buildCouponCode(merchant.merchantId, bundleHash);
+      const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+      const percentagePayload = pct != null ? { ...basePayload, code, type: "percentage", amount: pct } : null;
+      const payload = preferPercentage && percentagePayload ? percentagePayload : fixedPayload;
+      
+      try {
+        const response = await createCoupon(config.salla, merchantAccessToken, payload);
+        createdCoupon = response?.data ?? null;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof ApiError && err.statusCode === 409) continue;
+        if (err instanceof ApiError && err.statusCode === 422 && preferPercentage && percentagePayload && payload === percentagePayload) {
+          try {
+            const response = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
+            createdCoupon = response?.data ?? null;
+            break;
+          } catch (err2) {
+            lastError = err2;
+            if (err2 instanceof ApiError && err2.statusCode === 409) continue;
+          }
+        }
+        break;
+      }
+    }
+    
+    if (!createdCoupon) {
+      console.warn(`Failed to create bundle-specific coupon for bundle ${bundleId}:`, lastError?.message || "Unknown error");
+      continue;
+    }
+    
+    const record = await CartCoupon.create({
+      merchantId: merchant._id,
+      cartHash: bundleHash,
+      code: createdCoupon.code,
+      sallaCouponId: createdCoupon.id,
+      discountAmount,
+      discountType: preferPercentage && pct ? "percentage" : "fixed",
+      discountValue: preferPercentage && pct ? pct : discountAmount,
+      includeProductIds,
+      bundleId,
+      status: "issued",
+      issuedAt: now,
+      expiresAt,
+      createdAt: now,
+      updatedAt: now
+    });
+    
+    bundleCoupons.push({
+      bundleId,
+      coupon: record,
+      reused: false
+    });
+  }
+  
+  return bundleCoupons;
+}
+
 module.exports = {
   computeCartHash,
   issueOrReuseCouponForCart,
   issueOrReuseCouponForCartVerbose,
+  issueOrReuseBundleSpecificCoupons,
   extractCouponCodeFromOrderPayload,
   extractOrderId,
   markCouponRedeemed,
