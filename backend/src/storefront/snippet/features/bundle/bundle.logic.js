@@ -7,7 +7,6 @@ async function fetchJson(url, opts) {
     delete o0.timeoutMs;
   } catch (e0) {}
 
-  let timer = 0;
   let ctrl = null;
   if (timeoutMs > 0) {
     try {
@@ -20,14 +19,24 @@ async function fetchJson(url, opts) {
     try {
       o0.signal = ctrl.signal;
     } catch (e2) {}
-    timer = setTimeout(function () {
-      try {
-        ctrl.abort();
-      } catch (e3) {}
-    }, Math.max(1, Math.floor(timeoutMs)));
   }
 
-  try {
+  let timer = 0;
+  const timeoutP =
+    timeoutMs > 0
+      ? new Promise(function (_r, rej) {
+          timer = setTimeout(function () {
+            try {
+              if (ctrl) ctrl.abort();
+            } catch (e3) {}
+            const err = new Error("timeout");
+            err.status = 408;
+            rej(err);
+          }, Math.max(1, Math.floor(timeoutMs)));
+        })
+      : null;
+
+  const run = (async function () {
     const r = await fetch(url, o0);
     const t = await r.text();
     let j = null;
@@ -44,6 +53,10 @@ async function fetchJson(url, opts) {
       throw err;
     }
     return j;
+  })();
+
+  try {
+    return timeoutP ? await Promise.race([run, timeoutP]) : await run;
   } catch (e4) {
     const name = String((e4 && e4.name) || "").toLowerCase();
     const msg = String((e4 && e4.message) || "").toLowerCase();
@@ -52,6 +65,11 @@ async function fetchJson(url, opts) {
       const err = new Error("timeout");
       err.status = 408;
       throw err;
+    }
+    if (msg === "timeout" && !(e4 && e4.status)) {
+      try {
+        e4.status = 408;
+      } catch (eSet) {}
     }
     throw e4;
   } finally {
