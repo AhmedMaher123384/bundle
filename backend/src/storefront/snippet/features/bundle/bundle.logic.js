@@ -77,19 +77,6 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
-async function requestCartBanner(items) {
-  const payload = {
-    items: Array.isArray(items) ? items : []
-  };
-  const u = buildUrl("/api/proxy/cart/banner", {});
-  if (!u) return null;
-  return fetchJson(u, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -1349,176 +1336,6 @@ async function tryClearCoupon() {
     markStoreClosed({ status: st, message: msg });
   }
 }
-
-function normalizeVariantQtyList(items) {
-  const map = new Map();
-  for (const it of Array.isArray(items) ? items : []) {
-    const v = String(it && it.variantId != null ? it.variantId : "").trim();
-    const q = Math.floor(Number(it && it.quantity != null ? it.quantity : 0));
-    if (!v || !Number.isFinite(q) || q <= 0) continue;
-    map.set(v, (map.get(v) || 0) + q);
-  }
-  return Array.from(map.entries())
-    .map(function (pair) {
-      return { variantId: String(pair[0]), quantity: Number(pair[1]) };
-    })
-    .sort(function (a, b) {
-      return String(a.variantId).localeCompare(String(b.variantId));
-    });
-}
-
-function readCartItemsFromResponseShape(obj) {
-  try {
-    if (!obj || typeof obj !== "object") return null;
-    const candidates = [
-      obj.items,
-      obj.data && obj.data.items,
-      obj.data && obj.data.cart && obj.data.cart.items,
-      obj.cart && obj.cart.items,
-      obj.data && obj.data.data && obj.data.data.items
-    ];
-    for (let i = 0; i < candidates.length; i += 1) {
-      const arr = candidates[i];
-      if (Array.isArray(arr)) return arr;
-    }
-    return null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function extractVariantIdFromCartLine(it) {
-  try {
-    if (!it || typeof it !== "object") return "";
-    const direct =
-      it.variantId ??
-      it.variant_id ??
-      it.skuId ??
-      it.sku_id ??
-      (it.sku && (it.sku.id ?? it.sku.sku_id ?? it.sku.variant_id)) ??
-      it.item_variant_id ??
-      it.itemVariantId ??
-      "";
-    const v = String(direct || "").trim();
-    if (v) return v;
-    const alt =
-      it.id ??
-      it.item_id ??
-      it.itemId ??
-      it.cart_item_id ??
-      it.cartItemId ??
-      (it.item && (it.item.variant_id ?? it.item.variantId ?? it.item.sku_id ?? it.item.skuId)) ??
-      "";
-    return String(alt || "").trim();
-  } catch (e) {
-    return "";
-  }
-}
-
-function extractQtyFromCartLine(it) {
-  try {
-    if (!it || typeof it !== "object") return 0;
-    const q = it.quantity ?? it.qty ?? it.amount ?? (it.pivot && it.pivot.quantity) ?? 0;
-    const n = Math.floor(Number(q));
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  } catch (e) {
-    return 0;
-  }
-}
-
-async function readCartItemsFromSalla() {
-  try {
-    const cart = window.salla && window.salla.cart;
-    if (!cart) return [];
-
-    const getters = [];
-    if (typeof cart.getItems === "function") getters.push(function () { return cart.getItems(); });
-    if (typeof cart.items === "function") getters.push(function () { return cart.items(); });
-    if (typeof cart.getCart === "function") getters.push(function () { return cart.getCart(); });
-    if (typeof cart.get === "function") getters.push(function () { return cart.get(); });
-    if (typeof cart.fetch === "function") getters.push(function () { return cart.fetch(); });
-    if (typeof cart.load === "function") getters.push(function () { return cart.load(); });
-
-    const direct = readCartItemsFromResponseShape(cart);
-    if (Array.isArray(direct) && direct.length) {
-      const out0 = [];
-      for (let i = 0; i < direct.length; i += 1) {
-        const line = direct[i] || {};
-        const variantId = extractVariantIdFromCartLine(line);
-        const quantity = extractQtyFromCartLine(line);
-        if (!variantId || !quantity) continue;
-        out0.push({ variantId: variantId, quantity: quantity });
-      }
-      return normalizeVariantQtyList(out0);
-    }
-
-    for (let i = 0; i < getters.length; i += 1) {
-      try {
-        const res = await getters[i]();
-        const arr = readCartItemsFromResponseShape(res);
-        if (!Array.isArray(arr) || !arr.length) continue;
-        const out = [];
-        for (let j = 0; j < arr.length; j += 1) {
-          const line = arr[j] || {};
-          const variantId = extractVariantIdFromCartLine(line);
-          const quantity = extractQtyFromCartLine(line);
-          if (!variantId || !quantity) continue;
-          out.push({ variantId: variantId, quantity: quantity });
-        }
-        const norm = normalizeVariantQtyList(out);
-        if (norm.length) return norm;
-      } catch (eGet) {}
-    }
-
-    return [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function collectSavedSelectionItems(extraItems) {
-  const acc = [];
-  try {
-    for (const it of Array.isArray(extraItems) ? extraItems : []) {
-      const v = String(it && it.variantId != null ? it.variantId : "").trim();
-      const q = Math.floor(Number(it && it.quantity != null ? it.quantity : 0));
-      if (!v || !Number.isFinite(q) || q <= 0) continue;
-      acc.push({ variantId: v, quantity: q });
-    }
-  } catch (e0) {}
-  try {
-    const prefix = "bundle_app_selected_bundle:" + String(merchantId || "") + ":";
-    const n = Number(localStorage && localStorage.length);
-    if (!Number.isFinite(n) || n <= 0) return normalizeVariantQtyList(acc);
-    for (let i = 0; i < n; i += 1) {
-      const k = localStorage.key(i);
-      const key = String(k || "");
-      if (!key || key.indexOf(prefix) !== 0) continue;
-      let raw = null;
-      try {
-        raw = localStorage.getItem(key);
-      } catch (eGet) {
-        raw = null;
-      }
-      if (!raw) continue;
-      let j = null;
-      try {
-        j = JSON.parse(raw);
-      } catch (eParse) {
-        j = null;
-      }
-      const items = j && Array.isArray(j.items) ? j.items : [];
-      for (let ii = 0; ii < items.length; ii += 1) {
-        const it = items[ii] || {};
-        const v = String(it && it.variantId != null ? it.variantId : "").trim();
-        const q = Math.floor(Number(it && it.quantity != null ? it.quantity : 0));
-        if (!v || !Number.isFinite(q) || q <= 0) continue;
-        acc.push({ variantId: v, quantity: q });
-      }
-    }
-  } catch (e1) {}
-  return normalizeVariantQtyList(acc);
-}
 `,
   `
 function getDefaultMinQty() {
@@ -2414,6 +2231,9 @@ async function applyBundleSelection(bundle) {
 
     const prev = loadSelection(trigger);
     try {
+      await tryClearCoupon();
+    } catch (eClr0) {}
+    try {
       clearPendingCoupon(trigger);
     } catch (eClr1) {}
     if (prev && prev.bundleId && String(prev.bundleId) !== bid && Array.isArray(prev.items) && prev.items.length) {
@@ -2466,26 +2286,9 @@ async function applyBundleSelection(bundle) {
     }
 
     let res = null;
-    let reqErr = null;
     try {
-      let evalItems = null;
-      try {
-        evalItems = await readCartItemsFromSalla();
-      } catch (eCartRead) {
-        evalItems = null;
-      }
-      if (!evalItems || !evalItems.length) evalItems = collectSavedSelectionItems(items);
-      res = await requestCartBanner(evalItems);
-    } catch (eReq1) {
-      reqErr = eReq1;
-      try {
-        res = await requestApplyBundle(bid, items);
-        reqErr = null;
-      } catch (eReq2) {
-        reqErr = eReq2;
-      }
-    }
-    if (reqErr) {
+      res = await requestApplyBundle(bid, items);
+    } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
       var dbgReq = false;

@@ -252,24 +252,17 @@ function createApiRouter(config) {
     if (!Number.isFinite(st) || st <= 0) return 0;
     const type = String(offer?.type || "").trim();
     const value = Number(offer?.value ?? 0);
-    const maxDiscount = Math.max(0, st - 0.01);
-    const cap = (discount) => {
-      const d = Number(discount);
-      if (!Number.isFinite(d) || d <= 0) return 0;
-      if (!Number.isFinite(maxDiscount) || maxDiscount <= 0) return 0;
-      return Math.min(d, maxDiscount);
-    };
     if (type === "percentage") {
       const pct = Math.max(0, Math.min(100, value));
-      return cap((st * pct) / 100);
+      return (st * pct) / 100;
     }
     if (type === "fixed") {
       const amt = Math.max(0, value);
-      return cap(Math.min(st, amt));
+      return Math.min(st, amt);
     }
     if (type === "bundle_price") {
       const price = Math.max(0, value);
-      return cap(Math.max(0, Math.min(st, st - price)));
+      return Math.max(0, Math.min(st, st - price));
     }
     return 0;
   }
@@ -1280,29 +1273,6 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const matched = Array.isArray(evaluation?.applied?.matchedProductIds) ? evaluation.applied.matchedProductIds : [];
-      const productIdSet = new Set(matched.map((v) => String(v || "").trim()).filter(Boolean));
-      if (productIdSet.size) {
-        let subtotal = 0;
-        for (const it of items) {
-          const vid = String(it?.variantId || "").trim();
-          const qty = Math.max(1, Math.floor(Number(it?.quantity || 1)));
-          if (!vid || !qty) continue;
-          const snap = combinedSnapshots.get(vid);
-          const pid = String(snap?.productId || "").trim();
-          if (!pid || !productIdSet.has(pid)) continue;
-          const unit = snap?.price == null ? null : Number(snap.price);
-          if (unit == null || !Number.isFinite(unit) || unit < 0) continue;
-          subtotal += unit * qty;
-        }
-
-        const cap = Number(subtotal.toFixed(2));
-        const cur = evaluation?.applied?.totalDiscount;
-        const curN = cur == null ? null : Number(cur);
-        if (Number.isFinite(curN) && Number.isFinite(cap) && cap >= 0 && curN > cap) {
-          evaluation.applied.totalDiscount = cap;
-        }
-      }
       const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
       const coupon = issued?.coupon || null;
 
