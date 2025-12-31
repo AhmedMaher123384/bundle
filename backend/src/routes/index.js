@@ -1388,91 +1388,16 @@ function createApiRouter(config) {
               ? "products_no_discount"
               : "products_discount";
 
-      const allowedProductIds = new Set(
-        (Array.isArray(bundle?.components) ? bundle.components : [])
-          .map((c) => String(c?.variantId || "").trim())
-          .map((vid) => {
-            const pid = parseProductRefVariantId(vid);
-            if (pid) return pid;
-            const snap = combinedSnapshots.get(vid);
-            return String(snap?.productId || "").trim() || null;
-          })
-          .filter(Boolean)
-      );
+      const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
+      const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
 
-      for (const it of items) {
-        const snap = combinedSnapshots.get(String(it.variantId));
-        const pid = String(snap?.productId || "").trim() || null;
-        if (!pid || !allowedProductIds.has(pid)) {
-          throw new ApiError(400, "Invalid item for bundle", { code: "BUNDLE_ITEM_INVALID" });
-        }
-      }
-
-      const evaluation = { applied: { totalDiscount: 0, matchedProductIds: [], rule: null } };
-      let discountAmount = 0;
-
-      if (kind === "quantity_discount") {
-        const draft = bundleService.evaluateBundleDraft(bundle, items, combinedSnapshots);
-        const appliedRule = (() => {
-          const keys = new Set();
-          const rules = [];
-          for (const app of Array.isArray(draft?.applications) ? draft.applications : []) {
-            const r = app?.appliedRule;
-            if (!r) continue;
-            const type = String(r.type || "").trim();
-            const value = Number(r.value);
-            if (!type || !Number.isFinite(value) || value < 0) continue;
-            const key = `${type}:${value}`;
-            if (keys.has(key)) continue;
-            keys.add(key);
-            rules.push({ type, value });
-          }
-          return rules.length === 1 ? rules[0] : null;
-        })();
-
-        evaluation.applied = {
-          totalDiscount: draft?.applied ? Number(draft.discountAmount || 0) : 0,
-          matchedProductIds: Array.isArray(draft?.matchedProductIds) ? draft.matchedProductIds : [],
-          rule: appliedRule
-        };
-        discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
-      } else {
-        const subtotal = items.reduce((acc, it) => {
-          const snap = combinedSnapshots.get(String(it.variantId));
-          const unit = snap?.price == null ? null : Number(snap.price);
-          const qty = Math.max(1, Math.floor(Number(it.quantity || 1)));
-          if (unit == null || !Number.isFinite(unit) || unit < 0) return acc;
-          return acc + unit * qty;
-        }, 0);
-        const offer = bundle?.rules || {};
-        const computedDiscount = kind === "products_no_discount" ? 0 : calcDiscountAmount(offer, subtotal);
-        discountAmount = Number.isFinite(computedDiscount) && computedDiscount > 0 ? Number(computedDiscount) : 0;
-        const matchedProductIds = Array.from(
-          new Set(
-            items
-              .map((it) => {
-                const snap = combinedSnapshots.get(String(it.variantId));
-                return String(snap?.productId || "").trim() || null;
-              })
-              .filter(Boolean)
-          )
-        );
-        const type = String(offer?.type || "").trim() || null;
-        const value = Number(offer?.value ?? 0);
-        evaluation.applied = {
-          totalDiscount: Number(discountAmount.toFixed(2)),
-          matchedProductIds,
-          rule: type && Number.isFinite(value) && value >= 0 ? { type, value } : null
-        };
-      }
-
-      const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
+      const shouldIssueCoupon = discountAmount > 0;
       const issued = shouldIssueCoupon
         ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
-        : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
+        : { coupon: null, failure: { reason: "NO_DISCOUNT" } };
       const coupon = issued?.coupon || null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
+      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon);
 
       return res.json({
         ok: true,

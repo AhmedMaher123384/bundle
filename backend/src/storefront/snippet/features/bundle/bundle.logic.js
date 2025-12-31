@@ -990,6 +990,31 @@ async function readCartItems() {
   return [];
 }
 
+function normalizeProxyCartItems(rawItems) {
+  try {
+    const map = {};
+    for (var i = 0; i < (rawItems || []).length; i += 1) {
+      const it = rawItems[i] || {};
+      const vid = String((it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id) || "").trim();
+      const qty = Number(it.quantity || it.qty || it.amount || 0);
+      if (!vid || !Number.isFinite(qty) || qty <= 0) continue;
+      const q = Math.max(1, Math.floor(qty));
+      map[vid] = (map[vid] || 0) + q;
+    }
+    const out = [];
+    for (const k in map) {
+      if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+      out.push({ variantId: String(k), quantity: map[k] });
+    }
+    out.sort(function (a, b) {
+      return String(a.variantId || "").localeCompare(String(b.variantId || ""));
+    });
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
   try {
     const pid = String(
@@ -2287,7 +2312,14 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      res = await requestApplyBundle(bid, items);
+      var cartRaw = [];
+      try {
+        cartRaw = await readCartItems();
+      } catch (eCartRead) {
+        cartRaw = [];
+      }
+      var cartItems = normalizeProxyCartItems(cartRaw);
+      res = await requestApplyBundle(bid, cartItems && cartItems.length ? cartItems : items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
