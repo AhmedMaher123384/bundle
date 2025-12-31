@@ -61,10 +61,17 @@ function addDaysToDateOnly(dateOnly, days) {
 }
 
 function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
-  const ids = evaluationResult?.applied?.matchedProductIds || [];
-  return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
-    /^\d+$/.test(v)
-  );
+  const bundles = evaluationResult?.applied?.bundles || [];
+  const allIds = [];
+  if (evaluationResult?.applied?.matchedProductIds) {
+    allIds.push(...evaluationResult.applied.matchedProductIds);
+  }
+  for (const b of bundles) {
+    if (Array.isArray(b.matchedProductIds)) {
+      allIds.push(...b.matchedProductIds);
+    }
+  }
+  return Array.from(new Set(allIds.map((v) => String(v || "").trim()).filter(Boolean))).filter((v) => /^\d+$/.test(v));
 }
 
 async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
@@ -109,10 +116,13 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
-  const includeProductIdsNumeric = includeProductIds
-    .map((v) => Number.parseInt(String(v), 10))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
+  
+  // Ensure we have numeric IDs for Salla API
+  const includeProductIdsForApi = includeProductIds
+    .map((id) => {
+      const parsed = parseInt(id, 10);
+      return isNaN(parsed) ? id : parsed;
+    });
 
   const appliedRule = evaluationResult?.applied?.rule || null;
   let pct = null;
@@ -154,7 +164,8 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi
+    include_product_ids: includeProductIdsForApi,
+    applied_in: "product" // Explicitly restrict to products
   };
   const preferPercentage = true; // ALWAYS prefer percentage to avoid cart-wide application issues with fixed amounts
 
@@ -291,17 +302,34 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     });
   }
 
-  const includeProductIdsNumeric = includeProductIds
-    .map((v) => Number.parseInt(String(v), 10))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  const includeProductIdsForApi = includeProductIdsNumeric.length ? includeProductIdsNumeric : includeProductIds;
+  const includeProductIdsForApi = includeProductIds
+    .map((id) => {
+      const parsed = parseInt(id, 10);
+      return isNaN(parsed) ? id : parsed;
+    });
 
   const appliedRule = evaluationResult?.applied?.rule || null;
-  const pctRaw = appliedRule && String(appliedRule.type || "").trim() === "percentage" ? Number(appliedRule.value) : null;
-  const pct =
-    Number.isFinite(pctRaw) && pctRaw > 0
-      ? Math.max(1, Math.min(100, Math.round(pctRaw)))
-      : null;
+  let pct = null;
+
+  if (appliedRule && String(appliedRule.type || "").trim() === "percentage") {
+    const pctRaw = Number(appliedRule.value);
+    if (Number.isFinite(pctRaw) && pctRaw > 0) {
+      pct = Math.max(1, Math.min(100, Math.round(pctRaw)));
+    }
+  } else if (evaluationResult?.applied?.bundles?.length > 0) {
+    const totalDiscountVal = evaluationResult.applied.totalDiscount;
+    const appliedBundles = evaluationResult.applied.bundles;
+    
+    let totalMatchedSubtotal = 0;
+    for (const b of appliedBundles) {
+      totalMatchedSubtotal += Number(b.subtotal || 0);
+    }
+
+    if (totalMatchedSubtotal > 0) {
+      const weightedPct = (totalDiscountVal / totalMatchedSubtotal) * 100;
+      pct = Math.max(1, Math.min(100, Math.ceil(weightedPct)));
+    }
+  }
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -318,9 +346,10 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIdsForApi
+    include_product_ids: includeProductIdsForApi,
+    applied_in: "product"
   };
-  const preferPercentage = Boolean(pct != null);
+  const preferPercentage = true;
 
   let lastCreateError = null;
 

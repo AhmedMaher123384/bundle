@@ -246,7 +246,9 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById, 
   const rules = normalizeRules(bundle?.rules);
   if (!components.length) return [];
 
-  const totalQty = (Array.isArray(normalizedCart) ? normalizedCart : []).reduce((acc, it) => acc + Math.max(0, Math.floor(Number(it?.quantity || 0))), 0);
+  const availableQtyByVariant = externalAvailableQty || buildAvailableQtyByVariant(normalizedCart);
+  
+  const totalQty = Array.from(availableQtyByVariant.values()).reduce((acc, q) => acc + Math.max(0, Math.floor(q)), 0);
   if (totalQty < rules.eligibility.minCartQty) return [];
 
   const cartLines = buildCartVariantLines(normalizedCart, variantSnapshotById);
@@ -259,8 +261,6 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById, 
     arr.push(l);
     cartLinesByProductId.set(pid, arr);
   }
-  
-  const availableQtyByVariant = externalAvailableQty || buildAvailableQtyByVariant(normalizedCart);
 
   const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
   const applications = [];
@@ -423,8 +423,7 @@ async function loadActiveBundlesForStore(storeId) {
   return Bundle.find({
     storeId: s,
     status: "active",
-    deletedAt: null,
-    triggerProductId: { $nin: [null, ""] }
+    deletedAt: null
   })
     .sort({ updatedAt: -1, _id: -1 })
     .lean();
