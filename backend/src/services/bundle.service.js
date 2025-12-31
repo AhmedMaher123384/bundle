@@ -20,17 +20,24 @@ function calcDiscountAmount(rules, subtotal) {
   if (!Number.isFinite(subtotal) || subtotal <= 0) return 0;
   const type = String(rules?.type || "").trim();
   const value = Number(rules?.value || 0);
+  const maxDiscount = Math.max(0, Number(subtotal) - 0.01);
+  const cap = (discount) => {
+    const d = Number(discount);
+    if (!Number.isFinite(d) || d <= 0) return 0;
+    if (!Number.isFinite(maxDiscount) || maxDiscount <= 0) return 0;
+    return Math.min(d, maxDiscount);
+  };
   if (type === "percentage") {
     const pct = Math.max(0, Math.min(100, value));
-    return (subtotal * pct) / 100;
+    return cap((subtotal * pct) / 100);
   }
   if (type === "fixed") {
     const amt = Math.max(0, value);
-    return Math.min(subtotal, amt);
+    return cap(Math.min(subtotal, amt));
   }
   if (type === "bundle_price") {
     const price = Math.max(0, value);
-    return Math.max(0, Math.min(subtotal, subtotal - price));
+    return cap(Math.max(0, Math.min(subtotal, subtotal - price)));
   }
   return 0;
 }
@@ -491,10 +498,29 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
+  const appliedBundleIdSet = (() => {
+    const candidates = [];
+    for (const ev of preEvaluations) {
+      const isBest = bestByGroup.get(ev.groupKey) === ev;
+      if (!isBest || !ev.matched || !(ev.discountAmount > 0)) continue;
+      candidates.push(ev);
+    }
+    candidates.sort((a, b) => Number(b.discountAmount) - Number(a.discountAmount));
+
+    const chosen = new Set();
+    const usedProducts = new Set();
+    for (const ev of candidates) {
+      const pids = Array.isArray(ev.matchedProductIds) ? ev.matchedProductIds : [];
+      const overlaps = pids.some((pid) => usedProducts.has(String(pid)));
+      if (overlaps) continue;
+      chosen.add(String(ev.bundle?._id));
+      for (const pid of pids) usedProducts.add(String(pid));
+    }
+    return chosen;
+  })();
 
   for (const ev of preEvaluations) {
-    const isBest = bestByGroup.get(ev.groupKey) === ev;
-    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    const applied = Boolean(appliedBundleIdSet.has(String(ev.bundle?._id)) && ev.matched && ev.discountAmount > 0);
     if (applied) {
       appliedBundles.push({
         bundleId: String(ev.bundle._id),
