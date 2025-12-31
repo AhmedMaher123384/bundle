@@ -20,6 +20,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b1",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "B1",
       components: [
         { variantId: "v1", quantity: 1, group: "A" },
@@ -66,11 +67,66 @@ describe("bundle.service.evaluateBundles", () => {
     expect(Log.create).toHaveBeenCalledTimes(1);
   });
 
+  test("does not apply bundles when trigger product is not in cart", async () => {
+    const bundleDoc = {
+      _id: "b_trigger_miss",
+      merchantId: "m1",
+      status: "active",
+      triggerProductId: "p_missing",
+      name: "Trigger missing",
+      components: [
+        { variantId: "v1", quantity: 1, group: "A" },
+        { variantId: "v2", quantity: 1, group: "B" }
+      ],
+      rules: {
+        type: "percentage",
+        value: 10,
+        eligibility: { mustIncludeAllGroups: true, minCartQty: 2 },
+        limits: { maxUsesPerOrder: 10 }
+      },
+      toObject() {
+        return { ...this };
+      }
+    };
+
+    Bundle.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([bundleDoc])
+      })
+    });
+
+    Log.create.mockResolvedValue({});
+
+    const variantSnapshotById = new Map([
+      ["v1", { variantId: "v1", productId: "p1", price: 100, isActive: true }],
+      ["v2", { variantId: "v2", productId: "p2", price: 50, isActive: true }]
+    ]);
+
+    const { evaluateBundles } = require("../src/services/bundle.service");
+
+    const result = await evaluateBundles(
+      { _id: "merchantObjectId", merchantId: "m1" },
+      [
+        { variantId: "v1", quantity: 1 },
+        { variantId: "v2", quantity: 1 }
+      ],
+      variantSnapshotById
+    );
+
+    expect(result.applied.totalDiscount).toBe(0);
+    expect(result.applied.bundles).toHaveLength(0);
+    expect(result.bundles).toHaveLength(1);
+    expect(result.bundles[0].matched).toBe(false);
+    expect(result.bundles[0].applied).toBe(false);
+    expect(Log.create).toHaveBeenCalledTimes(0);
+  });
+
   test("supports product refs (product:ID) to match any variant of the product", async () => {
     const bundleDoc = {
       _id: "b_product_ref",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "Product Ref Bundle",
       components: [
         { variantId: "product:p1", quantity: 1, group: "A" },
@@ -121,6 +177,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_product_ref_price",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "Product Ref (price)",
       components: [{ variantId: "product:p1", quantity: 1, group: "A" }],
       rules: {
@@ -169,6 +226,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_qty",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "Tiered Qty",
       components: [{ variantId: "v1", quantity: 1, group: "A" }],
       presentation: { coverVariantId: "v1" },
@@ -215,6 +273,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_qty_cover_mismatch",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "Tiered Qty (cover mismatch)",
       components: [{ variantId: "v1", quantity: 1, group: "A" }],
       presentation: { coverVariantId: "v_missing" },
@@ -261,6 +320,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_price",
       merchantId: "m1",
       status: "active",
+      triggerProductId: "p1",
       name: "Fixed Bundle Price",
       components: [
         { variantId: "v1", quantity: 1, group: "A" },
@@ -311,7 +371,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_a",
       merchantId: "m1",
       status: "active",
-      triggerProductId: "p_trigger",
+      triggerProductId: "p1",
       name: "A",
       components: [
         { variantId: "v1", quantity: 1, group: "A" },
@@ -332,7 +392,7 @@ describe("bundle.service.evaluateBundles", () => {
       _id: "b_b",
       merchantId: "m1",
       status: "active",
-      triggerProductId: "p_trigger",
+      triggerProductId: "p1",
       name: "B",
       components: [
         { variantId: "v1", quantity: 1, group: "A" },

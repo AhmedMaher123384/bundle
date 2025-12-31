@@ -119,20 +119,23 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const appliedRuleType = String(appliedRule?.type || "")
     .trim()
     .toLowerCase();
+
   let sallaType = "fixed";
   let sallaAmount = discountAmount;
+  let includeProductIds = [];
+  let maximumAmount = null;
+
   if (appliedRuleType === "percentage") {
     const pct = Number(appliedRule?.value);
     if (Number.isFinite(pct) && pct > 0) {
       sallaType = "percentage";
       sallaAmount = Math.max(0, Math.min(100, pct));
+      includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
+      maximumAmount = discountAmount;
     }
   }
 
-  const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  const shouldScopeToProducts = sallaType === "percentage";
-  if (shouldScopeToProducts && !includeProductIds.length) return null;
-  const storedIncludeProductIds = shouldScopeToProducts ? includeProductIds : [];
+  const storedIncludeProductIds = includeProductIds;
 
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
@@ -163,7 +166,8 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     usage_limit: 1,
     usage_limit_per_user: 1
   };
-  if (shouldScopeToProducts) basePayload.include_product_ids = includeProductIds;
+  if (maximumAmount != null) basePayload.maximum_amount = maximumAmount;
+  if (includeProductIds.length) basePayload.include_product_ids = includeProductIds;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
@@ -179,12 +183,15 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        const floored = Math.floor(sallaAmount);
-        const canFloor = Number.isFinite(floored) && floored >= 1 && floored < sallaAmount;
-        if (!canFloor) return null;
-
+        const amountRounded = Math.max(1, Math.min(100, Math.round(Number(sallaAmount))));
+        const maxFloored = payload.maximum_amount == null ? null : Math.max(0, Math.floor(Number(payload.maximum_amount)));
+        const fallbackPayload = {
+          ...payload,
+          amount: Number.isFinite(amountRounded) ? amountRounded : payload.amount
+        };
+        if (maxFloored != null && Number.isFinite(maxFloored)) fallbackPayload.maximum_amount = maxFloored;
         try {
-          const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...payload, amount: floored });
+          const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fallbackPayload);
           sallaCouponId = createdCouponResponse?.data?.id ?? null;
         } catch (e2) {
           if (e2 instanceof ApiError && e2.statusCode === 409) continue;
@@ -247,24 +254,23 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const appliedRuleType = String(appliedRule?.type || "")
     .trim()
     .toLowerCase();
+
   let sallaType = "fixed";
   let sallaAmount = discountAmount;
+  let includeProductIds = [];
+  let maximumAmount = null;
+
   if (appliedRuleType === "percentage") {
     const pct = Number(appliedRule?.value);
     if (Number.isFinite(pct) && pct > 0) {
       sallaType = "percentage";
       sallaAmount = Math.max(0, Math.min(100, pct));
+      includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
+      maximumAmount = discountAmount;
     }
   }
+  const storedIncludeProductIds = includeProductIds;
 
-  const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  const shouldScopeToProducts = sallaType === "percentage";
-  const storedIncludeProductIds = shouldScopeToProducts ? includeProductIds : [];
-  if (shouldScopeToProducts && !includeProductIds.length) {
-    return fail("NO_MATCHED_PRODUCTS", {
-      matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
-    });
-  }
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     const existingType = String(existing?.sallaType || "").trim().toLowerCase();
@@ -294,7 +300,8 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     usage_limit: 1,
     usage_limit_per_user: 1
   };
-  if (shouldScopeToProducts) basePayload.include_product_ids = includeProductIds;
+  if (maximumAmount != null) basePayload.maximum_amount = maximumAmount;
+  if (includeProductIds.length) basePayload.include_product_ids = includeProductIds;
 
   let lastCreateError = null;
 
@@ -315,19 +322,17 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        const floored = Math.floor(sallaAmount);
-        const canFloor = Number.isFinite(floored) && floored >= 1 && floored < sallaAmount;
-        if (!canFloor) {
-          return fail("SALLA_COUPON_CREATE_FAILED", {
-            statusCode: 422,
-            error: err.details ?? null,
-            triedPayloads
-          });
-        }
+        const amountRounded = Math.max(1, Math.min(100, Math.round(Number(sallaAmount))));
+        const maxFloored = payload.maximum_amount == null ? null : Math.max(0, Math.floor(Number(payload.maximum_amount)));
+        const fallbackPayload = {
+          ...payload,
+          amount: Number.isFinite(amountRounded) ? amountRounded : payload.amount
+        };
+        if (maxFloored != null && Number.isFinite(maxFloored)) fallbackPayload.maximum_amount = maxFloored;
 
         try {
-          triedPayloads.push({ ...payload, amount: floored });
-          const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...payload, amount: floored });
+          triedPayloads.push(fallbackPayload);
+          const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fallbackPayload);
           sallaCouponId = createdCouponResponse?.data?.id ?? null;
         } catch (e2) {
           lastCreateError = e2;
