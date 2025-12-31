@@ -1171,5 +1171,8 @@ function findProductId() {
 try {
   initAuto();
 } catch (e) {}
+try {
+  if (typeof initCartDiscountAutoSync === "function") initCartDiscountAutoSync();
+} catch (e2) {}
 `
 ];

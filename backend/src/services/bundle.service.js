@@ -430,7 +430,7 @@ async function loadActiveBundlesForStore(storeId) {
     .lean();
 }
 
-async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
+async function evaluateBundles(merchant, cartItems, variantSnapshotById, options) {
   if (!merchant?._id) throw new ApiError(400, "Invalid merchant", { code: "INVALID_MERCHANT" });
   const storeId = String(merchant?.merchantId || "").trim();
   if (!storeId) throw new ApiError(400, "Invalid merchant storeId", { code: "INVALID_STORE_ID" });
@@ -439,6 +439,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const bundles = await loadActiveBundlesForStore(storeId);
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
+  const shouldLog = options?.log !== false;
 
   const preEvaluations = [];
   for (const bundle of bundles) {
@@ -507,13 +508,15 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       totalDiscount += ev.discountAmount;
       for (const pid of ev.matchedProductIds) appliedProductIds.add(pid);
 
-      await Log.create({
-        merchantId: merchant._id,
-        bundleId: ev.bundle._id,
-        matchedVariants: ev.matchedVariants,
-        cartSnapshotHash,
-        createdAt: new Date()
-      });
+      if (shouldLog) {
+        await Log.create({
+          merchantId: merchant._id,
+          bundleId: ev.bundle._id,
+          matchedVariants: ev.matchedVariants,
+          cartSnapshotHash,
+          createdAt: new Date()
+        });
+      }
     }
 
     evaluations.push({
