@@ -78,32 +78,6 @@ function extractCartItems(payload) {
     .filter((it) => it.variantId && Number.isFinite(it.quantity) && it.quantity > 0);
 }
 
-function resolveNumericMatchedProductIds(evaluation) {
-  const ids = evaluation?.applied?.matchedProductIds || [];
-  return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter((v) => /^\d+$/.test(v))));
-}
-
-function computeMaxDiscountAmountForEvaluation(items, variantSnapshotById, evaluation) {
-  const includeProductIds = resolveNumericMatchedProductIds(evaluation);
-  if (!includeProductIds.length) return null;
-  const productIdSet = new Set(includeProductIds);
-  let subtotal = 0;
-  for (const it of Array.isArray(items) ? items : []) {
-    const vid = String(it?.variantId || "").trim();
-    if (!vid) continue;
-    const snap = variantSnapshotById?.get ? variantSnapshotById.get(vid) : null;
-    const pid = String(snap?.productId || "").trim();
-    if (!pid || !productIdSet.has(pid)) continue;
-    const unit = snap?.price == null ? null : Number(snap.price);
-    const qty = Math.max(1, Math.floor(Number(it?.quantity || 1)));
-    if (unit == null || !Number.isFinite(unit) || unit < 0) continue;
-    subtotal += unit * qty;
-  }
-  if (!Number.isFinite(subtotal) || subtotal <= 0) return null;
-  const max = Math.max(0, Number((subtotal - 0.01).toFixed(2)));
-  return max > 0 ? max : null;
-}
-
 function extractOrderDiscountAmount(payload) {
   const candidates = [
     payload?.data?.order?.discount?.amount,
@@ -303,8 +277,7 @@ function createWebhookController(config) {
         }
 
         const evaluation = await evaluateBundles(merchant, items, snapshots);
-        const maxDiscountAmount = computeMaxDiscountAmountForEvaluation(items, snapshots, evaluation);
-        const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, maxDiscountAmount });
+        const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
 
         const hasDiscount = Boolean(coupon && Number(evaluation?.applied?.totalDiscount || 0) > 0);
         if (hasDiscount) {

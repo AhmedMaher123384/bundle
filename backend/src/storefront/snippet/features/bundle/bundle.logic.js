@@ -77,19 +77,6 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
-async function requestCartBanner(items) {
-  const payload = {
-    items: Array.isArray(items) ? items : []
-  };
-  const u = buildUrl("/api/proxy/cart/banner", {});
-  if (!u) return null;
-  return fetchJson(u, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -1001,36 +988,6 @@ async function readCartItems() {
   }
 
   return [];
-}
-
-function normalizeCartItemsForBackend(cartItems) {
-  const map = {};
-  const items = Array.isArray(cartItems) ? cartItems : [];
-  for (let i = 0; i < items.length; i += 1) {
-    const it = items[i] || {};
-    const vid = String((it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || "").trim();
-    if (!vid) continue;
-    const qRaw =
-      it.quantity != null
-        ? it.quantity
-        : it.qty != null
-          ? it.qty
-          : it.amount != null
-            ? it.amount
-            : it.quantity_value != null
-              ? it.quantity_value
-              : null;
-    const q = Math.floor(Number(qRaw || 0));
-    if (!Number.isFinite(q) || q <= 0) continue;
-    map[vid] = (map[vid] || 0) + q;
-  }
-  const keys = Object.keys(map).sort();
-  const out = [];
-  for (let k = 0; k < keys.length; k += 1) {
-    const v = keys[k];
-    out.push({ variantId: String(v), quantity: Math.max(1, Math.floor(Number(map[v] || 0))) });
-  }
-  return out;
 }
 
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
@@ -2330,14 +2287,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      let cartRaw = [];
-      try {
-        cartRaw = await readCartItems();
-      } catch (eCartRead) {
-        cartRaw = [];
-      }
-      const cartItems = normalizeCartItemsForBackend(cartRaw);
-      res = await requestCartBanner(cartItems && cartItems.length ? cartItems : items);
+      res = await requestApplyBundle(bid, items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);

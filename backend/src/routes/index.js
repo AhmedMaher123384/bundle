@@ -80,36 +80,6 @@ function createApiRouter(config) {
     return Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || "").trim()).filter(Boolean)));
   }
 
-  function resolveNumericMatchedProductIds(evaluation) {
-    const ids = evaluation?.applied?.matchedProductIds || [];
-    const out = new Set();
-    for (const v of Array.isArray(ids) ? ids : []) {
-      const s = String(v || "").trim();
-      if (/^\d+$/.test(s)) out.add(s);
-    }
-    return out;
-  }
-
-  function computeMaxDiscountAmountForEvaluation(items, variantSnapshotById, evaluation) {
-    const productIdSet = resolveNumericMatchedProductIds(evaluation);
-    if (!productIdSet.size) return null;
-    let subtotal = 0;
-    for (const it of Array.isArray(items) ? items : []) {
-      const vid = String(it?.variantId || "").trim();
-      if (!vid) continue;
-      const snap = variantSnapshotById?.get ? variantSnapshotById.get(vid) : null;
-      const pid = String(snap?.productId || "").trim();
-      if (!pid || !productIdSet.has(pid)) continue;
-      const unit = snap?.price == null ? null : Number(snap.price);
-      const qty = Math.max(1, Math.floor(Number(it?.quantity || 1)));
-      if (unit == null || !Number.isFinite(unit) || unit < 0) continue;
-      subtotal += unit * qty;
-    }
-    if (!Number.isFinite(subtotal) || subtotal <= 0) return null;
-    const max = Math.max(0, Number((subtotal - 0.01).toFixed(2)));
-    return max > 0 ? max : null;
-  }
-
   function sortBundlesNewestFirst(bundles) {
     return (Array.isArray(bundles) ? bundles : []).slice().sort((a, b) => {
       const at = a?.updatedAt ? new Date(a.updatedAt).getTime() : 0;
@@ -1303,8 +1273,7 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const maxDiscountAmount = computeMaxDiscountAmountForEvaluation(items, combinedSnapshots, evaluation);
-      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, maxDiscountAmount });
+      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
       const coupon = issued?.coupon || null;
 
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
@@ -1498,9 +1467,8 @@ function createApiRouter(config) {
       }
 
       const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
-      const maxDiscountAmount = computeMaxDiscountAmountForEvaluation(items, combinedSnapshots, evaluation);
       const issued = shouldIssueCoupon
-        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, maxDiscountAmount })
+        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
         : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
       const coupon = issued?.coupon || null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);

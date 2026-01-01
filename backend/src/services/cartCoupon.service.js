@@ -113,12 +113,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
-  let discountAmount = Number(Number(totalDiscount).toFixed(2));
-  const maxDiscountAmount = Number(options?.maxDiscountAmount);
-  if (Number.isFinite(maxDiscountAmount) && maxDiscountAmount > 0) {
-    discountAmount = Math.min(discountAmount, Number(maxDiscountAmount.toFixed(2)));
-  }
-  if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
+  const discountAmount = Number(Number(totalDiscount).toFixed(2));
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
@@ -227,14 +222,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null });
   }
 
-  let discountAmount = Number(Number(totalDiscount).toFixed(2));
-  const maxDiscountAmount = Number(options?.maxDiscountAmount);
-  if (Number.isFinite(maxDiscountAmount) && maxDiscountAmount > 0) {
-    discountAmount = Math.min(discountAmount, Number(maxDiscountAmount.toFixed(2)));
-  }
-  if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-    return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null, maxDiscountAmount: maxDiscountAmount ?? null });
-  }
+  const discountAmount = Number(Number(totalDiscount).toFixed(2));
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {
@@ -291,9 +279,8 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
         const floored = Math.floor(discountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
           try {
-            const flooredPayload = { ...fixedPayload, amount: floored };
-            triedPayloads.push(flooredPayload);
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, flooredPayload);
+            triedPayloads.push({ ...fixedPayload, amount: floored });
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
             sallaCouponId = createdCouponResponse?.data?.id ?? null;
           } catch (e2) {
             lastCreateError = e2;

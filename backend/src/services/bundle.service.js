@@ -539,6 +539,7 @@ async function loadActiveBundlesForStore(storeId) {
     .sort({ updatedAt: -1, _id: -1 })
     .lean();
 }
+
 async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   if (!merchant?._id) throw new ApiError(400, "Invalid merchant", { code: "INVALID_MERCHANT" });
   const storeId = String(merchant?.merchantId || "").trim();
@@ -549,64 +550,119 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
 
+  // إنشاء نسخة من الكميات المتاحة لتتبعها عبر جميع الباقات
+  const globalAvailableQty = buildAvailableQtyByVariant(normalized);
+
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
-  // معالجة كل باقة بشكل مستقل بدون تتبع الكميات المستخدمة
-  for (const bundle of bundles) {
-    const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
-    const matched = applications.length > 0;
-    const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
-    const matchedVariants = Array.from(new Set(applications.flatMap((a) => a.matchedVariants || []))).filter(Boolean);
-    const matchedProductIds = Array.from(new Set(applications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
+  // ترتيب الباقات حسب أعلى خصم أولاً لضمان تطبيق الأكثر فائدة
+  const sortedBundles = bundles
+    .map((bundle) => {
+      const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
+      const matched = applications.length > 0;
+      const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
+      return { bundle, applications, matched, discountAmount };
+    })
+    .sort((a, b) => b.discountAmount - a.discountAmount);
 
-    const applied = matched && discountAmount > 0;
-
-    if (applied) {
-      const appliedRules = [];
-      const appliedRuleKeys = new Set();
-      for (const app of applications) {
-        const r = app?.appliedRule;
-        if (!r) continue;
-        const type = String(r.type || "").trim();
-        const value = Number(r.value);
-        const minQty = Math.max(1, Math.floor(Number(r.minQty || 1)));
-        if (!type || !Number.isFinite(value) || value < 0) continue;
-        const key = `${type}:${value}:${minQty}`;
-        if (appliedRuleKeys.has(key)) continue;
-        appliedRuleKeys.add(key);
-        appliedRules.push({ type, value, minQty });
-      }
-
-      appliedBundles.push({
-        bundleId: String(bundle._id),
-        uses: applications.length,
-        discountAmount: Number(discountAmount.toFixed(2)),
-        matchedVariants,
-        matchedProductIds,
-        appliedRules
+  // تطبيق كل باقة مطابقة مع تتبع الكميات المستخدمة
+  for (const { bundle, applications, matched, discountAmount: estimatedDiscount } of sortedBundles) {
+    if (!matched || estimatedDiscount <= 0) {
+      // إضافة الباقة للتقييم لكن غير مطبقة
+      evaluations.push({
+        bundle,
+        matched,
+        applied: false,
+        uses: 0,
+        discountAmount: 0,
+        matchedVariants: [],
+        matchedProductIds: []
       });
-
-      totalDiscount += discountAmount;
-      for (const pid of matchedProductIds) appliedProductIds.add(pid);
-
-      await Log.create({
-        merchantId: merchant._id,
-        bundleId: bundle._id,
-        matchedVariants,
-        cartSnapshotHash,
-        createdAt: new Date()
-      });
+      continue;
     }
+
+    // إعادة حساب الباقة بناءً على الكميات المتاحة الحالية
+    const actualApplications = computeBundleApplicationsWithAvailableQty(
+      bundle,
+      normalized,
+      variantSnapshotById,
+      globalAvailableQty
+    );
+
+    if (!actualApplications.length) {
+      // الباقة لم تعد قابلة للتطبيق بسبب نقص الكميات
+      evaluations.push({
+        bundle,
+        matched: false,
+        applied: false,
+        uses: 0,
+        discountAmount: 0,
+        matchedVariants: [],
+        matchedProductIds: []
+      });
+      continue;
+    }
+
+    const actualDiscount = actualApplications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
+    const matchedVariants = Array.from(new Set(actualApplications.flatMap((a) => a.matchedVariants || []))).filter(Boolean);
+    const matchedProductIds = Array.from(new Set(actualApplications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
+
+    const appliedRules = [];
+    const appliedRuleKeys = new Set();
+    for (const app of actualApplications) {
+      const r = app?.appliedRule;
+      if (!r) continue;
+      const type = String(r.type || "").trim();
+      const value = Number(r.value);
+      const minQty = Math.max(1, Math.floor(Number(r.minQty || 1)));
+      if (!type || !Number.isFinite(value) || value < 0) continue;
+      const key = `${type}:${value}:${minQty}`;
+      if (appliedRuleKeys.has(key)) continue;
+      appliedRuleKeys.add(key);
+      appliedRules.push({ type, value, minQty });
+    }
+
+    // خصم الكميات المستخدمة من الكميات المتاحة العامة
+    for (const app of actualApplications) {
+      for (const item of Array.isArray(app?.selection) ? app.selection : []) {
+        const variantId = String(item?.variantId || "").trim();
+        const qty = Math.floor(Number(item?.quantity || 0));
+        if (!variantId || qty <= 0) continue;
+        const current = Math.max(0, Math.floor(Number(globalAvailableQty.get(variantId) || 0)));
+        globalAvailableQty.set(variantId, Math.max(0, current - qty));
+      }
+    }
+
+    // تطبيق الباقة
+    appliedBundles.push({
+      bundleId: String(bundle._id),
+      uses: actualApplications.length,
+      discountAmount: Number(actualDiscount.toFixed(2)),
+      matchedVariants,
+      matchedProductIds,
+      appliedRules
+    });
+
+    totalDiscount += actualDiscount;
+    for (const pid of matchedProductIds) appliedProductIds.add(pid);
+
+    await Log.create({
+      merchantId: merchant._id,
+      bundleId: bundle._id,
+      matchedVariants,
+      cartSnapshotHash,
+      createdAt: new Date()
+    });
 
     evaluations.push({
       bundle,
-      matched,
-      applied,
-      uses: applications.length,
-      discountAmount: applied ? Number(discountAmount.toFixed(2)) : 0,
+      matched: true,
+      applied: true,
+      uses: actualApplications.length,
+      discountAmount: Number(actualDiscount.toFixed(2)),
       matchedVariants,
       matchedProductIds
     });
