@@ -441,7 +441,9 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
 
   const preEvaluations = [];
+  
   for (const bundle of bundles) {
+    // ✅ كل باقة تُحسب على نسخة جديدة من السلة
     const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
     const matched = applications.length > 0;
     const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
@@ -465,12 +467,10 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     }
 
     const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
 
     preEvaluations.push({
       bundle,
       triggerProductId,
-      groupKey,
       matched,
       uses: applications.length,
       discountAmount,
@@ -480,14 +480,13 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  // ✅ التعديل الرئيسي: تطبيق جميع الباقات المطابقة بدلاً من اختيار الأفضل فقط
+  // ✅ تطبيق جميع الباقات بدون قيود
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    // تطبيق أي باقة محققة للشروط ولها خصم (بدون مقارنة مع باقات أخرى)
     const applied = Boolean(ev.matched && ev.discountAmount > 0);
     
     if (applied) {
