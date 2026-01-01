@@ -2519,7 +2519,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      res = await requestCartBannerFromLiveCart(8);
+      res = await requestCartBannerFromLiveCart(3);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
@@ -2553,6 +2553,14 @@ async function applyBundleSelection(bundle) {
     }
 
     if (!res) {
+      try {
+        res = await requestCartBanner(items);
+      } catch (eTryDirect) {
+        res = null;
+      }
+    }
+
+    if (!res) {
       messageByBundleId[bid] = "تمت إضافة الباقة للسلة • جاري تجهيز الخصم";
       try {
         renderProductBanners(lastBundles || []);
@@ -2562,7 +2570,12 @@ async function applyBundleSelection(bundle) {
           try {
             (async function () {
               try {
-                var res2 = await requestCartBannerFromLiveCart(8);
+                var res2 = null;
+                try {
+                  res2 = await requestCartBanner(items);
+                } catch (e0) {
+                  res2 = await requestCartBannerFromLiveCart(4);
+                }
                 if (res2 && res2.ok) {
                   var cc2 = String(res2.couponCode || "").trim();
                   if (cc2) {
@@ -2575,6 +2588,7 @@ async function applyBundleSelection(bundle) {
                     try {
                       applyPendingCouponForCart();
                     } catch (e03100m4) {}
+                    return;
                   }
                 }
               } catch (e03100m5) {}
@@ -2582,6 +2596,16 @@ async function applyBundleSelection(bundle) {
           } catch (e03100m) {}
         }, 2400);
       } catch (e03100l) {}
+      try {
+        setTimeout(function () {
+          try {
+            if (messageByBundleId[bid] === "تمت إضافة الباقة للسلة • جاري تجهيز الخصم") {
+              messageByBundleId[bid] = "تمت إضافة الباقة للسلة • افتح السلة لتطبيق الخصم";
+              renderProductBanners(lastBundles || []);
+            }
+          } catch (e03100k) {}
+        }, 9500);
+      } catch (e03100j) {}
       applying = false;
       return;
     }
