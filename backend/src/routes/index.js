@@ -1273,12 +1273,17 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
+      const cartKey = String(qValue.cartKey || "").trim() || undefined;
+      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, {
+        ttlHours: 24,
+        cartKey
+      });
       const coupon = issued?.coupon || null;
+      const couponAction = issued?.action || null;
 
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(!coupon && discountAmount > 0);
+      const couponIssueFailed = Boolean(couponAction !== "clear" && !coupon && discountAmount > 0);
       const messages = [];
       if (!items.length) messages.push({ level: "info", code: "CART_EMPTY", message: "Cart has no items." });
       if (!hasDiscount && !couponIssueFailed) messages.push({ level: "info", code: "NO_BUNDLE_APPLIED", message: "No bundle discounts apply to this cart." });
@@ -1287,6 +1292,8 @@ function createApiRouter(config) {
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
+        cartKey: cartKey || null,
+        couponAction,
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
         couponCode: hasDiscount ? coupon.code : null,
@@ -1433,7 +1440,13 @@ function createApiRouter(config) {
         evaluation.applied = {
           totalDiscount: draft?.applied ? Number(draft.discountAmount || 0) : 0,
           matchedProductIds: Array.isArray(draft?.matchedProductIds) ? draft.matchedProductIds : [],
-          rule: appliedRule
+          rule: appliedRule,
+          bundles: [
+            {
+              bundleId: String(bValue.bundleId),
+              discountAmount: draft?.applied ? Number(draft.discountAmount || 0) : 0
+            }
+          ]
         };
         discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
       } else {
@@ -1462,21 +1475,31 @@ function createApiRouter(config) {
         evaluation.applied = {
           totalDiscount: Number(discountAmount.toFixed(2)),
           matchedProductIds,
-          rule: type && Number.isFinite(value) && value >= 0 ? { type, value } : null
+          rule: type && Number.isFinite(value) && value >= 0 ? { type, value } : null,
+          bundles: [
+            {
+              bundleId: String(bValue.bundleId),
+              discountAmount: Number(discountAmount.toFixed(2))
+            }
+          ]
         };
       }
 
       const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
+      const cartKey = String(qValue.cartKey || "").trim() || undefined;
       const issued = shouldIssueCoupon
-        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 })
+        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey })
         : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
       const coupon = issued?.coupon || null;
+      const couponAction = issued?.action || null;
       const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(shouldIssueCoupon && !coupon && discountAmount > 0);
+      const couponIssueFailed = Boolean(shouldIssueCoupon && couponAction !== "clear" && !coupon && discountAmount > 0);
 
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
+        cartKey: cartKey || null,
+        couponAction,
         bundleId: String(bValue.bundleId),
         kind,
         hasDiscount,

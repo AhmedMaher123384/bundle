@@ -2,6 +2,7 @@ const CartCoupon = require("../models/CartCoupon");
 const { createCoupon } = require("./sallaApi.service");
 const { ApiError } = require("../utils/apiError");
 const { sha256Hex } = require("../utils/hash");
+const { redact } = require("../utils/redact");
 
 function normalizeCartItems(items) {
   const map = new Map();
@@ -21,9 +22,9 @@ function computeCartHash(items) {
   return { normalized, cartHash: sha256Hex(JSON.stringify(normalized)) };
 }
 
-function buildCouponCode(merchantId, cartHash) {
-  const seed = `${merchantId}:${cartHash}:${Date.now()}:${Math.random()}`;
-  return `B${sha256Hex(seed).slice(0, 15).toUpperCase()}`;
+function buildCouponCode(merchantId, cartKey) {
+  const seed = `${merchantId}:${cartKey}:${Date.now()}:${Math.random()}`;
+  return `B${sha256Hex(seed).slice(0, 10).toUpperCase()}`;
 }
 
 function formatDateOnlyUtc(date) {
@@ -67,72 +68,94 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   );
 }
 
-function sameStringIdSet(a, b) {
-  const aa = Array.isArray(a) ? a : [];
-  const bb = Array.isArray(b) ? b : [];
-  if (aa.length !== bb.length) return false;
-  const sa = new Set(aa.map((v) => String(v || "").trim()).filter(Boolean));
-  const sb = new Set(bb.map((v) => String(v || "").trim()).filter(Boolean));
-  if (sa.size !== sb.size) return false;
-  for (const v of sa) if (!sb.has(v)) return false;
+function resolveAppliedBundleIdsFromEvaluation(evaluationResult) {
+  const bundles = evaluationResult?.applied?.bundles || [];
+  const ids = Array.isArray(bundles) ? bundles.map((b) => String(b?.bundleId || "").trim()).filter(Boolean) : [];
+  return Array.from(new Set(ids)).sort();
+}
+
+function sumBundleDiscountFromEvaluation(evaluationResult) {
+  const bundles = Array.isArray(evaluationResult?.applied?.bundles) ? evaluationResult.applied.bundles : [];
+  const sum = bundles.reduce((acc, b) => {
+    const v = Number(b?.discountAmount || 0);
+    if (!Number.isFinite(v) || v <= 0) return acc;
+    return acc + v;
+  }, 0);
+  return Number(sum.toFixed(2));
+}
+
+function toStringIdArray(v) {
+  return Array.isArray(v) ? v.map((x) => String(x || "").trim()).filter(Boolean) : [];
+}
+
+function isSubsetArray(sub, sup) {
+  const a = toStringIdArray(sub);
+  const b = new Set(toStringIdArray(sup));
+  for (const x of a) if (!b.has(x)) return false;
   return true;
 }
 
-function amountsMatch(a, b) {
-  const x = Number(a);
-  const y = Number(b);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  return Math.abs(x - y) <= 0.01;
+function setsEqualArray(a, b) {
+  const aa = new Set(toStringIdArray(a));
+  const bb = new Set(toStringIdArray(b));
+  if (aa.size !== bb.size) return false;
+  for (const x of aa) if (!bb.has(x)) return false;
+  return true;
 }
 
-async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
+function computeCartKeyFromOptions(cartItems, options) {
+  const raw = String(options?.cartKey || "").trim();
+  if (raw) return raw;
+  const { cartHash } = computeCartHash(cartItems);
+  return `hash:${cartHash}`;
+}
+
+async function getActiveIssuedCoupon(merchantObjectId, cartKey) {
   const now = new Date();
   const existing = await CartCoupon.findOne({
     merchantId: merchantObjectId,
-    cartHash,
+    system: "mcoupon",
+    cartKey,
     status: "issued",
     expiresAt: { $gt: now }
-  });
+  }).sort({ createdAt: -1 });
   if (!existing) return null;
   existing.lastSeenAt = new Date();
   await existing.save();
   return existing;
 }
 
-async function markOtherIssuedCouponsSuperseded(merchantObjectId, currentCartHash) {
+async function invalidateIssuedCouponsForCartKey(merchantObjectId, cartKey, now) {
+  const ts = now || new Date();
   await CartCoupon.updateMany(
-    { merchantId: merchantObjectId, status: "issued", cartHash: { $ne: currentCartHash } },
-    { $set: { status: "superseded" } }
+    { merchantId: merchantObjectId, system: "mcoupon", cartKey, status: "issued" },
+    { $set: { status: "invalidated", invalidatedAt: ts, lastSeenAt: ts } }
   );
 }
 
-async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
-  const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
-  const { cartHash } = computeCartHash(cartItems);
+async function clearIssuedCouponsForCartKey(merchantObjectId, cartKey, now) {
+  const ts = now || new Date();
+  await CartCoupon.updateMany(
+    { merchantId: merchantObjectId, system: "mcoupon", cartKey, status: "issued" },
+    { $set: { status: "cleared", invalidatedAt: ts, lastSeenAt: ts } }
+  );
+}
 
-  const totalDiscount = evaluationResult?.applied?.totalDiscount;
-  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
-
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
-
-  const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
-  if (!includeProductIds.length) return null;
-
-  const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
-  if (existing) {
-    const existingType = String(existing?.sallaType || "").trim().toLowerCase();
-    if (existingType === "fixed" && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      return existing;
-    }
-  }
-
+async function createMcouponInSalla(config, merchant, merchantAccessToken, cartKey, amount, includeProductIds, ttlHours) {
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
   const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
   const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
   let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
   if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+
+  const safeIncludeProductIds = Array.from(
+    new Set(
+      (Array.isArray(includeProductIds) ? includeProductIds : [])
+        .map((v) => String(v || "").trim())
+        .filter((v) => /^\d+$/.test(v))
+    )
+  ).slice(0, 200);
 
   const basePayload = {
     free_shipping: false,
@@ -142,62 +165,223 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: safeIncludeProductIds
   };
 
+  const discountAmount = Number(Number(amount).toFixed(2));
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const code = buildCouponCode(merchant.merchantId, cartHash);
+    const code = buildCouponCode(merchant.merchantId, cartKey);
     const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
-
-    let sallaCouponId = null;
     try {
       const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
-      sallaCouponId = createdCouponResponse?.data?.id ?? null;
+      const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+      return { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt };
     } catch (err) {
-      if (err instanceof ApiError && err.statusCode === 409) {
-        continue;
-      }
-
+      if (err instanceof ApiError && err.statusCode === 409) continue;
       if (err instanceof ApiError && err.statusCode === 422) {
+        const details = redact(err.details);
         const floored = Math.floor(discountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
           try {
             const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
-            sallaCouponId = createdCouponResponse?.data?.id ?? null;
+            const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+            return { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt };
           } catch (e2) {
             if (e2 instanceof ApiError && e2.statusCode === 409) continue;
             if (e2 instanceof ApiError && e2.statusCode === 422) return null;
             throw e2;
           }
-        } else {
-          return null;
         }
-      } else {
-        throw err;
+        void details;
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  return null;
+}
+
+async function createMcouponInSallaVerbose(config, merchant, merchantAccessToken, cartKey, amount, includeProductIds, ttlHours) {
+  const now = new Date();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+
+  const safeIncludeProductIds = Array.from(
+    new Set(
+      (Array.isArray(includeProductIds) ? includeProductIds : [])
+        .map((v) => String(v || "").trim())
+        .filter((v) => /^\d+$/.test(v))
+    )
+  ).slice(0, 200);
+
+  const basePayload = {
+    free_shipping: false,
+    exclude_sale_products: false,
+    is_apply_with_offer: true,
+    start_date: startDate,
+    expiry_date: expiryDate,
+    usage_limit: 1,
+    usage_limit_per_user: 1,
+    include_product_ids: safeIncludeProductIds
+  };
+
+  const discountAmount = Number(Number(amount).toFixed(2));
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const code = buildCouponCode(merchant.merchantId, cartKey);
+    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+    try {
+      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
+      const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+      return { created: { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt }, failure: null };
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 409) continue;
+      if (err instanceof ApiError && err.statusCode === 422) {
+        const floored = Math.floor(discountAmount);
+        if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
+          try {
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
+            const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+            return { created: { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt }, failure: null };
+          } catch (e2) {
+            if (e2 instanceof ApiError && e2.statusCode === 409) continue;
+            if (e2 instanceof ApiError && e2.statusCode === 422) {
+              return {
+                created: null,
+                failure: {
+                  reason: "SALLA_VALIDATION_FAILED",
+                  statusCode: 422,
+                  details: redact(e2.details),
+                  payload: {
+                    type: "fixed",
+                    amount: { requested: discountAmount, fallback: floored },
+                    includeProductIdsCount: safeIncludeProductIds.length
+                  }
+                }
+              };
+            }
+            throw e2;
+          }
+        }
+
+        return {
+          created: null,
+          failure: {
+            reason: "SALLA_VALIDATION_FAILED",
+            statusCode: 422,
+            details: redact(err.details),
+            payload: { type: "fixed", amount: { requested: discountAmount }, includeProductIdsCount: safeIncludeProductIds.length }
+          }
+        };
+      }
+      throw err;
+    }
+  }
+
+  return { created: null, failure: { reason: "SALLA_CONFLICT_RETRY_EXHAUSTED", statusCode: 409 } };
+}
+
+async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
+  const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
+  const now = new Date();
+  const cartKey = computeCartKeyFromOptions(cartItems, options);
+  const { cartHash } = computeCartHash(cartItems);
+
+  const appliedBundleIds = resolveAppliedBundleIdsFromEvaluation(evaluationResult);
+  const totalBundleDiscount = sumBundleDiscountFromEvaluation(evaluationResult);
+
+  const existing = await getActiveIssuedCoupon(merchant._id, cartKey);
+  if (!appliedBundleIds.length || !Number.isFinite(totalBundleDiscount) || totalBundleDiscount <= 0) {
+    if (existing) await clearIssuedCouponsForCartKey(merchant._id, cartKey, now);
+    return null;
+  }
+
+  if (existing) {
+    const prevBundleIds = toStringIdArray(existing?.appliedBundleIds);
+    if (prevBundleIds.length && !isSubsetArray(prevBundleIds, appliedBundleIds)) {
+      await clearIssuedCouponsForCartKey(merchant._id, cartKey, now);
+      return null;
+    }
+    if (!setsEqualArray(prevBundleIds, appliedBundleIds) && isSubsetArray(prevBundleIds, appliedBundleIds)) {
+      const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
+      if (!includeProductIds.length) {
+        await clearIssuedCouponsForCartKey(merchant._id, cartKey, now);
+        return null;
+      }
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const created = await createMcouponInSalla(
+          config,
+          merchant,
+          merchantAccessToken,
+          cartKey,
+          totalBundleDiscount,
+          includeProductIds,
+          ttlHours
+        );
+        if (!created) break;
+        await invalidateIssuedCouponsForCartKey(merchant._id, cartKey, now);
+        try {
+          const record = await CartCoupon.create({
+            system: "mcoupon",
+            merchantId: merchant._id,
+            cartKey,
+            cartHash,
+            snapshotHash: evaluationResult?.cartSnapshotHash || undefined,
+            couponId: created.couponId || undefined,
+            code: created.code,
+            status: "issued",
+            sallaType: "fixed",
+            discountAmount: Number(totalBundleDiscount.toFixed(2)),
+            totalBundleDiscount: Number(totalBundleDiscount.toFixed(2)),
+            includeProductIds,
+            appliedBundleIds,
+            expiresAt: created.expiresAt,
+            createdAt: now,
+            lastSeenAt: now
+          });
+          return record;
+        } catch (dbErr) {
+          if (dbErr?.code === 11000) continue;
+          throw dbErr;
+        }
       }
     }
 
-    try {
-      const record = await CartCoupon.findOneAndUpdate(
-        { merchantId: merchant._id, cartHash },
-        {
-          $set: {
-            couponId: sallaCouponId ? String(sallaCouponId) : undefined,
-            code,
-            status: "issued",
-            sallaType: "fixed",
-            discountAmount,
-            includeProductIds,
-            expiresAt,
-            lastSeenAt: now
-          },
-          $setOnInsert: { createdAt: now },
-          $unset: { redeemedAt: "", orderId: "" }
-        },
-        { upsert: true, new: true }
-      );
+    existing.lastSeenAt = now;
+    await existing.save();
+    return existing;
+  }
 
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+  const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
+  if (!includeProductIds.length) return null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const created = await createMcouponInSalla(config, merchant, merchantAccessToken, cartKey, totalBundleDiscount, includeProductIds, ttlHours);
+    if (!created) break;
+    await invalidateIssuedCouponsForCartKey(merchant._id, cartKey, now);
+    try {
+      const record = await CartCoupon.create({
+        system: "mcoupon",
+        merchantId: merchant._id,
+        cartKey,
+        cartHash,
+        snapshotHash: evaluationResult?.cartSnapshotHash || undefined,
+        couponId: created.couponId || undefined,
+        code: created.code,
+        status: "issued",
+        sallaType: "fixed",
+        discountAmount: Number(totalBundleDiscount.toFixed(2)),
+        totalBundleDiscount: Number(totalBundleDiscount.toFixed(2)),
+        includeProductIds,
+        appliedBundleIds,
+        expiresAt: created.expiresAt,
+        createdAt: now,
+        lastSeenAt: now
+      });
       return record;
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
@@ -210,141 +394,92 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
 async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
   const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
+  const now = new Date();
+  const cartKey = computeCartKeyFromOptions(cartItems, options);
   const { cartHash } = computeCartHash(cartItems);
 
-  const fail = (reason, extra) => ({
-    coupon: null,
-    failure: { reason: String(reason || "UNKNOWN"), ...(extra || {}) }
-  });
+  const appliedBundleIds = resolveAppliedBundleIdsFromEvaluation(evaluationResult);
+  const totalBundleDiscount = sumBundleDiscountFromEvaluation(evaluationResult);
 
-  const totalDiscount = evaluationResult?.applied?.totalDiscount;
-  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null });
+  const existing = await getActiveIssuedCoupon(merchant._id, cartKey);
+  if (!appliedBundleIds.length || !Number.isFinite(totalBundleDiscount) || totalBundleDiscount <= 0) {
+    if (existing) {
+      await clearIssuedCouponsForCartKey(merchant._id, cartKey, now);
+      return { coupon: null, failure: null, reused: false, action: "clear" };
+    }
+    return { coupon: null, failure: null, reused: false, action: "none" };
   }
 
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  if (existing) {
+    const prevBundleIds = toStringIdArray(existing?.appliedBundleIds);
+    if (prevBundleIds.length && !isSubsetArray(prevBundleIds, appliedBundleIds)) {
+      await clearIssuedCouponsForCartKey(merchant._id, cartKey, now);
+      return { coupon: null, failure: null, reused: false, action: "clear" };
+    }
+    if (setsEqualArray(prevBundleIds, appliedBundleIds)) {
+      existing.lastSeenAt = now;
+      await existing.save();
+      return { coupon: existing, failure: null, reused: true, action: "apply" };
+    }
+  }
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {
-    return fail("NO_MATCHED_PRODUCTS", {
-      matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
-    });
-  }
-  const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
-  if (existing) {
-    const existingType = String(existing?.sallaType || "").trim().toLowerCase();
-    if (existingType === "fixed" && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      return { coupon: existing, failure: null, reused: true };
-    }
+    return {
+      coupon: null,
+      failure: {
+        reason: "NO_MATCHED_PRODUCTS",
+        matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
+      },
+      reused: false,
+      action: "none"
+    };
   }
 
-  const now = new Date();
-  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
-  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
-  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
-  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
-
-  const basePayload = {
-    free_shipping: false,
-    exclude_sale_products: false,
-    is_apply_with_offer: true,
-    start_date: startDate,
-    expiry_date: expiryDate,
-    usage_limit: 1,
-    usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
-  };
-
-  let lastCreateError = null;
-
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
-
-    let sallaCouponId = null;
-    const triedPayloads = [];
-    try {
-      triedPayloads.push(fixedPayload);
-      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
-      sallaCouponId = createdCouponResponse?.data?.id ?? null;
-    } catch (err) {
-      lastCreateError = err;
-      if (err instanceof ApiError && err.statusCode === 409) {
-        continue;
-      }
-
-      if (err instanceof ApiError && err.statusCode === 422) {
-        const floored = Math.floor(discountAmount);
-        if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
-          try {
-            triedPayloads.push({ ...fixedPayload, amount: floored });
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
-            sallaCouponId = createdCouponResponse?.data?.id ?? null;
-          } catch (e2) {
-            lastCreateError = e2;
-            if (e2 instanceof ApiError && e2.statusCode === 409) continue;
-            if (e2 instanceof ApiError && e2.statusCode === 422) {
-              return fail("SALLA_COUPON_CREATE_FAILED", {
-                statusCode: 422,
-                error: e2.details ?? null,
-                triedPayloads
-              });
-            }
-            throw e2;
-          }
-        } else {
-          return fail("SALLA_COUPON_CREATE_FAILED", {
-            statusCode: 422,
-            error: err.details ?? null,
-            triedPayloads
-          });
-        }
-      } else {
-        return fail("SALLA_COUPON_CREATE_FAILED", {
-          statusCode: err instanceof ApiError ? err.statusCode : null,
-          error: err instanceof ApiError ? err.details ?? null : { message: err?.message ?? "Unknown error" },
-          triedPayloads
-        });
-      }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const outcome = await createMcouponInSallaVerbose(config, merchant, merchantAccessToken, cartKey, totalBundleDiscount, includeProductIds, ttlHours);
+    const created = outcome?.created || null;
+    if (!created) {
+      return {
+        coupon: null,
+        failure: outcome?.failure || { reason: "SALLA_COUPON_CREATE_FAILED" },
+        reused: false,
+        action: "none"
+      };
     }
-
+    await invalidateIssuedCouponsForCartKey(merchant._id, cartKey, now);
     try {
-      const record = await CartCoupon.findOneAndUpdate(
-        { merchantId: merchant._id, cartHash },
-        {
-          $set: {
-            couponId: sallaCouponId ? String(sallaCouponId) : undefined,
-            code,
-            status: "issued",
-            sallaType: "fixed",
-            discountAmount,
-            includeProductIds,
-            expiresAt,
-            lastSeenAt: now
-          },
-          $setOnInsert: { createdAt: now },
-          $unset: { redeemedAt: "", orderId: "" }
-        },
-        { upsert: true, new: true }
-      );
-
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      return { coupon: record, failure: null, reused: false };
+      const record = await CartCoupon.create({
+        system: "mcoupon",
+        merchantId: merchant._id,
+        cartKey,
+        cartHash,
+        snapshotHash: evaluationResult?.cartSnapshotHash || undefined,
+        couponId: created.couponId || undefined,
+        code: created.code,
+        status: "issued",
+        sallaType: "fixed",
+        discountAmount: Number(totalBundleDiscount.toFixed(2)),
+        totalBundleDiscount: Number(totalBundleDiscount.toFixed(2)),
+        includeProductIds,
+        appliedBundleIds,
+        expiresAt: created.expiresAt,
+        createdAt: now,
+        lastSeenAt: now
+      });
+      return { coupon: record, failure: null, reused: false, action: "apply" };
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
-      return fail("DB_WRITE_FAILED", { error: { message: dbErr?.message ?? "DB error", code: dbErr?.code ?? null } });
+      return {
+        coupon: null,
+        failure: { reason: "DB_WRITE_FAILED", error: { message: dbErr?.message ?? "DB error", code: dbErr?.code ?? null } },
+        reused: false,
+        action: "none"
+      };
     }
   }
 
-  return fail("MAX_ATTEMPTS_EXCEEDED", {
-    lastError: lastCreateError instanceof ApiError
-      ? { statusCode: lastCreateError.statusCode, code: lastCreateError.code ?? null, details: lastCreateError.details ?? null }
-      : lastCreateError
-        ? { message: lastCreateError.message ?? String(lastCreateError) }
-        : null
-  });
+  return { coupon: null, failure: { reason: "DB_WRITE_CONFLICT" }, reused: false, action: "none" };
 }
 
 function extractCouponCodeFromOrderPayload(payload) {
