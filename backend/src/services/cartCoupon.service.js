@@ -2,6 +2,7 @@ const CartCoupon = require("../models/CartCoupon");
 const { createCoupon } = require("./sallaApi.service");
 const { ApiError } = require("../utils/apiError");
 const { sha256Hex } = require("../utils/hash");
+const { redact } = require("../utils/redact");
 
 function normalizeCartItems(items) {
   const map = new Map();
@@ -23,7 +24,7 @@ function computeCartHash(items) {
 
 function buildCouponCode(merchantId, cartKey) {
   const seed = `${merchantId}:${cartKey}:${Date.now()}:${Math.random()}`;
-  return `B${sha256Hex(seed).slice(0, 15).toUpperCase()}`;
+  return `B${sha256Hex(seed).slice(0, 10).toUpperCase()}`;
 }
 
 function formatDateOnlyUtc(date) {
@@ -148,6 +149,14 @@ async function createMcouponInSalla(config, merchant, merchantAccessToken, cartK
   let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
   if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
 
+  const safeIncludeProductIds = Array.from(
+    new Set(
+      (Array.isArray(includeProductIds) ? includeProductIds : [])
+        .map((v) => String(v || "").trim())
+        .filter((v) => /^\d+$/.test(v))
+    )
+  ).slice(0, 200);
+
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
@@ -156,7 +165,7 @@ async function createMcouponInSalla(config, merchant, merchantAccessToken, cartK
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: safeIncludeProductIds
   };
 
   const discountAmount = Number(Number(amount).toFixed(2));
@@ -170,6 +179,7 @@ async function createMcouponInSalla(config, merchant, merchantAccessToken, cartK
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 409) continue;
       if (err instanceof ApiError && err.statusCode === 422) {
+        const details = redact(err.details);
         const floored = Math.floor(discountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
           try {
@@ -182,6 +192,7 @@ async function createMcouponInSalla(config, merchant, merchantAccessToken, cartK
             throw e2;
           }
         }
+        void details;
         return null;
       }
       throw err;
@@ -189,6 +200,88 @@ async function createMcouponInSalla(config, merchant, merchantAccessToken, cartK
   }
 
   return null;
+}
+
+async function createMcouponInSallaVerbose(config, merchant, merchantAccessToken, cartKey, amount, includeProductIds, ttlHours) {
+  const now = new Date();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+
+  const safeIncludeProductIds = Array.from(
+    new Set(
+      (Array.isArray(includeProductIds) ? includeProductIds : [])
+        .map((v) => String(v || "").trim())
+        .filter((v) => /^\d+$/.test(v))
+    )
+  ).slice(0, 200);
+
+  const basePayload = {
+    free_shipping: false,
+    exclude_sale_products: false,
+    is_apply_with_offer: true,
+    start_date: startDate,
+    expiry_date: expiryDate,
+    usage_limit: 1,
+    usage_limit_per_user: 1,
+    include_product_ids: safeIncludeProductIds
+  };
+
+  const discountAmount = Number(Number(amount).toFixed(2));
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const code = buildCouponCode(merchant.merchantId, cartKey);
+    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+    try {
+      const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, fixedPayload);
+      const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+      return { created: { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt }, failure: null };
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 409) continue;
+      if (err instanceof ApiError && err.statusCode === 422) {
+        const floored = Math.floor(discountAmount);
+        if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
+          try {
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
+            const sallaCouponId = createdCouponResponse?.data?.id ?? null;
+            return { created: { code, couponId: sallaCouponId ? String(sallaCouponId) : null, expiresAt }, failure: null };
+          } catch (e2) {
+            if (e2 instanceof ApiError && e2.statusCode === 409) continue;
+            if (e2 instanceof ApiError && e2.statusCode === 422) {
+              return {
+                created: null,
+                failure: {
+                  reason: "SALLA_VALIDATION_FAILED",
+                  statusCode: 422,
+                  details: redact(e2.details),
+                  payload: {
+                    type: "fixed",
+                    amount: { requested: discountAmount, fallback: floored },
+                    includeProductIdsCount: safeIncludeProductIds.length
+                  }
+                }
+              };
+            }
+            throw e2;
+          }
+        }
+
+        return {
+          created: null,
+          failure: {
+            reason: "SALLA_VALIDATION_FAILED",
+            statusCode: 422,
+            details: redact(err.details),
+            payload: { type: "fixed", amount: { requested: discountAmount }, includeProductIdsCount: safeIncludeProductIds.length }
+          }
+        };
+      }
+      throw err;
+    }
+  }
+
+  return { created: null, failure: { reason: "SALLA_CONFLICT_RETRY_EXHAUSTED", statusCode: 409 } };
 }
 
 async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
@@ -344,9 +437,15 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const created = await createMcouponInSalla(config, merchant, merchantAccessToken, cartKey, totalBundleDiscount, includeProductIds, ttlHours);
+    const outcome = await createMcouponInSallaVerbose(config, merchant, merchantAccessToken, cartKey, totalBundleDiscount, includeProductIds, ttlHours);
+    const created = outcome?.created || null;
     if (!created) {
-      return { coupon: null, failure: { reason: "SALLA_COUPON_CREATE_FAILED" }, reused: false, action: "none" };
+      return {
+        coupon: null,
+        failure: outcome?.failure || { reason: "SALLA_COUPON_CREATE_FAILED" },
+        reused: false,
+        action: "none"
+      };
     }
     await invalidateIssuedCouponsForCartKey(merchant._id, cartKey, now);
     try {
