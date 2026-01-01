@@ -440,9 +440,14 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
 
+  // ✅ الحل: نمرر نسخة عميقة من السلة لكل باقة
   const preEvaluations = [];
+  
   for (const bundle of bundles) {
-    const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
+    // ✅ نسخة عميقة من السلة لكل باقة (Deep Clone)
+    const normalizedClone = JSON.parse(JSON.stringify(normalized));
+    
+    const applications = computeBundleApplications(bundle, normalizedClone, variantSnapshotById);
     const matched = applications.length > 0;
     const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
 
@@ -465,12 +470,10 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     }
 
     const triggerProductId = String(bundle?.triggerProductId || "").trim();
-    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
 
     preEvaluations.push({
       bundle,
       triggerProductId,
-      groupKey,
       matched,
       uses: applications.length,
       discountAmount,
@@ -480,21 +483,15 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  const bestByGroup = new Map();
-  for (const ev of preEvaluations) {
-    if (!ev.matched) continue;
-    const prev = bestByGroup.get(ev.groupKey);
-    if (!prev || ev.discountAmount > prev.discountAmount) bestByGroup.set(ev.groupKey, ev);
-  }
-
+  // ✅ تطبيق جميع الباقات المطابقة
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    const isBest = bestByGroup.get(ev.groupKey) === ev;
-    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    const applied = Boolean(ev.matched && ev.discountAmount > 0);
+    
     if (applied) {
       appliedBundles.push({
         bundleId: String(ev.bundle._id),
