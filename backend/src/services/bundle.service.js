@@ -569,7 +569,7 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     .sort((a, b) => b.discountAmount - a.discountAmount);
 
   // تطبيق كل باقة مطابقة مع تتبع الكميات المستخدمة
-  for (const { bundle, applications, matched, discountAmount: estimatedDiscount } of sortedBundles) {
+  for (const { bundle, matched, discountAmount: estimatedDiscount } of sortedBundles) {
     if (!matched || estimatedDiscount <= 0) {
       // إضافة الباقة للتقييم لكن غير مطبقة
       evaluations.push({
