@@ -122,14 +122,13 @@ function createBundleController(config) {
     const shouldCreateCoupon = Boolean(req.query?.createCoupon);
     if (!shouldCreateCoupon) return res.json({ ...result, validation: { missing: report.missing || [], inactive } });
 
-    const cartKey = String(req.body?.cartKey || "").trim() || undefined;
     const coupon = await issueOrReuseCouponForCart(
       config,
       req.merchant,
       req.merchantAccessToken,
       req.body.items,
       result,
-      { ttlHours: 24, cartKey }
+      { ttlHours: 24 }
     );
 
     return res.json({
@@ -178,14 +177,13 @@ function createBundleController(config) {
     );
     const report = await fetchVariantsSnapshotReport(config.salla, req.merchantAccessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
     const evaluation = await bundleService.evaluateBundles(req.merchant, req.body.items, report.snapshots);
-    const cartKey = String(req.body?.cartKey || "").trim() || undefined;
     const coupon = await issueOrReuseCouponForCart(
       config,
       req.merchant,
       req.merchantAccessToken,
       req.body.items,
       evaluation,
-      { ttlHours: 24, cartKey }
+      { ttlHours: 24 }
     );
 
     const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
