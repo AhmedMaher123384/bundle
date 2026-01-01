@@ -113,7 +113,12 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
 
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  let discountAmount = Number(Number(totalDiscount).toFixed(2));
+  const maxDiscountAmount = Number(options?.maxDiscountAmount);
+  if (Number.isFinite(maxDiscountAmount) && maxDiscountAmount > 0) {
+    discountAmount = Math.min(discountAmount, Number(maxDiscountAmount.toFixed(2)));
+  }
+  if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
@@ -222,7 +227,14 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null });
   }
 
-  const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  let discountAmount = Number(Number(totalDiscount).toFixed(2));
+  const maxDiscountAmount = Number(options?.maxDiscountAmount);
+  if (Number.isFinite(maxDiscountAmount) && maxDiscountAmount > 0) {
+    discountAmount = Math.min(discountAmount, Number(maxDiscountAmount.toFixed(2)));
+  }
+  if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+    return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null, maxDiscountAmount: maxDiscountAmount ?? null });
+  }
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {

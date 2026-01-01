@@ -8,6 +8,32 @@ function uniqStrings(values) {
   return Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || "").trim()).filter(Boolean)));
 }
 
+function resolveNumericMatchedProductIds(evaluation) {
+  const ids = evaluation?.applied?.matchedProductIds || [];
+  return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter((v) => /^\d+$/.test(v))));
+}
+
+function computeMaxDiscountAmountForEvaluation(items, variantSnapshotById, evaluation) {
+  const includeProductIds = resolveNumericMatchedProductIds(evaluation);
+  if (!includeProductIds.length) return null;
+  const productIdSet = new Set(includeProductIds);
+  let subtotal = 0;
+  for (const it of Array.isArray(items) ? items : []) {
+    const vid = String(it?.variantId || "").trim();
+    if (!vid) continue;
+    const snap = variantSnapshotById?.get ? variantSnapshotById.get(vid) : null;
+    const pid = String(snap?.productId || "").trim();
+    if (!pid || !productIdSet.has(pid)) continue;
+    const unit = snap?.price == null ? null : Number(snap.price);
+    const qty = Math.max(1, Math.floor(Number(it?.quantity || 1)));
+    if (unit == null || !Number.isFinite(unit) || unit < 0) continue;
+    subtotal += unit * qty;
+  }
+  if (!Number.isFinite(subtotal) || subtotal <= 0) return null;
+  const max = Math.max(0, Number((subtotal - 0.01).toFixed(2)));
+  return max > 0 ? max : null;
+}
+
 function componentsVariantIds(components) {
   return uniqStrings((Array.isArray(components) ? components : []).map((c) => c?.variantId));
 }
@@ -122,13 +148,14 @@ function createBundleController(config) {
     const shouldCreateCoupon = Boolean(req.query?.createCoupon);
     if (!shouldCreateCoupon) return res.json({ ...result, validation: { missing: report.missing || [], inactive } });
 
+    const maxDiscountAmount = computeMaxDiscountAmountForEvaluation(req.body.items, report.snapshots, result);
     const coupon = await issueOrReuseCouponForCart(
       config,
       req.merchant,
       req.merchantAccessToken,
       req.body.items,
       result,
-      { ttlHours: 24 }
+      { ttlHours: 24, maxDiscountAmount }
     );
 
     return res.json({
@@ -177,13 +204,14 @@ function createBundleController(config) {
     );
     const report = await fetchVariantsSnapshotReport(config.salla, req.merchantAccessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
     const evaluation = await bundleService.evaluateBundles(req.merchant, req.body.items, report.snapshots);
+    const maxDiscountAmount = computeMaxDiscountAmountForEvaluation(req.body.items, report.snapshots, evaluation);
     const coupon = await issueOrReuseCouponForCart(
       config,
       req.merchant,
       req.merchantAccessToken,
       req.body.items,
       evaluation,
-      { ttlHours: 24 }
+      { ttlHours: 24, maxDiscountAmount }
     );
 
     const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
