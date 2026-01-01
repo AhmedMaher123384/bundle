@@ -351,116 +351,6 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   return applications;
 }
 
-function computeBundleApplicationsWithAvailableQty(bundle, normalizedCart, variantSnapshotById, availableQtyByVariant) {
-  const components = normalizeComponents(bundle?.components);
-  const rules = normalizeRules(bundle?.rules);
-  if (!components.length) return [];
-
-  const totalQty = (Array.isArray(normalizedCart) ? normalizedCart : []).reduce((acc, it) => acc + Math.max(0, Math.floor(Number(it?.quantity || 0))), 0);
-  if (totalQty < rules.eligibility.minCartQty) return [];
-
-  const cartLines = buildCartVariantLines(normalizedCart, variantSnapshotById);
-  const cartLineByVariantId = new Map(cartLines.map((l) => [String(l.variantId), l]));
-  const cartLinesByProductId = new Map();
-  for (const l of cartLines) {
-    const pid = String(l?.productId || "").trim();
-    if (!pid) continue;
-    const arr = cartLinesByProductId.get(pid) || [];
-    arr.push(l);
-    cartLinesByProductId.set(pid, arr);
-  }
-
-  const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
-  const applications = [];
-  const localAvailableQty = new Map(availableQtyByVariant);
-
-  if (!rules?.tiers?.length) {
-    const groupMap = buildGroupMapForComponents(components, null);
-    for (let use = 0; use < maxUses; use += 1) {
-      const availableForUse = new Map(localAvailableQty);
-      const selectionLines = computeSelectionForUse(groupMap, rules, availableForUse, cartLineByVariantId, cartLinesByProductId);
-      if (!selectionLines || !selectionLines.length) break;
-
-      localAvailableQty.clear();
-      for (const [k, v] of availableForUse.entries()) localAvailableQty.set(k, v);
-
-      const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
-      const discountAmount = calcDiscountAmount(rules, subtotal);
-
-      const matchedVariants = Array.from(new Set(selectionLines.map((s) => String(s.variantId)).filter(Boolean)));
-      const matchedProductIds = Array.from(new Set(selectionLines.map((s) => String(s.productId)).filter(Boolean)));
-
-      applications.push({
-        appliedRule: { type: rules.type, value: rules.value, minQty: rules.eligibility.minCartQty },
-        selection: selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
-        matchedVariants,
-        matchedProductIds,
-        subtotal,
-        discountAmount
-      });
-    }
-    return applications;
-  }
-
-  const baseVariantId = resolveBaseVariantId(bundle, components);
-  for (let use = 0; use < maxUses; use += 1) {
-    let best = null;
-
-    const candidates = [
-      { kind: "base", minQty: rules.eligibility.minCartQty, type: rules.type, value: rules.value },
-      ...(Array.isArray(rules.tiers) ? rules.tiers : []).map((t) => ({ kind: "tier", minQty: t.minQty, type: t.type, value: t.value }))
-    ]
-      .filter((c) => c && c.type && Number.isFinite(Number(c.value)) && Number(c.value) >= 0)
-      .sort((a, b) => Number(a.minQty) - Number(b.minQty));
-
-    for (const cand of candidates) {
-      const availableForUse = new Map(localAvailableQty);
-      const overrides = cand.kind === "tier" ? new Map() : null;
-      if (overrides && baseVariantId) overrides.set(String(baseVariantId), cand.minQty);
-      const groupMap = buildGroupMapForComponents(components, overrides);
-
-      const candRules = {
-        ...rules,
-        type: cand.type,
-        value: cand.value,
-        eligibility: { ...rules.eligibility, minCartQty: Math.max(1, Math.floor(Number(cand.minQty || 1))) }
-      };
-
-      const selectionLines = computeSelectionForUse(groupMap, candRules, availableForUse, cartLineByVariantId, cartLinesByProductId);
-      if (!selectionLines || !selectionLines.length) continue;
-
-      const subtotal = selectionLines.reduce((acc, s) => acc + Number(s.unitPrice) * Number(s.quantity), 0);
-      const discountAmount = calcDiscountAmount(candRules, subtotal);
-
-      if (!best || discountAmount > best.discountAmount) {
-        best = { cand, selectionLines, availableForUse, subtotal, discountAmount };
-      }
-    }
-
-    if (!best) break;
-
-    localAvailableQty.clear();
-    for (const [k, v] of best.availableForUse.entries()) localAvailableQty.set(k, v);
-
-    const matchedVariants = Array.from(new Set(best.selectionLines.map((s) => String(s.variantId)).filter(Boolean)));
-    const matchedProductIds = Array.from(new Set(best.selectionLines.map((s) => String(s.productId)).filter(Boolean)));
-
-    const app = {
-      appliedRule: { type: best.cand.type, value: best.cand.value, minQty: best.cand.minQty },
-      selection: best.selectionLines.map((s) => ({ variantId: String(s.variantId), quantity: s.quantity, productId: String(s.productId) })),
-      matchedVariants,
-      matchedProductIds,
-      subtotal: best.subtotal,
-      discountAmount: best.discountAmount
-    };
-    if (best.cand && best.cand.kind === "tier") app.tier = { minQty: best.cand.minQty, type: best.cand.type, value: best.cand.value };
-    applications.push(app);
-  }
-
-  return applications;
-}
-
-
 async function listBundles(storeId, filters) {
   const s = String(storeId || "").trim();
   if (!s) throw new ApiError(400, "Invalid storeId", { code: "INVALID_STORE_ID" });
@@ -550,69 +440,18 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
 
   const cartSnapshotHash = sha256Hex(JSON.stringify(normalized));
 
-  // إنشاء نسخة من الكميات المتاحة لتتبعها عبر جميع الباقات
-  const globalAvailableQty = buildAvailableQtyByVariant(normalized);
+  const preEvaluations = [];
+  for (const bundle of bundles) {
+    const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
+    const matched = applications.length > 0;
+    const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
 
-  const evaluations = [];
-  const appliedBundles = [];
-  let totalDiscount = 0;
-  const appliedProductIds = new Set();
-
-  // ترتيب الباقات حسب أعلى خصم أولاً لضمان تطبيق الأكثر فائدة
-  const sortedBundles = bundles
-    .map((bundle) => {
-      const applications = computeBundleApplications(bundle, normalized, variantSnapshotById);
-      const matched = applications.length > 0;
-      const discountAmount = applications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
-      return { bundle, applications, matched, discountAmount };
-    })
-    .sort((a, b) => b.discountAmount - a.discountAmount);
-
-  // تطبيق كل باقة مطابقة مع تتبع الكميات المستخدمة
-  for (const { bundle, applications, matched, discountAmount: estimatedDiscount } of sortedBundles) {
-    if (!matched || estimatedDiscount <= 0) {
-      // إضافة الباقة للتقييم لكن غير مطبقة
-      evaluations.push({
-        bundle,
-        matched,
-        applied: false,
-        uses: 0,
-        discountAmount: 0,
-        matchedVariants: [],
-        matchedProductIds: []
-      });
-      continue;
-    }
-
-    // إعادة حساب الباقة بناءً على الكميات المتاحة الحالية
-    const actualApplications = computeBundleApplicationsWithAvailableQty(
-      bundle,
-      normalized,
-      variantSnapshotById,
-      globalAvailableQty
-    );
-
-    if (!actualApplications.length) {
-      // الباقة لم تعد قابلة للتطبيق بسبب نقص الكميات
-      evaluations.push({
-        bundle,
-        matched: false,
-        applied: false,
-        uses: 0,
-        discountAmount: 0,
-        matchedVariants: [],
-        matchedProductIds: []
-      });
-      continue;
-    }
-
-    const actualDiscount = actualApplications.reduce((acc, a) => acc + Number(a.discountAmount || 0), 0);
-    const matchedVariants = Array.from(new Set(actualApplications.flatMap((a) => a.matchedVariants || []))).filter(Boolean);
-    const matchedProductIds = Array.from(new Set(actualApplications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
+    const matchedVariants = Array.from(new Set(applications.flatMap((a) => a.matchedVariants || []))).filter(Boolean);
+    const matchedProductIds = Array.from(new Set(applications.flatMap((a) => a.matchedProductIds || []))).filter(Boolean);
 
     const appliedRules = [];
     const appliedRuleKeys = new Set();
-    for (const app of actualApplications) {
+    for (const app of applications) {
       const r = app?.appliedRule;
       if (!r) continue;
       const type = String(r.type || "").trim();
@@ -625,46 +464,66 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
       appliedRules.push({ type, value, minQty });
     }
 
-    // خصم الكميات المستخدمة من الكميات المتاحة العامة
-    for (const app of actualApplications) {
-      for (const item of Array.isArray(app?.selection) ? app.selection : []) {
-        const variantId = String(item?.variantId || "").trim();
-        const qty = Math.floor(Number(item?.quantity || 0));
-        if (!variantId || qty <= 0) continue;
-        const current = Math.max(0, Math.floor(Number(globalAvailableQty.get(variantId) || 0)));
-        globalAvailableQty.set(variantId, Math.max(0, current - qty));
-      }
-    }
+    const triggerProductId = String(bundle?.triggerProductId || "").trim();
+    const groupKey = triggerProductId ? `trigger:${triggerProductId}` : `bundle:${String(bundle?._id)}`;
 
-    // تطبيق الباقة
-    appliedBundles.push({
-      bundleId: String(bundle._id),
-      uses: actualApplications.length,
-      discountAmount: Number(actualDiscount.toFixed(2)),
+    preEvaluations.push({
+      bundle,
+      triggerProductId,
+      groupKey,
+      matched,
+      uses: applications.length,
+      discountAmount,
       matchedVariants,
       matchedProductIds,
       appliedRules
     });
+  }
 
-    totalDiscount += actualDiscount;
-    for (const pid of matchedProductIds) appliedProductIds.add(pid);
+  const bestByGroup = new Map();
+  for (const ev of preEvaluations) {
+    if (!ev.matched) continue;
+    const prev = bestByGroup.get(ev.groupKey);
+    if (!prev || ev.discountAmount > prev.discountAmount) bestByGroup.set(ev.groupKey, ev);
+  }
 
-    await Log.create({
-      merchantId: merchant._id,
-      bundleId: bundle._id,
-      matchedVariants,
-      cartSnapshotHash,
-      createdAt: new Date()
-    });
+  const evaluations = [];
+  const appliedBundles = [];
+  let totalDiscount = 0;
+  const appliedProductIds = new Set();
+
+  for (const ev of preEvaluations) {
+    const isBest = bestByGroup.get(ev.groupKey) === ev;
+    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    if (applied) {
+      appliedBundles.push({
+        bundleId: String(ev.bundle._id),
+        uses: ev.uses,
+        discountAmount: Number(ev.discountAmount.toFixed(2)),
+        matchedVariants: ev.matchedVariants,
+        matchedProductIds: ev.matchedProductIds,
+        appliedRules: ev.appliedRules
+      });
+      totalDiscount += ev.discountAmount;
+      for (const pid of ev.matchedProductIds) appliedProductIds.add(pid);
+
+      await Log.create({
+        merchantId: merchant._id,
+        bundleId: ev.bundle._id,
+        matchedVariants: ev.matchedVariants,
+        cartSnapshotHash,
+        createdAt: new Date()
+      });
+    }
 
     evaluations.push({
-      bundle,
-      matched: true,
-      applied: true,
-      uses: actualApplications.length,
-      discountAmount: Number(actualDiscount.toFixed(2)),
-      matchedVariants,
-      matchedProductIds
+      bundle: ev.bundle,
+      matched: ev.matched,
+      applied,
+      uses: ev.uses,
+      discountAmount: applied ? Number(ev.discountAmount.toFixed(2)) : 0,
+      matchedVariants: ev.matchedVariants,
+      matchedProductIds: ev.matchedProductIds
     });
   }
 
