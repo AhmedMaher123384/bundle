@@ -2374,6 +2374,10 @@ async function applyBundleSelection(bundle) {
   const bid = String((bundle && bundle.id) || "").trim();
   const trigger = String((bundle && bundle.triggerProductId) || "").trim();
   const kind = String((bundle && bundle.kind) || "").trim();
+  var dbg = false;
+  try {
+    dbg = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
+  } catch (eDbg0) {}
 
   if (!bid) return;
   if (!trigger && kind !== "products_no_discount" && kind !== "post_add_upsell") return;
@@ -2523,12 +2527,8 @@ async function applyBundleSelection(bundle) {
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
-      var dbgReq = false;
-      try {
-        dbgReq = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
-      } catch (xDbgReq) {}
       var extraReq = "";
-      if (dbgReq) {
+      if (dbg) {
         try {
           extraReq = safeDebugStringify(
             {
@@ -2684,12 +2684,8 @@ async function applyBundleSelection(bundle) {
                       return;
                     }
 
-                    var dbgIssue = false;
-                    try {
-                      dbgIssue = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
-                    } catch (xDbgIssue) {}
                     var extraIssue = "";
-                    if (dbgIssue) {
+                    if (dbg) {
                       try {
                         extraIssue = safeDebugStringify(
                           {
@@ -2704,9 +2700,8 @@ async function applyBundleSelection(bundle) {
                       } catch (xExtraIssue) {}
                     }
 
-                    messageByBundleId[bid] = extraIssue
-                      ? "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم | " + extraIssue
-                      : "تمت إضافة الباقة للسلة • افتح السلة لتطبيق الخصم";
+                    var baseIssue = "تمت إضافة الباقة للسلة • افتح السلة لتطبيق الخصم";
+                    messageByBundleId[bid] = extraIssue ? baseIssue + " | " + extraIssue : baseIssue;
                     renderProductBanners(lastBundles || []);
                   } catch (e03100b5) {
                     messageByBundleId[bid] = "تمت إضافة الباقة للسلة • افتح السلة لتطبيق الخصم";
@@ -2719,13 +2714,9 @@ async function applyBundleSelection(bundle) {
             }, 2200);
           } catch (e03100b8) {}
         } else {
-          var dbgIssue2 = false;
-          try {
-            dbgIssue2 = Boolean((g && g.BundleApp && g.BundleApp.__verboseErrors) || (typeof debug !== "undefined" && debug));
-          } catch (xDbgIssue2) {}
-          if (dbgIssue2) {
+          if (dbg) {
             try {
-              messageByBundleId[bid] = "تمت إضافة الباقة للسلة لكن فشل كوبون الخصم | " + safeDebugStringify(
+              messageByBundleId[bid] = "تمت إضافة الباقة للسلة • افتح السلة لتطبيق الخصم | " + safeDebugStringify(
                 {
                   couponIssueDetails: res.couponIssueDetails || null,
                   applied: res.applied || null,
