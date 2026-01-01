@@ -78,29 +78,6 @@ function extractCartItems(payload) {
     .filter((it) => it.variantId && Number.isFinite(it.quantity) && it.quantity > 0);
 }
 
-function extractCartKey(payload) {
-  const candidates = [
-    payload?.data?.cart?.id,
-    payload?.cart?.id,
-    payload?.data?.cart?.token,
-    payload?.cart?.token,
-    payload?.data?.cart?.uuid,
-    payload?.cart?.uuid,
-    payload?.data?.cart?.key,
-    payload?.cart?.key,
-    payload?.data?.cart?.hash,
-    payload?.cart?.hash,
-    payload?.data?.cart_id,
-    payload?.cart_id
-  ];
-  for (const c of candidates) {
-    const v = String(c || "").trim();
-    if (!v) continue;
-    return `wh:${v}`;
-  }
-  return null;
-}
-
 function extractOrderDiscountAmount(payload) {
   const candidates = [
     payload?.data?.order?.discount?.amount,
@@ -255,11 +232,6 @@ function createWebhookController(config) {
           return res.status(200).json({ ok: true });
         }
 
-        const cartKey = extractCartKey(payload);
-        if (!cartKey) {
-          return res.status(200).json({ ok: true });
-        }
-
         const activeTriggerProductIds = await Bundle.distinct("triggerProductId", {
           storeId: String(merchant.merchantId || "").trim(),
           status: "active",
@@ -305,7 +277,7 @@ function createWebhookController(config) {
         }
 
         const evaluation = await evaluateBundles(merchant, items, snapshots);
-        const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey });
+        const coupon = await issueOrReuseCouponForCart(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24 });
 
         const hasDiscount = Boolean(coupon && Number(evaluation?.applied?.totalDiscount || 0) > 0);
         if (hasDiscount) {
