@@ -77,19 +77,6 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
-async function requestCartBanner(items) {
-  const payload = {
-    items: Array.isArray(items) ? items : []
-  };
-  const u = buildUrl("/api/proxy/cart/banner", {});
-  if (!u) return null;
-  return fetchJson(u, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -1001,38 +988,6 @@ async function readCartItems() {
   }
 
   return [];
-}
-
-function normalizeCartItemsForBanner(cartItems) {
-  try {
-    const map = {};
-    for (let i = 0; i < (cartItems || []).length; i += 1) {
-      const it = cartItems[i] || {};
-      const v = String(
-        (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || ""
-      ).trim();
-      if (!v) continue;
-      const q = Math.max(
-        1,
-        Math.floor(
-          Number(
-            (it && (it.quantity || it.qty || (it.pivot && it.pivot.quantity) || (it.meta && it.meta.quantity))) || 1
-          )
-        )
-      );
-      map[v] = (Number(map[v]) || 0) + q;
-    }
-    const out = [];
-    for (const k in map) {
-      if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
-      const q = Math.max(1, Math.floor(Number(map[k] || 1)));
-      if (!k || !q) continue;
-      out.push({ variantId: String(k), quantity: q });
-    }
-    return out;
-  } catch (e) {
-    return [];
-  }
 }
 
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
@@ -2332,25 +2287,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      function sleep(ms) {
-        return new Promise(function (r) {
-          setTimeout(r, Math.max(0, Number(ms || 0)));
-        });
-      }
-
-      let payload = [];
-      for (let pass = 0; pass < 4; pass += 1) {
-        const cartItems = await readCartItems();
-        payload = normalizeCartItemsForBanner(cartItems);
-        if (payload && payload.length) break;
-        await sleep(450 * (pass + 1));
-      }
-
-      if (payload && payload.length) {
-        res = await requestCartBanner(payload);
-      } else {
-        res = await requestApplyBundle(bid, items);
-      }
+      res = await requestApplyBundle(bid, items);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
