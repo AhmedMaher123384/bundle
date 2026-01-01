@@ -1085,7 +1085,7 @@ async function requestCartBannerFromLiveCart(maxAttempts) {
       var raw = await readCartItems();
       var items = normalizeCartItemsForBackend(raw);
       if (!items || !items.length) {
-        await sleep(350);
+        await sleep(500 + i * 350);
         continue;
       }
       return await requestCartBanner(items);
@@ -1110,7 +1110,7 @@ async function syncMcouponForCart(reason) {
     }
     var st = (g.BundleApp && g.BundleApp._mcouponSync) || null;
     if (!st) {
-      st = { inFlight: false, lastAt: 0 };
+      st = { inFlight: false, lastAt: 0, emptyCount: 0, emptySinceAt: 0 };
       try {
         g.BundleApp._mcouponSync = st;
       } catch (e1) {}
@@ -1125,6 +1125,12 @@ async function syncMcouponForCart(reason) {
       var items = normalizeCartItemsForBackend(raw);
       if (!items || !items.length) {
         try {
+          st.emptyCount = Math.max(0, Math.floor(Number(st.emptyCount || 0))) + 1;
+          if (!Number(st.emptySinceAt || 0)) st.emptySinceAt = now;
+        } catch (e1a) {}
+        var emptySince = Number(st.emptySinceAt || 0) || now;
+        if (st.emptyCount < 3 && now - emptySince < 6000) return null;
+        try {
           clearCartKey();
         } catch (e2) {}
         try {
@@ -1132,6 +1138,10 @@ async function syncMcouponForCart(reason) {
         } catch (e3) {}
         return null;
       }
+      try {
+        st.emptyCount = 0;
+        st.emptySinceAt = 0;
+      } catch (e1b) {}
       var res = await requestCartBanner(items);
       if (!res || !res.ok) return null;
       var action = String(res.couponAction || "").trim();
@@ -2509,7 +2519,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      res = await requestCartBannerFromLiveCart(5);
+      res = await requestCartBannerFromLiveCart(8);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
@@ -2539,6 +2549,40 @@ async function applyBundleSelection(bundle) {
       try {
         renderProductBanners(lastBundles || []);
       } catch (e0310) {}
+      return;
+    }
+
+    if (!res) {
+      messageByBundleId[bid] = "تمت إضافة الباقة للسلة • جاري تجهيز الخصم";
+      try {
+        renderProductBanners(lastBundles || []);
+      } catch (e03100n) {}
+      try {
+        setTimeout(function () {
+          try {
+            (async function () {
+              try {
+                var res2 = await requestCartBannerFromLiveCart(8);
+                if (res2 && res2.ok) {
+                  var cc2 = String(res2.couponCode || "").trim();
+                  if (cc2) {
+                    try {
+                      g.BundleApp._couponAutoApplyUntil = Date.now() + 90000;
+                    } catch (e03100m2) {}
+                    try {
+                      savePendingCoupon(trigger, { code: cc2, ts: Date.now() });
+                    } catch (e03100m3) {}
+                    try {
+                      applyPendingCouponForCart();
+                    } catch (e03100m4) {}
+                  }
+                }
+              } catch (e03100m5) {}
+            })();
+          } catch (e03100m) {}
+        }, 2400);
+      } catch (e03100l) {}
+      applying = false;
       return;
     }
 
