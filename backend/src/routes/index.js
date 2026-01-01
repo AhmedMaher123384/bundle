@@ -106,7 +106,7 @@ function createApiRouter(config) {
       subtotal += unit * qty;
     }
     if (!Number.isFinite(subtotal) || subtotal <= 0) return null;
-    const max = Math.max(0, Number((subtotal - 0.01).toFixed(2)));
+    const max = Math.max(0, Number(subtotal.toFixed(2)));
     return max > 0 ? max : null;
   }
 

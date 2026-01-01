@@ -3,6 +3,8 @@ const { createCoupon } = require("./sallaApi.service");
 const { ApiError } = require("../utils/apiError");
 const { sha256Hex } = require("../utils/hash");
 
+const DEFAULT_CURRENCY = "SAR";
+
 function normalizeCartItems(items) {
   const map = new Map();
   for (const it of Array.isArray(items) ? items : []) {
@@ -152,7 +154,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+    const fixedPayload = { ...basePayload, code, type: "fixed", amount: { amount: discountAmount, currency: DEFAULT_CURRENCY } };
 
     let sallaCouponId = null;
     try {
@@ -167,7 +169,10 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
         const floored = Math.floor(discountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
           try {
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, {
+              ...fixedPayload,
+              amount: { amount: floored, currency: DEFAULT_CURRENCY }
+            });
             sallaCouponId = createdCouponResponse?.data?.id ?? null;
           } catch (e2) {
             if (e2 instanceof ApiError && e2.statusCode === 409) continue;
@@ -273,7 +278,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+    const fixedPayload = { ...basePayload, code, type: "fixed", amount: { amount: discountAmount, currency: DEFAULT_CURRENCY } };
 
     let sallaCouponId = null;
     const triedPayloads = [];
@@ -291,8 +296,9 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
         const floored = Math.floor(discountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
           try {
-            triedPayloads.push({ ...fixedPayload, amount: floored });
-            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
+            const flooredPayload = { ...fixedPayload, amount: { amount: floored, currency: DEFAULT_CURRENCY } };
+            triedPayloads.push(flooredPayload);
+            const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, flooredPayload);
             sallaCouponId = createdCouponResponse?.data?.id ?? null;
           } catch (e2) {
             lastCreateError = e2;

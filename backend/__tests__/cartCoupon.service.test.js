@@ -65,6 +65,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
     expect(payload && payload.include_product_ids).toEqual(["101", "202"]);
+    expect(payload && payload.amount).toEqual({ amount: 10, currency: "SAR" });
     expect(CartCoupon.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -102,6 +103,7 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(record.status).toBe("issued");
     const payload = createCoupon.mock.calls[0]?.[2] || null;
     expect(payload && payload.type).toBe("fixed");
+    expect(payload && payload.amount).toEqual({ amount: 25.5, currency: "SAR" });
   });
 
   test("reuses existing fixed coupon when scope and amount match", async () => {
@@ -169,5 +171,6 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(createCoupon).toHaveBeenCalledTimes(1);
     const payload = createCoupon.mock.calls[0]?.[2] || null;
     expect(payload && payload.type).toBe("fixed");
+    expect(payload && payload.amount).toEqual({ amount: 10, currency: "SAR" });
   });
 });
