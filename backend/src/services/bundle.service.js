@@ -551,7 +551,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     }
   };
 }
-
 function evaluateBundleDraft(bundleLike, cartItems, variantSnapshotById) {
   const normalized = normalizeCartItems(cartItems);
   const applications = computeBundleApplications(bundleLike, normalized, variantSnapshotById);
