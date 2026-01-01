@@ -32,7 +32,57 @@ function getBackendOrigin() {
   return "";
 }
 
-function buildUrl(path, params) {
+function randomCartKey() {
+  try {
+    var n = 20;
+    var a = new Uint8Array(n);
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+      window.crypto.getRandomValues(a);
+      var s = "c";
+      for (var i = 0; i < a.length; i++) {
+        s += (a[i] % 16).toString(16);
+      }
+      return s;
+    }
+  } catch (e0) {}
+  try {
+    var s2 = "c";
+    for (var j = 0; j < 22; j++) s2 += Math.floor(Math.random() * 16).toString(16);
+    return s2;
+  } catch (e1) {}
+  return "c" + String(Date.now()) + String(Math.floor(Math.random() * 1e9));
+}
+
+function cartKeyStorageKey() {
+  return "bundle_app_cart_key:" + String(merchantId || "");
+}
+
+function getCartKey() {
+  try {
+    var k = cartKeyStorageKey();
+    var v = null;
+    try {
+      v = localStorage.getItem(k);
+    } catch (e0) {}
+    v = String(v || "").trim();
+    if (v && v.length >= 8) return v;
+    var n = randomCartKey();
+    try {
+      localStorage.setItem(k, n);
+    } catch (e1) {}
+    return n;
+  } catch (e2) {
+    return randomCartKey();
+  }
+}
+
+function clearCartKey() {
+  try {
+    localStorage.removeItem(cartKeyStorageKey());
+  } catch (e) {}
+}
+
+function buildUrl(path, params, opts) {
   const origin = getBackendOrigin();
   if (!origin) return null;
   const u = new URL(origin + path);
@@ -44,6 +94,9 @@ function buildUrl(path, params) {
   }
   u.searchParams.set("merchantId", merchantId);
   u.searchParams.set("token", token);
+  try {
+    if (opts && opts.cartKey === true) u.searchParams.set("cartKey", getCartKey());
+  } catch (e) {}
   return u.toString();
 }
 
@@ -68,7 +121,7 @@ async function requestApplyBundle(bundleId, items) {
     bundleId: String(bundleId || ""),
     items: Array.isArray(items) ? items : []
   };
-  const u = buildUrl("/api/proxy/bundles/apply", {});
+  const u = buildUrl("/api/proxy/bundles/apply", {}, { cartKey: true });
   if (!u) return null;
   return fetchJson(u, {
     method: "POST",
@@ -78,10 +131,8 @@ async function requestApplyBundle(bundleId, items) {
 }
 
 async function requestCartBanner(items) {
-  const payload = {
-    items: Array.isArray(items) ? items : []
-  };
-  const u = buildUrl("/api/proxy/cart/banner", {});
+  const payload = { items: Array.isArray(items) ? items : [] };
+  const u = buildUrl("/api/proxy/cart/banner", {}, { cartKey: true });
   if (!u) return null;
   return fetchJson(u, {
     method: "POST",
@@ -1002,6 +1053,164 @@ async function readCartItems() {
 
   return [];
 }
+
+function normalizeCartItemsForBackend(rawItems) {
+  const out = [];
+  const list = Array.isArray(rawItems) ? rawItems : [];
+  for (let i = 0; i < list.length; i += 1) {
+    const it = list[i] || {};
+    const vid = String((it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id) || "").trim();
+    const pid = String(
+      (it.product_id || it.productId || (it.product && (it.product.id || it.product.product_id || it.product.productId))) || ""
+    ).trim();
+    const variantId = vid || (pid ? "product:" + pid : "");
+    const qty = Math.max(1, Math.floor(Number(it.quantity || it.qty || it.amount || 0)));
+    if (!variantId || !Number.isFinite(qty) || qty <= 0) continue;
+    out.push({ variantId: variantId, quantity: qty });
+  }
+  return out;
+}
+
+function sleep(ms) {
+  return new Promise(function (r) {
+    setTimeout(r, Math.max(0, Number(ms || 0)));
+  });
+}
+
+async function requestCartBannerFromLiveCart(maxAttempts) {
+  var tries = Math.max(1, Math.floor(Number(maxAttempts || 4)));
+  var lastErr = null;
+  for (var i = 0; i < tries; i++) {
+    try {
+      var raw = await readCartItems();
+      var items = normalizeCartItemsForBackend(raw);
+      if (!items || !items.length) {
+        await sleep(350);
+        continue;
+      }
+      return await requestCartBanner(items);
+    } catch (e) {
+      lastErr = e;
+      await sleep(450);
+    }
+  }
+  if (lastErr) throw lastErr;
+  return null;
+}
+
+async function syncMcouponForCart(reason) {
+  try {
+    if (typeof isCartLikePage === "function" && !isCartLikePage()) return null;
+    if (!g) {
+      try {
+        g = globalThis;
+      } catch (e0) {
+        g = window;
+      }
+    }
+    var st = (g.BundleApp && g.BundleApp._mcouponSync) || null;
+    if (!st) {
+      st = { inFlight: false, lastAt: 0 };
+      try {
+        g.BundleApp._mcouponSync = st;
+      } catch (e1) {}
+    }
+    if (st.inFlight) return null;
+    var now = Date.now();
+    if (now - Number(st.lastAt || 0) < 1200) return null;
+    st.lastAt = now;
+    st.inFlight = true;
+    try {
+      var raw = await readCartItems();
+      var items = normalizeCartItemsForBackend(raw);
+      if (!items || !items.length) {
+        try {
+          clearCartKey();
+        } catch (e2) {}
+        try {
+          await tryClearCoupon();
+        } catch (e3) {}
+        return null;
+      }
+      var res = await requestCartBanner(items);
+      if (!res || !res.ok) return null;
+      var action = String(res.couponAction || "").trim();
+      if (action === "clear") {
+        try {
+          await tryClearCoupon();
+        } catch (e4) {}
+        return res;
+      }
+      var code = String(res.couponCode || "").trim();
+      if (code) {
+        try {
+          if (g && g.BundleApp) g.BundleApp._couponAutoApplyUntil = Date.now() + 90000;
+        } catch (e5) {}
+        try {
+          savePendingCoupon("*", { code: code, ts: Date.now() });
+        } catch (e6) {}
+        try {
+          setTimeout(function () {
+            try {
+              applyPendingCouponForCart();
+            } catch (e7) {}
+          }, 800);
+        } catch (e8) {}
+      }
+      return res;
+    } finally {
+      st.inFlight = false;
+    }
+  } catch (e) {
+    return null;
+  }
+}
+
+function startMcouponCartSync() {
+  try {
+    if (!g) {
+      try {
+        g = globalThis;
+      } catch (e0) {
+        g = window;
+      }
+    }
+    if (!g || !g.BundleApp) return;
+    if (g.BundleApp._mcouponCartSyncStarted) return;
+    g.BundleApp._mcouponCartSyncStarted = true;
+    var onEvt = function () {
+      try {
+        syncMcouponForCart("event");
+      } catch (e1) {}
+    };
+    try {
+      window.addEventListener("focus", onEvt);
+      window.addEventListener("popstate", onEvt);
+      window.addEventListener("hashchange", onEvt);
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") onEvt();
+      });
+    } catch (e2) {}
+    try {
+      setInterval(function () {
+        try {
+          syncMcouponForCart("interval");
+        } catch (e3) {}
+      }, 9000);
+    } catch (e4) {}
+    try {
+      setTimeout(function () {
+        try {
+          syncMcouponForCart("init");
+        } catch (e5) {}
+      }, 1800);
+    } catch (e6) {}
+  } catch (e) {}
+}
+
+try {
+  startMcouponCartSync();
+} catch (e) {}
 
 function cartItemMatchesTrigger(it, triggerProductId, triggerVariantId) {
   try {
@@ -2300,72 +2509,7 @@ async function applyBundleSelection(bundle) {
 
     let res = null;
     try {
-      function extractCartVariantId(it) {
-        return String(
-          (it && (it.variant_id || it.variantId || it.sku_id || it.skuId || (it.variant && it.variant.id) || it.id)) || ""
-        ).trim();
-      }
-
-      function extractCartQuantity(it) {
-        const q = Number((it && (it.quantity || it.qty || (it.pivot && it.pivot.quantity))) || 0);
-        return Number.isFinite(q) ? Math.floor(q) : 0;
-      }
-
-      function normalizeCartItemsForBackend(cartItems) {
-        const byVariant = {};
-        for (let i = 0; i < (cartItems || []).length; i += 1) {
-          const it = cartItems[i] || {};
-          const vid = extractCartVariantId(it);
-          const qty = extractCartQuantity(it);
-          if (!vid || !qty || qty <= 0) continue;
-          byVariant[vid] = (byVariant[vid] || 0) + qty;
-        }
-        const out = [];
-        const keys = Object.keys(byVariant);
-        keys.sort();
-        for (let j = 0; j < keys.length; j += 1) {
-          const k = keys[j];
-          const q = byVariant[k];
-          if (!k || !q || q <= 0) continue;
-          out.push({ variantId: k, quantity: q });
-        }
-        return out;
-      }
-
-      function hasAllAddedItems(cartBackendItems, addedItems) {
-        try {
-          const set = new Set((cartBackendItems || []).map((x) => String((x && x.variantId) || "").trim()).filter(Boolean));
-          for (let i = 0; i < (addedItems || []).length; i += 1) {
-            const v = String((addedItems[i] && addedItems[i].variantId) || "").trim();
-            if (v && !set.has(v)) return false;
-          }
-          return true;
-        } catch (e) {
-          return false;
-        }
-      }
-
-      function sleep(ms) {
-        return new Promise(function (r) {
-          setTimeout(r, Math.max(0, Number(ms || 0)));
-        });
-      }
-
-      let cartBackendItems = [];
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        let cartItemsRaw = [];
-        try {
-          cartItemsRaw = await readCartItems();
-        } catch (eCart0) {
-          cartItemsRaw = [];
-        }
-        cartBackendItems = normalizeCartItemsForBackend(cartItemsRaw);
-        if (cartBackendItems.length && hasAllAddedItems(cartBackendItems, items)) break;
-        if (attempt < 4) await sleep(350 + attempt * 250);
-      }
-
-      const payloadItems = cartBackendItems && cartBackendItems.length ? cartBackendItems : items;
-      res = await requestCartBanner(payloadItems);
+      res = await requestCartBannerFromLiveCart(5);
     } catch (reqErr) {
       markStoreClosed(reqErr);
       const hmReq = humanizeCartError(reqErr);
