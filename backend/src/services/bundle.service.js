@@ -480,21 +480,16 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  const bestByGroup = new Map();
-  for (const ev of preEvaluations) {
-    if (!ev.matched) continue;
-    const prev = bestByGroup.get(ev.groupKey);
-    if (!prev || ev.discountAmount > prev.discountAmount) bestByGroup.set(ev.groupKey, ev);
-  }
-
+  // ✅ التعديل الرئيسي: تطبيق جميع الباقات المطابقة بدلاً من اختيار الأفضل فقط
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    const isBest = bestByGroup.get(ev.groupKey) === ev;
-    const applied = Boolean(isBest && ev.matched && ev.discountAmount > 0);
+    // تطبيق أي باقة محققة للشروط ولها خصم (بدون مقارنة مع باقات أخرى)
+    const applied = Boolean(ev.matched && ev.discountAmount > 0);
+    
     if (applied) {
       appliedBundles.push({
         bundleId: String(ev.bundle._id),
@@ -554,7 +549,6 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     }
   };
 }
-
 function evaluateBundleDraft(bundleLike, cartItems, variantSnapshotById) {
   const normalized = normalizeCartItems(cartItems);
   const applications = computeBundleApplications(bundleLike, normalized, variantSnapshotById);
