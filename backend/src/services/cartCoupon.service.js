@@ -347,7 +347,12 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     // Skip the update/reuse path and go directly to create new offer
   } else if (existing && existingType === "special_offer_fixed_amount" && existingOfferId) {
     if (amountsMatch(existing?.discountAmount, desiredDiscountAmount) && sameStringIdSet(existing?.includeProductIds, desiredIncludeProductIds)) {
-
+      // Update the message in Salla even when reusing to ensure it shows the correct amount
+      const messageUpdatePayload = {
+        message: buildSpecialOfferMessage(desiredDiscountAmount)
+      };
+      await updateSpecialOffer(config.salla, merchantAccessToken, existingOfferId, messageUpdatePayload).catch(() => undefined);
+      
       existing.appliedBundleIds = desiredAppliedBundleIds;
       existing.bundlesSummary = desiredBundlesSummary;
       existing.lastSeenAt = new Date();
