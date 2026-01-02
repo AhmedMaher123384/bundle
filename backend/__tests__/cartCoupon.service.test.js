@@ -181,9 +181,12 @@ describe("cartCoupon.service.issueOrReuseCouponForCartVerbose", () => {
   });
 
   test("aggregates discount across bundles for same cartKey", async () => {
+    const { computeCartHash } = require("../src/services/cartCoupon.service");
+    const { cartHash } = computeCartHash([{ variantId: "v1", quantity: 1 }]);
     const existing = {
       _id: "cc-existing",
       cartKey: "ck1",
+      cartHash,
       status: "issued",
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       discountType: "fixed",

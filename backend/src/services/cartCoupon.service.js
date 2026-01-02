@@ -289,10 +289,12 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
   const existing = await getActiveIssuedCoupon(merchant._id, group);
 
   const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
-  const mergedBundles = resolvedMode === "incremental" && cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const shouldMerge =
+    resolvedMode === "incremental" && cartKey && existing && String(existing?.cartHash || "") === String(cartHash || "");
+  const mergedBundles = shouldMerge ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
   const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
   const desiredIncludeProductIds =
-    resolvedMode === "incremental" && cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
+    shouldMerge ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
   const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
   const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
 
@@ -684,10 +686,12 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const existing = await getActiveIssuedCoupon(merchant._id, group);
 
   const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
-  const mergedBundles = resolvedMode === "incremental" && cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const shouldMerge =
+    resolvedMode === "incremental" && cartKey && existing && String(existing?.cartHash || "") === String(cartHash || "");
+  const mergedBundles = shouldMerge ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
   const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
   const desiredIncludeProductIds =
-    resolvedMode === "incremental" && cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
+    shouldMerge ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
   const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
   const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
 
