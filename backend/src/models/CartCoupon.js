@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const CartCouponSchema = new mongoose.Schema(
   {
     merchantId: { type: mongoose.Schema.Types.ObjectId, ref: "Merchant", required: true, index: true },
