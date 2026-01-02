@@ -1,6 +1,6 @@
 const { asyncHandler } = require("../utils/asyncHandler");
 const bundleService = require("../services/bundle.service");
-const { issueOrReuseCouponForCart } = require("../services/cartCoupon.service");
+const { issueOrReuseSpecialOfferForCartVerbose } = require("../services/cartCoupon.service");
 const { fetchVariantsSnapshotReport } = require("../services/sallaCatalog.service");
 const { ApiError } = require("../utils/apiError");
 
@@ -119,10 +119,10 @@ function createBundleController(config) {
     const report = await fetchVariantsSnapshotReport(config.salla, req.merchantAccessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
     const inactive = Array.from(report.snapshots.values()).filter((s) => s?.isActive !== true).map((s) => s.variantId);
     const result = await bundleService.evaluateBundles(req.merchant, req.body.items, report.snapshots);
-    const shouldCreateCoupon = Boolean(req.query?.createCoupon);
-    if (!shouldCreateCoupon) return res.json({ ...result, validation: { missing: report.missing || [], inactive } });
+    const shouldCreateOffer = Boolean(req.query?.createOffer ?? req.query?.createCoupon);
+    if (!shouldCreateOffer) return res.json({ ...result, validation: { missing: report.missing || [], inactive } });
 
-    const coupon = await issueOrReuseCouponForCart(
+    const issued = await issueOrReuseSpecialOfferForCartVerbose(
       config,
       req.merchant,
       req.merchantAccessToken,
@@ -134,7 +134,11 @@ function createBundleController(config) {
     return res.json({
       ...result,
       validation: { missing: report.missing || [], inactive },
-      coupon: coupon ? { code: coupon.code, id: coupon.sallaCouponId || null, status: coupon.status } : null
+      offer: issued?.offer?.offerId
+        ? { id: String(issued.offer.offerId), status: issued.offer.status, action: issued.action || null }
+        : null,
+      offerIssueFailed: Boolean(issued?.failure),
+      offerIssueDetails: issued?.failure || null
     });
   });
 
@@ -177,7 +181,7 @@ function createBundleController(config) {
     );
     const report = await fetchVariantsSnapshotReport(config.salla, req.merchantAccessToken, variantIds, { concurrency: 5, maxAttempts: 3 });
     const evaluation = await bundleService.evaluateBundles(req.merchant, req.body.items, report.snapshots);
-    const coupon = await issueOrReuseCouponForCart(
+    const issued = await issueOrReuseSpecialOfferForCartVerbose(
       config,
       req.merchant,
       req.merchantAccessToken,
@@ -187,20 +191,20 @@ function createBundleController(config) {
     );
 
     const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
-    const hasDiscount = Boolean(coupon && discountAmount > 0);
+    const offerId = String(issued?.offer?.offerId || "").trim() || null;
+    const hasDiscount = Boolean(offerId && discountAmount > 0);
     const inactive = Array.from(report.snapshots.values()).filter((s) => s?.isActive !== true).map((s) => s.variantId);
 
     return res.json({
       validation: { missing: report.missing || [], inactive },
       hasDiscount,
       discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-      couponCode: hasDiscount ? coupon.code : null,
+      offerId: hasDiscount ? offerId : null,
       banner: hasDiscount
         ? {
             title: "خصم الباقة جاهز",
-            code: coupon.code,
-            copyText: "انسخ الكود",
-            instruction: "طبّق الكود في خانة كوبون الخصم"
+            offerId,
+            autoApply: true
           }
         : null
     });

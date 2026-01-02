@@ -6,6 +6,7 @@ const CartCouponSchema = new mongoose.Schema(
     cartKey: { type: String, index: true },
     cartHash: { type: String, required: true, index: true },
     sallaCouponId: { type: String }, // ✅ تم تغيير الاسم من couponId
+    offerId: { type: String },
     code: { type: String, required: true },
     status: { type: String, required: true, enum: ["issued", "redeemed", "superseded", "expired"], index: true },
     discountType: { type: String }, // ✅ بدلاً من sallaType

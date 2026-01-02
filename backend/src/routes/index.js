@@ -10,7 +10,7 @@ const { ApiError } = require("../utils/apiError");
 const { fetchVariantsSnapshotReport } = require("../services/sallaCatalog.service");
 const { findMerchantByMerchantId } = require("../services/merchant.service");
 const bundleService = require("../services/bundle.service");
-const { issueOrReuseCouponForCartVerbose } = require("../services/cartCoupon.service");
+const { issueOrReuseSpecialOfferForCartVerbose } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
 const { readSnippetCss } = require("../storefront/snippet/styles");
@@ -1252,23 +1252,23 @@ function createApiRouter(config) {
       const rawItems = bValue.items;
       const cartKey = String(qValue.cartKey || "").trim() || undefined;
       if (!rawItems.length) {
-        const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, [], { applied: { totalDiscount: 0 } }, {
+        const issued = await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, [], { applied: { totalDiscount: 0 } }, {
           ttlHours: 24,
           cartKey,
           mode: "authoritative"
         });
-        const couponAction = issued?.action || "clear";
+        const offerAction = issued?.action || "clear";
 
         return res.json({
           ok: true,
           merchantId: String(qValue.merchantId),
           cartKey: cartKey || null,
-          couponAction,
+          offerAction,
           hasDiscount: false,
           discountAmount: 0,
-          couponCode: null,
-          couponIssueFailed: false,
-          couponIssueDetails: null,
+          offerId: null,
+          offerIssueFailed: false,
+          offerIssueDetails: null,
           banner: null,
           applied: { totalDiscount: 0, matchedProductIds: [], bundles: [] },
           validation: {
@@ -1301,39 +1301,39 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, {
+      const issued = await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, {
         ttlHours: 24,
         cartKey,
         mode: "authoritative"
       });
-      const coupon = issued?.coupon || null;
-      const couponAction = issued?.action || null;
+      const offer = issued?.offer || null;
+      const offerAction = issued?.action || null;
 
       const discountAmount = Number.isFinite(evaluation?.applied?.totalDiscount) ? Number(evaluation.applied.totalDiscount) : 0;
-      const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(couponAction !== "clear" && !coupon && discountAmount > 0);
+      const hasDiscount = Boolean(offer && discountAmount > 0);
+      const offerIssueFailed = Boolean(offerAction !== "clear" && !offer && discountAmount > 0);
       const messages = [];
       if (!items.length) messages.push({ level: "info", code: "CART_EMPTY", message: "Cart has no items." });
-      if (!hasDiscount && !couponIssueFailed) messages.push({ level: "info", code: "NO_BUNDLE_APPLIED", message: "No bundle discounts apply to this cart." });
-      if (couponIssueFailed) messages.push({ level: "warn", code: "COUPON_ISSUE_FAILED", message: "Discount exists but coupon could not be issued." });
+      if (!hasDiscount && !offerIssueFailed) messages.push({ level: "info", code: "NO_BUNDLE_APPLIED", message: "No bundle discounts apply to this cart." });
+      if (offerIssueFailed) messages.push({ level: "warn", code: "OFFER_ISSUE_FAILED", message: "Discount exists but offer could not be issued." });
 
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
         cartKey: cartKey || null,
-        couponAction,
+        offerAction,
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-        couponCode: hasDiscount ? coupon.code : null,
-        couponIssueFailed,
-        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
+        offerId: hasDiscount ? String(offer.offerId || "") || null : null,
+        offerIssueFailed,
+        offerIssueDetails: offerIssueFailed ? issued?.failure || null : null,
         banner: hasDiscount
           ? {
               title: "خصم الباقة اتفعل",
-              cta: "تطبيق الخصم",
+              cta: "تم تفعيل الخصم",
               bannerColor: "#16a34a",
               badgeColor: "#16a34a",
-              couponCode: coupon.code,
+              offerId: String(offer.offerId || "") || null,
               discountAmount: Number(discountAmount.toFixed(2)),
               autoApply: true
             }
@@ -1513,28 +1513,28 @@ function createApiRouter(config) {
         };
       }
 
-      const shouldIssueCoupon = kind !== "products_no_discount" && discountAmount > 0;
+      const shouldIssueOffer = kind !== "products_no_discount" && discountAmount > 0;
       const cartKey = String(qValue.cartKey || "").trim() || undefined;
-      const issued = shouldIssueCoupon
-        ? await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey })
-        : { coupon: null, failure: { reason: "COUPON_DISABLED" } };
-      const coupon = issued?.coupon || null;
-      const couponAction = issued?.action || null;
-      const hasDiscount = Boolean(coupon && discountAmount > 0);
-      const couponIssueFailed = Boolean(shouldIssueCoupon && couponAction !== "clear" && !coupon && discountAmount > 0);
+      const issued = shouldIssueOffer
+        ? await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey, mode: "incremental" })
+        : { offer: null, failure: { reason: "OFFER_DISABLED" } };
+      const offer = issued?.offer || null;
+      const offerAction = issued?.action || null;
+      const hasDiscount = Boolean(offer && discountAmount > 0);
+      const offerIssueFailed = Boolean(shouldIssueOffer && offerAction !== "clear" && !offer && discountAmount > 0);
 
       return res.json({
         ok: true,
         merchantId: String(qValue.merchantId),
         cartKey: cartKey || null,
-        couponAction,
+        offerAction,
         bundleId: String(bValue.bundleId),
         kind,
         hasDiscount,
         discountAmount: hasDiscount ? Number(discountAmount.toFixed(2)) : 0,
-        couponCode: hasDiscount ? coupon.code : null,
-        couponIssueFailed,
-        couponIssueDetails: couponIssueFailed ? issued?.failure || null : null,
+        offerId: hasDiscount ? String(offer.offerId || "") || null : null,
+        offerIssueFailed,
+        offerIssueDetails: offerIssueFailed ? issued?.failure || null : null,
         applied: evaluation?.applied || null
       });
     } catch (err) {

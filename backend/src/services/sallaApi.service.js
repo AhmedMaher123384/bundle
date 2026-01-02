@@ -46,6 +46,62 @@ async function createCoupon(sallaConfig, accessToken, payload) {
   }
 }
 
+async function createSpecialOffer(sallaConfig, accessToken, payload) {
+  try {
+    const client = createSallaApiClient(sallaConfig, accessToken);
+    const response = await client.post("/admin/v2/specialoffers", payload, {
+      headers: { "Content-Type": "application/json" }
+    });
+    return response.data;
+  } catch (error) {
+    const status = error?.response?.status;
+    const details = error?.response?.data || error?.message;
+    throw new ApiError(status || 503, "Failed to create special offer in Salla", { code: "SALLA_SPECIALOFFER_CREATE_FAILED", details });
+  }
+}
+
+async function updateSpecialOffer(sallaConfig, accessToken, offerId, payload) {
+  try {
+    const client = createSallaApiClient(sallaConfig, accessToken);
+    const response = await client.put(`/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`, payload, {
+      headers: { "Content-Type": "application/json" }
+    });
+    return response.data;
+  } catch (error) {
+    const status = error?.response?.status;
+    const details = error?.response?.data || error?.message;
+    throw new ApiError(status || 503, "Failed to update special offer in Salla", { code: "SALLA_SPECIALOFFER_UPDATE_FAILED", details });
+  }
+}
+
+async function changeSpecialOfferStatus(sallaConfig, accessToken, offerId, status) {
+  try {
+    const client = createSallaApiClient(sallaConfig, accessToken);
+    const response = await client.put(
+      `/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}/status`,
+      { status: String(status || "").trim() },
+      { headers: { "Content-Type": "application/json" } }
+    );
+    return response.data;
+  } catch (error) {
+    const st = error?.response?.status;
+    const details = error?.response?.data || error?.message;
+    throw new ApiError(st || 503, "Failed to change special offer status in Salla", { code: "SALLA_SPECIALOFFER_STATUS_FAILED", details });
+  }
+}
+
+async function deleteSpecialOffer(sallaConfig, accessToken, offerId) {
+  try {
+    const client = createSallaApiClient(sallaConfig, accessToken);
+    const response = await client.delete(`/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`);
+    return response.data;
+  } catch (error) {
+    const status = error?.response?.status;
+    const details = error?.response?.data || error?.message;
+    throw new ApiError(status || 503, "Failed to delete special offer in Salla", { code: "SALLA_SPECIALOFFER_DELETE_FAILED", details });
+  }
+}
+
 async function listProducts(sallaConfig, accessToken, params) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
@@ -133,6 +189,10 @@ async function getOrderById(sallaConfig, accessToken, orderId, params) {
 module.exports = {
   getStoreInfo,
   createCoupon,
+  createSpecialOffer,
+  updateSpecialOffer,
+  changeSpecialOfferStatus,
+  deleteSpecialOffer,
   listProducts,
   getProductById,
   getProductVariant,

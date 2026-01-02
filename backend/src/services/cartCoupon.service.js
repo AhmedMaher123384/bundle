@@ -1,5 +1,5 @@
 const CartCoupon = require("../models/CartCoupon");
-const { createCoupon } = require("./sallaApi.service");
+const { createCoupon, createSpecialOffer, updateSpecialOffer, changeSpecialOfferStatus, deleteSpecialOffer } = require("./sallaApi.service");
 const { ApiError } = require("../utils/apiError");
 const { sha256Hex } = require("../utils/hash");
 
@@ -24,6 +24,30 @@ function computeCartHash(items) {
 function buildCouponCode(merchantId, cartHash) {
   const seed = `${merchantId}:${cartHash}:${Date.now()}:${Math.random()}`;
   return `B${sha256Hex(seed).slice(0, 15).toUpperCase()}`;
+}
+
+function buildSpecialOfferName(merchantStoreId, groupKey) {
+  const store = String(merchantStoreId || "").trim() || "store";
+  const key = String(groupKey || "").trim();
+  const suffix = key ? `-${key.slice(0, 16)}` : "";
+  return `Bundle Offer ${store}${suffix}`.slice(0, 190);
+}
+
+function buildSpecialOfferMessage(discountAmount) {
+  const amt = Number(discountAmount);
+  const v = Number.isFinite(amt) ? Number(amt.toFixed(2)) : null;
+  return v != null ? `خصم الباندل: ${v}` : "خصم الباندل";
+}
+
+function normalizeProductIdNumbers(productIds) {
+  const out = [];
+  for (const v of Array.isArray(productIds) ? productIds : []) {
+    const s = String(v || "").trim();
+    if (!/^\d+$/.test(s)) continue;
+    const n = Number(s);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return Array.from(new Set(out));
 }
 
 function formatDateOnlyUtc(date) {
@@ -175,6 +199,256 @@ async function clearCartStateForGroup(merchantObjectId, group) {
     merchantId: merchantObjectId,
     ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
     status: { $in: ["issued", "superseded", "expired"] }
+  });
+}
+
+async function clearSallaOffersForGroup(config, merchantAccessToken, merchantObjectId, group) {
+  const docs = await CartCoupon.find(
+    {
+      merchantId: merchantObjectId,
+      ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
+      status: { $in: ["issued", "superseded", "expired"] }
+    },
+    { offerId: 1 }
+  );
+
+  for (const d of Array.isArray(docs) ? docs : []) {
+    const offerId = String(d?.offerId || "").trim();
+    if (!offerId) continue;
+    await deleteSpecialOffer(config.salla, merchantAccessToken, offerId).catch(() => undefined);
+  }
+}
+
+async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
+  const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
+  const { cartHash } = computeCartHash(cartItems);
+  const cartKey = normalizeCartKey(options?.cartKey);
+  const group = cartKey ? { cartKey } : { cartHash };
+  const mode = options?.mode ? String(options.mode) : cartKey ? "incremental" : "authoritative";
+  const resolvedMode = mode === "authoritative" ? "authoritative" : "incremental";
+
+  const fail = (reason, extra) => ({
+    offer: null,
+    action: "fail",
+    failure: { reason: String(reason || "UNKNOWN"), ...(extra || {}) }
+  });
+
+  const totalDiscount = evaluationResult?.applied?.totalDiscount;
+  if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
+    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+    await clearCartStateForGroup(merchant._id, group);
+    return { offer: null, action: "clear", failure: null };
+  }
+
+  const discountAmount = Number(Number(totalDiscount).toFixed(2));
+  const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
+  if (!includeProductIds.length) {
+    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+    await clearCartStateForGroup(merchant._id, group);
+    return { offer: null, action: "clear", failure: null };
+  }
+
+  const existing = await getActiveIssuedCoupon(merchant._id, group);
+
+  const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
+  const mergedBundles = resolvedMode === "incremental" && cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
+  const desiredIncludeProductIds =
+    resolvedMode === "incremental" && cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
+  const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
+  const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
+
+  const now = new Date();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
+  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
+  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+
+  const productNumbers = normalizeProductIdNumbers(desiredIncludeProductIds);
+  if (!productNumbers.length) {
+    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+    await clearCartStateForGroup(merchant._id, group);
+    return { offer: null, action: "clear", failure: null };
+  }
+
+  const payloadBase = {
+    name: buildSpecialOfferName(merchant.merchantId, cartKey || cartHash),
+    message: buildSpecialOfferMessage(desiredDiscountAmount),
+    applied_channel: "browser_and_application",
+    offer_type: "fixed_amount",
+    applied_to: "product",
+    start_date: startDate,
+    expiry_date: expiryDate,
+    min_purchase_amount: 0,
+    min_items_count: productNumbers.length,
+    min_items: 0,
+    buy: {
+      type: "product",
+      min_amount: 0,
+      quantity: productNumbers.length,
+      products: productNumbers
+    },
+    get: {
+      discount_amount: desiredDiscountAmount
+    }
+  };
+
+  const existingType = String(existing?.discountType || "").trim().toLowerCase();
+  const existingOfferId = String(existing?.offerId || "").trim();
+
+  if (existing && existingType === "special_offer_fixed_amount" && existingOfferId) {
+    if (amountsMatch(existing?.discountAmount, desiredDiscountAmount) && sameStringIdSet(existing?.includeProductIds, desiredIncludeProductIds)) {
+      existing.appliedBundleIds = desiredAppliedBundleIds;
+      existing.bundlesSummary = desiredBundlesSummary;
+      existing.lastSeenAt = new Date();
+      await existing.save();
+      await changeSpecialOfferStatus(config.salla, merchantAccessToken, existingOfferId, "active").catch(() => undefined);
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
+      return { offer: existing, action: "reuse", failure: null, reused: true };
+    }
+
+    const triedPayloads = [];
+    try {
+      triedPayloads.push(payloadBase);
+      await updateSpecialOffer(config.salla, merchantAccessToken, existingOfferId, payloadBase);
+      await changeSpecialOfferStatus(config.salla, merchantAccessToken, existingOfferId, "active").catch(() => undefined);
+
+      existing.discountAmount = desiredDiscountAmount;
+      existing.includeProductIds = desiredIncludeProductIds;
+      existing.appliedBundleIds = desiredAppliedBundleIds;
+      existing.bundlesSummary = desiredBundlesSummary;
+      existing.expiresAt = expiresAt;
+      existing.issuedAt = now;
+      existing.lastSeenAt = now;
+      await existing.save();
+
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
+      return { offer: existing, action: "update", failure: null, reused: false };
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 422) {
+        const floored = Math.floor(desiredDiscountAmount);
+        if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
+          const payload2 = { ...payloadBase, get: { discount_amount: floored }, message: buildSpecialOfferMessage(floored) };
+          try {
+            triedPayloads.push(payload2);
+            await updateSpecialOffer(config.salla, merchantAccessToken, existingOfferId, payload2);
+            await changeSpecialOfferStatus(config.salla, merchantAccessToken, existingOfferId, "active").catch(() => undefined);
+
+            existing.discountAmount = floored;
+            existing.includeProductIds = desiredIncludeProductIds;
+            existing.appliedBundleIds = desiredAppliedBundleIds;
+            existing.bundlesSummary = desiredBundlesSummary;
+            existing.expiresAt = expiresAt;
+            existing.issuedAt = now;
+            existing.lastSeenAt = now;
+            await existing.save();
+
+            await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
+            return { offer: existing, action: "update", failure: null, reused: false };
+          } catch (e2) {
+            return fail("SALLA_SPECIALOFFER_UPDATE_FAILED", {
+              statusCode: e2 instanceof ApiError ? e2.statusCode : null,
+              error: e2 instanceof ApiError ? e2.details ?? null : { message: e2?.message ?? "Unknown error" },
+              triedPayloads
+            });
+          }
+        }
+      }
+      return fail("SALLA_SPECIALOFFER_UPDATE_FAILED", {
+        statusCode: err instanceof ApiError ? err.statusCode : null,
+        error: err instanceof ApiError ? err.details ?? null : { message: err?.message ?? "Unknown error" }
+      });
+    }
+  }
+
+  let lastCreateError = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const code = buildCouponCode(merchant.merchantId, cartHash);
+    const triedPayloads = [];
+    let offerId = null;
+    let usedDiscountAmount = desiredDiscountAmount;
+    try {
+      triedPayloads.push(payloadBase);
+      const created = await createSpecialOffer(config.salla, merchantAccessToken, payloadBase);
+      offerId = created?.data?.id ?? null;
+    } catch (err) {
+      lastCreateError = err;
+      if (err instanceof ApiError && err.statusCode === 422) {
+        const floored = Math.floor(desiredDiscountAmount);
+        if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
+          const payload2 = { ...payloadBase, get: { discount_amount: floored }, message: buildSpecialOfferMessage(floored) };
+          try {
+            triedPayloads.push(payload2);
+            const created = await createSpecialOffer(config.salla, merchantAccessToken, payload2);
+            offerId = created?.data?.id ?? null;
+            usedDiscountAmount = floored;
+          } catch (e2) {
+            lastCreateError = e2;
+            return fail("SALLA_SPECIALOFFER_CREATE_FAILED", {
+              statusCode: 422,
+              error: e2.details ?? null,
+              triedPayloads
+            });
+          }
+        } else {
+          return fail("SALLA_SPECIALOFFER_CREATE_FAILED", { statusCode: 422, error: err.details ?? null, triedPayloads });
+        }
+      } else {
+        return fail("SALLA_SPECIALOFFER_CREATE_FAILED", {
+          statusCode: err instanceof ApiError ? err.statusCode : null,
+          error: err instanceof ApiError ? err.details ?? null : { message: err?.message ?? "Unknown error" },
+          triedPayloads
+        });
+      }
+    }
+
+    try {
+      if (offerId != null) {
+        await changeSpecialOfferStatus(config.salla, merchantAccessToken, offerId, "active").catch(() => undefined);
+      }
+
+      const record = await CartCoupon.findOneAndUpdate(
+        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash, status: "issued" },
+        {
+          $set: {
+            offerId: offerId != null ? String(offerId) : undefined,
+            code,
+            status: "issued",
+            discountType: "special_offer_fixed_amount",
+            ...(cartKey ? { cartKey } : {}),
+            discountAmount: usedDiscountAmount,
+            includeProductIds: desiredIncludeProductIds,
+            appliedBundleIds: desiredAppliedBundleIds,
+            bundlesSummary: desiredBundlesSummary,
+            expiresAt,
+            issuedAt: now,
+            lastSeenAt: now
+          },
+          $setOnInsert: { createdAt: now, cartHash },
+          $unset: { redeemedAt: "", orderId: "", sallaCouponId: "" }
+        },
+        { upsert: true, new: true }
+      );
+
+      if (existing && String(existing?.offerId || "").trim()) {
+        await deleteSpecialOffer(config.salla, merchantAccessToken, String(existing.offerId)).catch(() => undefined);
+      }
+
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, record?._id);
+      return { offer: record, action: "create", failure: null, reused: false };
+    } catch (dbErr) {
+      if (dbErr?.code === 11000) continue;
+      return fail("DB_WRITE_FAILED", { error: { message: dbErr?.message ?? "DB error", code: dbErr?.code ?? null } });
+    }
+  }
+
+  return fail("MAX_ATTEMPTS_EXCEEDED", {
+    lastError: lastCreateError instanceof ApiError
+      ? { statusCode: lastCreateError.statusCode, code: lastCreateError.code ?? null, details: lastCreateError.details ?? null }
+      : lastCreateError
+        ? { message: lastCreateError.message ?? String(lastCreateError) }
+        : null
   });
 }
 
@@ -506,6 +780,7 @@ module.exports = {
   computeCartHash,
   issueOrReuseCouponForCart,
   issueOrReuseCouponForCartVerbose,
+  issueOrReuseSpecialOfferForCartVerbose,
   extractCouponCodeFromOrderPayload,
   extractOrderId,
   markCouponRedeemed,

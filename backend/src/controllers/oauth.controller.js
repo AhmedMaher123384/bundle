@@ -37,7 +37,7 @@ function createOAuthController(config) {
     url.searchParams.set("client_id", config.salla.clientId);
     url.searchParams.set("redirect_uri", config.salla.redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "offline_access products.read_write coupons.write orders.read_write");
+    url.searchParams.set("scope", "offline_access products.read_write coupons.write orders.read_write specialoffers.read_write");
     url.searchParams.set("state", state);
 
     return res.redirect(url.toString());

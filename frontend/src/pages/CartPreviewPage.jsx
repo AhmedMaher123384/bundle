@@ -142,13 +142,13 @@ export function CartPreviewPage() {
 
   const totalQty = useMemo(() => selectedItems.reduce((acc, i) => acc + Number(i.quantity || 0), 0), [selectedItems])
 
-  async function evaluate(createCoupon) {
+  async function evaluate(createOffer) {
     setLoading(true)
     try {
       const res = await requestJson('/api/bundles/evaluate', {
         token,
         method: 'POST',
-        query: { createCoupon: createCoupon ? 'true' : 'false' },
+        query: { createOffer: createOffer ? 'true' : 'false' },
         body: { items: selectedItems },
       })
       setResult(res)
@@ -306,7 +306,7 @@ export function CartPreviewPage() {
               onClick={() => evaluate(true)}
               disabled={loading || !productLines.length || missingSelections || !selectedItems.length}
             >
-              Evaluate + Coupon
+              Evaluate + Offer
             </button>
             {missingSelections ? <div className="text-sm font-semibold text-rose-700">Select all variants first.</div> : null}
           </div>
@@ -321,7 +321,7 @@ export function CartPreviewPage() {
             {banner?.hasDiscount ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge tone="green">{banner.discountAmount}</Badge>
-                <Badge tone="sky">{banner.couponCode}</Badge>
+                <Badge tone="sky">{banner.offerId}</Badge>
               </div>
             ) : (
               <div className="mt-2 text-sm text-slate-600">No discount currently.</div>
@@ -338,7 +338,7 @@ export function CartPreviewPage() {
                 <Badge tone="slate">Applied: {result?.applied?.bundles?.length || 0}</Badge>
                 <Badge tone="green">Total: {result?.applied?.totalDiscount || 0}</Badge>
                 <Badge tone="green">After: {formatMoney(Math.max(0, subtotal - Number(result?.applied?.totalDiscount || 0)))}</Badge>
-                {result?.coupon?.code ? <Badge tone="sky">{result.coupon.code}</Badge> : null}
+                {result?.offer?.id ? <Badge tone="sky">{result.offer.id}</Badge> : null}
               </div>
             </div>
 
