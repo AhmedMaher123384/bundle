@@ -32,7 +32,7 @@ function resolveCoverVariantId(components, presentation) {
 
 function computeInvalidComponentVariantIds(report, componentVariantIds) {
   const componentSet = new Set(componentVariantIds);
-  const missing = uniqStrings((report?.missing || []).map((m) => m?.variantId)).filter((id) => componentSet.has(id));
+  const missing = uniqStrings((report?.missing || []).map((m) => m?.variantId)).filter((id) => componentSet.has(id) && !isProductRef(id));
   const inactive = uniqStrings(
     componentVariantIds.filter((id) => {
       if (isProductRef(id)) return false;
