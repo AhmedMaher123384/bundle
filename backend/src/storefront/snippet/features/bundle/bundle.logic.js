@@ -869,10 +869,36 @@ async function readCartItems() {
     ]);
   }
 
+  async function fetchCartViaHttpApi() {
+    try {
+      const r = await withTimeout(
+        fetch("/api/cart", { headers: { Accept: "application/json" }, credentials: "same-origin" }),
+        4500
+      );
+      if (!r || !r.ok) return [];
+      const t = await withTimeout(r.text(), 4500);
+      let j = null;
+      try {
+        j = t ? JSON.parse(t) : null;
+      } catch (e) {
+        j = null;
+      }
+      const items = pickItems(j);
+      return items && items.length ? items : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   try {
     const direct = pickItems(cart.items || (cart.data && cart.data.items) || null);
     if (direct && direct.length) return direct;
   } catch (e0) {}
+
+  try {
+    const apiItems = await fetchCartViaHttpApi();
+    if (apiItems && apiItems.length) return apiItems;
+  } catch (eApi) {}
 
   const candidates = [];
   try {
@@ -892,6 +918,11 @@ async function readCartItems() {
       if (items && items.length) return items;
     } catch (e4) {}
   }
+
+  try {
+    const apiItems2 = await fetchCartViaHttpApi();
+    if (apiItems2 && apiItems2.length) return apiItems2;
+  } catch (eApi2) {}
 
   return [];
 }
@@ -2468,8 +2499,8 @@ function cartItemsSignature(items) {
   try {
     const m = new Map();
     for (const it of Array.isArray(items) ? items : []) {
-      const v = String(it && it.variantId || "").trim();
-      const q = Math.max(0, Math.floor(Number(it && it.quantity || 0)));
+      const v = String((it && (it.variantId || it.variant_id || it.sku_id || it.skuId || it.id)) || "").trim();
+      const q = Math.max(0, Math.floor(Number((it && (it.quantity || it.qty)) || 0)));
       if (!v || !Number.isFinite(q) || q <= 0) continue;
       m.set(v, (m.get(v) || 0) + q);
     }
@@ -2482,20 +2513,36 @@ function cartItemsSignature(items) {
   }
 }
 
+function normalizeBannerCartItems(items) {
+  try {
+    const out = [];
+    for (const it of Array.isArray(items) ? items : []) {
+      const v = String((it && (it.variantId || it.variant_id || it.sku_id || it.skuId || it.id)) || "").trim();
+      const q = Math.max(0, Math.floor(Number((it && (it.quantity || it.qty)) || 0)));
+      if (!v || !Number.isFinite(q) || q <= 0) continue;
+      out.push({ variantId: v, quantity: q });
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
 async function syncCartBannerOnce() {
   if (storeClosedNow()) return;
   if (!isCartLikePage()) return;
   const st = (g.BundleApp.__cartBannerSyncState = g.BundleApp.__cartBannerSyncState || { inFlight: false, lastSig: "", lastAt: 0 });
   if (st.inFlight) return;
 
-  let items = [];
+  let rawItems = [];
   try {
-    items = await readCartItems();
+    rawItems = await readCartItems();
   } catch (eRead) {
     markStoreClosed(eRead);
     return;
   }
 
+  const items = normalizeBannerCartItems(rawItems);
   const sig = cartItemsSignature(items);
   if (sig === st.lastSig && Date.now() - Number(st.lastAt || 0) < 4000) return;
   st.lastSig = sig;
