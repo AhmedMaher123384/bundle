@@ -296,19 +296,16 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
 
   const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
   // When using cartKey, we should merge if we found an existing coupon by cartKey, regardless of cartHash changes
-  // However, we should be smart about merging - only merge if the bundles are similar or if the discount is reasonable
   const shouldMerge =
     resolvedMode === "incremental" && existing && (
       cartKey ? (existing.cartKey === cartKey) : (String(existing?.cartHash || "") === String(cartHash || ""))
     );
-  
-  // If merging, we should replace the discount rather than accumulate it
-  // This prevents the discount from growing on each refresh
-  const desiredDiscountAmount = discountAmount; // Always use current discount amount, never accumulate
-  const desiredAppliedBundleIds = incomingBundlesSummary.map((b) => b.bundleId);
+  const mergedBundles = shouldMerge ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
   const desiredIncludeProductIds =
     shouldMerge ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
-  const desiredBundlesSummary = incomingBundlesSummary; // Always use current bundles summary
+  const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
+  const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
 
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -708,12 +705,12 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     resolvedMode === "incremental" && existing && (
       cartKey ? (existing.cartKey === cartKey) : (String(existing?.cartHash || "") === String(cartHash || ""))
     );
-  // Always use current discount amount, never accumulate to prevent growing discounts on refreshes
-  const desiredDiscountAmount = discountAmount;
+  const mergedBundles = shouldMerge ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
   const desiredIncludeProductIds =
     shouldMerge ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
-  const desiredAppliedBundleIds = incomingBundlesSummary.map((b) => b.bundleId);
-  const desiredBundlesSummary = incomingBundlesSummary;
+  const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
+  const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
 
   if (existing) {
     const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
