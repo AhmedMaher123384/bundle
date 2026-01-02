@@ -54,6 +54,10 @@ function formatDateOnlyUtc(date) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
+function formatDateTimeUtc(date) {
+  return new Date(date).toISOString().replace("T", " ").slice(0, 19);
+}
+
 function formatDateOnlyInTimeZone(date, timeZone) {
   try {
     const parts = new Intl.DateTimeFormat("en", {
@@ -69,6 +73,31 @@ function formatDateOnlyInTimeZone(date, timeZone) {
     return formatDateOnlyUtc(date);
   } catch {
     return formatDateOnlyUtc(date);
+  }
+}
+
+function formatDateTimeInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: String(timeZone || "UTC"),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).formatToParts(new Date(date));
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+    const hour = parts.find((p) => p.type === "hour")?.value;
+    const minute = parts.find((p) => p.type === "minute")?.value;
+    const second = parts.find((p) => p.type === "second")?.value;
+    if (year && month && day && hour && minute && second) return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    return formatDateTimeUtc(date);
+  } catch {
+    return formatDateTimeUtc(date);
   }
 }
 
@@ -89,6 +118,12 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   return Array.from(new Set((Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean))).filter((v) =>
     /^\d+$/.test(v)
   );
+}
+
+function computeMinPurchaseAmountForDiscount(discountAmount) {
+  const amt = Number(discountAmount);
+  if (!Number.isFinite(amt) || amt <= 0) return 0;
+  return Math.max(0, Math.ceil(amt + 1));
 }
 
 function unionStringIds(a, b) {
@@ -261,9 +296,10 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
   const now = new Date();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
   const sallaTimeZone = config?.salla?.timeZone || "Asia/Riyadh";
-  const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
-  let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
-  if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+  const startAt = new Date(Date.now() + 60 * 1000);
+  const startDate = formatDateTimeInTimeZone(startAt, sallaTimeZone);
+  let expiryDate = formatDateTimeInTimeZone(expiresAt, sallaTimeZone);
+  if (expiryDate <= startDate) expiryDate = formatDateTimeInTimeZone(new Date(startAt.getTime() + 60 * 60 * 1000), sallaTimeZone);
 
   const productNumbers = normalizeProductIdNumbers(desiredIncludeProductIds);
   if (!productNumbers.length) {
@@ -272,6 +308,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     return { offer: null, action: "clear", failure: null };
   }
 
+  const minPurchaseAmount = computeMinPurchaseAmountForDiscount(desiredDiscountAmount);
   const payloadBase = {
     name: buildSpecialOfferName(merchant.merchantId, cartKey || cartHash),
     message: buildSpecialOfferMessage(desiredDiscountAmount),
@@ -280,7 +317,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     applied_to: "product",
     start_date: startDate,
     expiry_date: expiryDate,
-    min_purchase_amount: 0,
+    min_purchase_amount: minPurchaseAmount,
     min_items_count: productNumbers.length,
     min_items: 0,
     buy: {
@@ -329,7 +366,12 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
       if (err instanceof ApiError && err.statusCode === 422) {
         const floored = Math.floor(desiredDiscountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
-          const payload2 = { ...payloadBase, get: { discount_amount: floored }, message: buildSpecialOfferMessage(floored) };
+          const payload2 = {
+            ...payloadBase,
+            min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
+            get: { discount_amount: floored },
+            message: buildSpecialOfferMessage(floored)
+          };
           try {
             triedPayloads.push(payload2);
             await updateSpecialOffer(config.salla, merchantAccessToken, existingOfferId, payload2);
@@ -377,7 +419,12 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
       if (err instanceof ApiError && err.statusCode === 422) {
         const floored = Math.floor(desiredDiscountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
-          const payload2 = { ...payloadBase, get: { discount_amount: floored }, message: buildSpecialOfferMessage(floored) };
+          const payload2 = {
+            ...payloadBase,
+            min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
+            get: { discount_amount: floored },
+            message: buildSpecialOfferMessage(floored)
+          };
           try {
             triedPayloads.push(payload2);
             const created = await createSpecialOffer(config.salla, merchantAccessToken, payload2);
