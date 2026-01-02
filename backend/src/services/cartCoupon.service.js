@@ -322,7 +322,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     min_items: 0,
     buy: {
       type: "product",
-      min_amount: 0,
+      min_amount: minPurchaseAmount,
       quantity: productNumbers.length,
       products: productNumbers
     },
@@ -369,6 +369,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
           const payload2 = {
             ...payloadBase,
             min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
+            buy: { ...payloadBase.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
             get: { discount_amount: floored },
             message: buildSpecialOfferMessage(floored)
           };
@@ -422,6 +423,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
           const payload2 = {
             ...payloadBase,
             min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
+            buy: { ...payloadBase.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
             get: { discount_amount: floored },
             message: buildSpecialOfferMessage(floored)
           };
