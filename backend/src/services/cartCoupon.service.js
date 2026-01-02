@@ -29,8 +29,11 @@ function buildCouponCode(merchantId, cartHash) {
 function buildSpecialOfferName(merchantStoreId, groupKey) {
   const store = String(merchantStoreId || "").trim() || "store";
   const key = String(groupKey || "").trim();
-  const suffix = key ? `-${key.slice(0, 16)}` : "";
-  return `Bundle Offer ${store}${suffix}`.slice(0, 190);
+  const suffix = key ? `-${key.slice(0, 8)}` : "";
+  // Add timestamp and random suffix to ensure uniqueness (Salla rejects duplicate offer names)
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `BO ${store}${suffix}-${ts}${rand}`.slice(0, 190);
 }
 
 function buildSpecialOfferMessage(discountAmount) {
@@ -411,19 +414,49 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     const triedPayloads = [];
     let offerId = null;
     let usedDiscountAmount = desiredDiscountAmount;
+
+    // Build payload with fresh unique name on each attempt (Salla rejects duplicate names)
+    const attemptPayload = {
+      name: buildSpecialOfferName(merchant.merchantId, cartKey || cartHash),
+      message: buildSpecialOfferMessage(desiredDiscountAmount),
+      applied_channel: "browser_and_application",
+      offer_type: "fixed_amount",
+      applied_to: "product",
+      start_date: startDate,
+      expiry_date: expiryDate,
+      min_purchase_amount: minPurchaseAmount,
+      min_items_count: productNumbers.length,
+      min_items: 0,
+      buy: {
+        type: "product",
+        min_amount: minPurchaseAmount,
+        quantity: productNumbers.length,
+        products: productNumbers
+      },
+      get: {
+        discount_amount: desiredDiscountAmount
+      }
+    };
+
     try {
-      triedPayloads.push(payloadBase);
-      const created = await createSpecialOffer(config.salla, merchantAccessToken, payloadBase);
+      triedPayloads.push(attemptPayload);
+      const created = await createSpecialOffer(config.salla, merchantAccessToken, attemptPayload);
       offerId = created?.data?.id ?? null;
     } catch (err) {
       lastCreateError = err;
       if (err instanceof ApiError && err.statusCode === 422) {
+        // Check if this is a name conflict error - if so, retry with new name
+        const nameError = err.details?.error?.fields?.name || err.details?.fields?.name;
+        if (nameError && attempt < 5) {
+          continue; // Retry with a new unique name
+        }
+
         const floored = Math.floor(desiredDiscountAmount);
         if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
           const payload2 = {
-            ...payloadBase,
+            ...attemptPayload,
             min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
-            buy: { ...payloadBase.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
+            buy: { ...attemptPayload.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
             get: { discount_amount: floored },
             message: buildSpecialOfferMessage(floored)
           };
@@ -434,6 +467,11 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
             usedDiscountAmount = floored;
           } catch (e2) {
             lastCreateError = e2;
+            // Check if this is also a name conflict - retry
+            const nameError2 = e2 instanceof ApiError && (e2.details?.error?.fields?.name || e2.details?.fields?.name);
+            if (nameError2 && attempt < 5) {
+              continue; // Retry with a new unique name
+            }
             return fail("SALLA_SPECIALOFFER_CREATE_FAILED", {
               statusCode: 422,
               error: e2.details ?? null,
@@ -451,6 +489,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
         });
       }
     }
+
 
     try {
       if (offerId != null) {
@@ -648,7 +687,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   if (existing) {
     const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
     const existingAmount = Number(existing?.discountAmount || 0);
-    
+
     // ✅ نتحقق إذا الكوبون الموجود له نفس الخصم الإجمالي
     if (
       existingType === "fixed" &&
@@ -662,7 +701,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return { coupon: existing, action: 'reuse', failure: null, reused: true };
     }
-    
+
     // ✅ إذا الخصم مختلف، نحدّث الكوبون القديم بدلاً من إنشاء واحد جديد
     // (لكن سلة لا تدعم تحديث الكوبونات، لذا سننشئ واحد جديد)
   }
