@@ -337,8 +337,15 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
   const existingType = String(existing?.discountType || "").trim().toLowerCase();
   const existingOfferId = String(existing?.offerId || "").trim();
 
-  if (existing && existingType === "special_offer_fixed_amount" && existingOfferId) {
+  // In authoritative mode, delete the old offer from Salla first to ensure clean state
+  if (resolvedMode === "authoritative" && existing && existingOfferId) {
+    await deleteSpecialOffer(config.salla, merchantAccessToken, existingOfferId).catch(() => undefined);
+    // Clear the existing record so we create a fresh offer
+    await clearCartStateForGroup(merchant._id, group).catch(() => undefined);
+    // Skip the update/reuse path and go directly to create new offer
+  } else if (existing && existingType === "special_offer_fixed_amount" && existingOfferId) {
     if (amountsMatch(existing?.discountAmount, desiredDiscountAmount) && sameStringIdSet(existing?.includeProductIds, desiredIncludeProductIds)) {
+
       existing.appliedBundleIds = desiredAppliedBundleIds;
       existing.bundlesSummary = desiredBundlesSummary;
       existing.lastSeenAt = new Date();

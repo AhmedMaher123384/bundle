@@ -285,10 +285,10 @@ function createApiRouter(config) {
     const base = baseMissing
       ? { originalTotal: null, discountAmount: null, finalTotal: null }
       : {
-          originalTotal: Number(baseSubtotal.toFixed(2)),
-          discountAmount: Number(Math.max(0, baseDiscount).toFixed(2)),
-          finalTotal: Number(Math.max(0, baseSubtotal - baseDiscount).toFixed(2))
-        };
+        originalTotal: Number(baseSubtotal.toFixed(2)),
+        discountAmount: Number(Math.max(0, baseDiscount).toFixed(2)),
+        finalTotal: Number(Math.max(0, baseSubtotal - baseDiscount).toFixed(2))
+      };
 
     const baseVariantId =
       (Array.isArray(components) ? components : []).find((c) => c && c.isBase === true)?.variantId ??
@@ -914,17 +914,17 @@ function createApiRouter(config) {
         (root?.sku && typeof root.sku === "object" ? root.sku.id ?? root.sku.sku_id ?? null : null) ??
         (root?.data && typeof root.data === "object"
           ? root.data.default_variant_id ??
-            root.data.defaultVariantId ??
-            root.data.variant_id ??
-            root.data.variantId ??
-            root.data.default_sku_id ??
-            root.data.defaultSkuId ??
-            root.data.sku_id ??
-            root.data.skuId ??
-            (root.data.default_sku && typeof root.data.default_sku === "object"
-              ? root.data.default_sku.id ?? root.data.default_sku.sku_id ?? null
-              : null) ??
-            (root.data.sku && typeof root.data.sku === "object" ? root.data.sku.id ?? root.data.sku.sku_id ?? null : null)
+          root.data.defaultVariantId ??
+          root.data.variant_id ??
+          root.data.variantId ??
+          root.data.default_sku_id ??
+          root.data.defaultSkuId ??
+          root.data.sku_id ??
+          root.data.skuId ??
+          (root.data.default_sku && typeof root.data.default_sku === "object"
+            ? root.data.default_sku.id ?? root.data.default_sku.sku_id ?? null
+            : null) ??
+          (root.data.sku && typeof root.data.sku === "object" ? root.data.sku.id ?? root.data.sku.sku_id ?? null : null)
           : null);
       const s = String(direct ?? "").trim();
       if (s) fallback.push(s);
@@ -1329,14 +1329,14 @@ function createApiRouter(config) {
         offerIssueDetails: offerIssueFailed ? issued?.failure || null : null,
         banner: hasDiscount
           ? {
-              title: "خصم الباقة اتفعل",
-              cta: "تم تفعيل الخصم",
-              bannerColor: "#16a34a",
-              badgeColor: "#16a34a",
-              offerId: String(offer.offerId || "") || null,
-              discountAmount: Number(discountAmount.toFixed(2)),
-              autoApply: true
-            }
+            title: "خصم الباقة اتفعل",
+            cta: "تم تفعيل الخصم",
+            bannerColor: "#16a34a",
+            badgeColor: "#16a34a",
+            offerId: String(offer.offerId || "") || null,
+            discountAmount: Number(discountAmount.toFixed(2)),
+            autoApply: true
+          }
           : null,
         applied: evaluation?.applied || null,
         validation: {
@@ -1515,9 +1515,12 @@ function createApiRouter(config) {
 
       const shouldIssueOffer = kind !== "products_no_discount" && discountAmount > 0;
       const cartKey = String(qValue.cartKey || "").trim() || undefined;
+      // Use 'authoritative' mode to replace any existing offer with the current bundle's discount
+      // (not 'incremental' which would merge/accumulate with old discounts)
       const issued = shouldIssueOffer
-        ? await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey, mode: "incremental" })
+        ? await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, { ttlHours: 24, cartKey, mode: "authoritative" })
         : { offer: null, failure: { reason: "OFFER_DISABLED" } };
+
       const offer = issued?.offer || null;
       const offerAction = issued?.action || null;
       const hasDiscount = Boolean(offer && discountAmount > 0);
