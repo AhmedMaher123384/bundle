@@ -2,7 +2,7 @@ const mountBundle = require("../src/storefront/snippet/features/bundle/bundle.mo
 const { readSnippetCss } = require("../src/storefront/snippet/styles");
 
 describe("storefront bundle snippet", () => {
-  test("tries applying coupon using object payloads for addCoupon", () => {
+  test("does not include coupon application logic in snippet", () => {
     const css = readSnippetCss();
     const ctx = {
       parts: [],
@@ -16,7 +16,7 @@ describe("storefront bundle snippet", () => {
     mountBundle(ctx);
     const snippet = ctx.parts.join("");
 
-    expect(snippet).toMatch(/addCoupon\(\{\s*code\s*:\s*c\s*\}\)/);
-    expect(snippet).toMatch(/addCoupon\(\{\s*coupon_code\s*:\s*c\s*\}\)/);
+    expect(snippet).toMatch(/\/api\/proxy\/bundles\/apply/);
+    expect(snippet).not.toMatch(/addCoupon\(/);
   });
 });
