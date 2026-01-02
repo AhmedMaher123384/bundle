@@ -214,12 +214,13 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   const fail = (reason, extra) => ({
     coupon: null,
+    action: 'fail',
     failure: { reason: String(reason || "UNKNOWN"), ...(extra || {}) }
   });
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    return fail("NO_DISCOUNT", { totalDiscount: totalDiscount ?? null });
+    return { coupon: null, action: 'clear', failure: null };
   }
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
@@ -230,13 +231,22 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
     });
   }
+
+  // ✅ التعديل الرئيسي: نبحث عن كوبون نشط بنفس الخصم والمنتجات
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
-    const existingType = String(existing?.sallaType || "").trim().toLowerCase();
-    if (existingType === "fixed" && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
+    const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
+    const existingValue = Number(existing?.discountValue || 0);
+    const existingAmount = Number(existing?.discountAmount || 0);
+    
+    // ✅ نتحقق إذا الكوبون الموجود له نفس الخصم الإجمالي
+    if (existingType === "fixed" && amountsMatch(existingAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
       await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      return { coupon: existing, failure: null, reused: true };
+      return { coupon: existing, action: 'reuse', failure: null, reused: true };
     }
+    
+    // ✅ إذا الخصم مختلف، نحدّث الكوبون القديم بدلاً من إنشاء واحد جديد
+    // (لكن سلة لا تدعم تحديث الكوبونات، لذا سننشئ واحد جديد)
   }
 
   const now = new Date();
@@ -245,6 +255,13 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const startDate = formatDateOnlyInTimeZone(now, sallaTimeZone);
   let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
   if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
+
+  // ✅ نضيف معلومات الباقات في الكوبون
+  const appliedBundleIds = (evaluationResult?.applied?.bundles || []).map(b => String(b?.bundleId || "")).filter(Boolean);
+  const bundlesSummary = (evaluationResult?.applied?.bundles || []).map(b => ({
+    bundleId: String(b?.bundleId || ""),
+    discountAmount: Number(b?.discountAmount || 0)
+  }));
 
   const basePayload = {
     free_shipping: false,
@@ -311,17 +328,21 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     }
 
     try {
+      // ✅ نحفظ معلومات الباقات المطبقة
       const record = await CartCoupon.findOneAndUpdate(
         { merchantId: merchant._id, cartHash },
         {
           $set: {
-            couponId: sallaCouponId ? String(sallaCouponId) : undefined,
+            sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,
             code,
             status: "issued",
-            sallaType: "fixed",
+            discountType: "fixed",
             discountAmount,
             includeProductIds,
+            appliedBundleIds, // ✅ جديد
+            bundlesSummary, // ✅ جديد
             expiresAt,
+            issuedAt: now,
             lastSeenAt: now
           },
           $setOnInsert: { createdAt: now },
@@ -331,7 +352,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       );
 
       await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
-      return { coupon: record, failure: null, reused: false };
+      return { coupon: record, action: 'create', failure: null, reused: false };
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
       return fail("DB_WRITE_FAILED", { error: { message: dbErr?.message ?? "DB error", code: dbErr?.code ?? null } });
