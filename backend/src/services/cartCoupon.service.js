@@ -277,22 +277,30 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     failure: { reason: String(reason || "UNKNOWN"), ...(extra || {}) }
   });
 
+  const existing = await getActiveIssuedCoupon(merchant._id, group);
+
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
-    await clearCartStateForGroup(merchant._id, group);
-    return { offer: null, action: "clear", failure: null };
+    if (existing) {
+      return { offer: existing, action: "keep", failure: null };
+    } else {
+      await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+      await clearCartStateForGroup(merchant._id, group);
+      return { offer: null, action: "clear", failure: null };
+    }
   }
 
   const discountAmount = Number(Number(totalDiscount).toFixed(2));
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {
-    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
-    await clearCartStateForGroup(merchant._id, group);
-    return { offer: null, action: "clear", failure: null };
+    if (existing) {
+      return { offer: existing, action: "keep", failure: null };
+    } else {
+      await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+      await clearCartStateForGroup(merchant._id, group);
+      return { offer: null, action: "clear", failure: null };
+    }
   }
-
-  const existing = await getActiveIssuedCoupon(merchant._id, group);
 
   const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
   // When using cartKey, we should merge if we found an existing coupon by cartKey, regardless of cartHash changes
@@ -317,9 +325,13 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
 
   const productNumbers = normalizeProductIdNumbers(desiredIncludeProductIds);
   if (!productNumbers.length) {
-    await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
-    await clearCartStateForGroup(merchant._id, group);
-    return { offer: null, action: "clear", failure: null };
+    if (existing) {
+      return { offer: existing, action: "keep", failure: null };
+    } else {
+      await clearSallaOffersForGroup(config, merchantAccessToken, merchant._id, group).catch(() => undefined);
+      await clearCartStateForGroup(merchant._id, group);
+      return { offer: null, action: "clear", failure: null };
+    }
   }
 
   const minPurchaseAmount = computeMinPurchaseAmountForDiscount(desiredDiscountAmount);

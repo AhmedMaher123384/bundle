@@ -1252,24 +1252,40 @@ function createApiRouter(config) {
       const rawItems = bValue.items;
       const cartKey = String(qValue.cartKey || "").trim() || undefined;
       if (!rawItems.length) {
-        const issued = await issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant.accessToken, [], { applied: { totalDiscount: 0 } }, {
-          ttlHours: 24,
-          cartKey,
-          mode: "authoritative"
-        });
+        const issued = await issueOrReuseSpecialOfferForCartVerbose(
+          config,
+          merchant,
+          merchant.accessToken,
+          [],
+          { applied: { totalDiscount: 0 } },
+          { ttlHours: 24, cartKey, mode: "authoritative" }
+        );
+        const offer = issued?.offer || null;
         const offerAction = issued?.action || "clear";
+        const hasDiscount = Boolean(offer && Number.isFinite(Number(offer?.discountAmount)) && Number(offer?.discountAmount) > 0);
+        const discountAmount = hasDiscount ? Number(Number(offer.discountAmount).toFixed(2)) : 0;
 
         return res.json({
           ok: true,
           merchantId: String(qValue.merchantId),
           cartKey: cartKey || null,
           offerAction,
-          hasDiscount: false,
-          discountAmount: 0,
-          offerId: null,
+          hasDiscount,
+          discountAmount,
+          offerId: hasDiscount ? String(offer?.offerId || "") || null : null,
           offerIssueFailed: false,
           offerIssueDetails: null,
-          banner: null,
+          banner: hasDiscount
+            ? {
+                title: "خصم الباقة اتفعل",
+                cta: "تم تفعيل الخصم",
+                bannerColor: "#16a34a",
+                badgeColor: "#16a34a",
+                offerId: String(offer?.offerId || "") || null,
+                discountAmount,
+                autoApply: true
+              }
+            : null,
           applied: { totalDiscount: 0, matchedProductIds: [], bundles: [] },
           validation: {
             missing: [],
