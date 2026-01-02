@@ -32,6 +32,55 @@ function getBackendOrigin() {
   return "";
 }
 
+let cachedCartKey = "";
+
+function cartKeyStorageKey() {
+  return "bundle_app_cart_key:" + String(merchantId || "");
+}
+
+function generateCartKey() {
+  try {
+    const g = typeof globalThis !== "undefined" ? globalThis : window;
+    const cryptoObj = g && g.crypto;
+    if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+      const b = new Uint8Array(16);
+      cryptoObj.getRandomValues(b);
+      let out = "";
+      for (let i = 0; i < b.length; i += 1) out += b[i].toString(16).padStart(2, "0");
+      return out;
+    }
+  } catch (e) {}
+
+  const seed = String(Date.now()) + ":" + String(Math.random());
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return "r" + h.toString(16) + String(Math.random()).slice(2, 10);
+}
+
+function getOrCreateCartKey() {
+  if (cachedCartKey) return cachedCartKey;
+
+  const key = cartKeyStorageKey();
+  try {
+    const raw = localStorage.getItem(key);
+    const v = String(raw || "").trim();
+    if (v) {
+      cachedCartKey = v;
+      return cachedCartKey;
+    }
+  } catch (e0) {}
+
+  const created = generateCartKey();
+  const finalKey = String(created || "").trim();
+  if (!finalKey) return "";
+
+  cachedCartKey = finalKey;
+  try {
+    localStorage.setItem(key, cachedCartKey);
+  } catch (e1) {}
+  return cachedCartKey;
+}
+
 function buildUrl(path, params) {
   const origin = getBackendOrigin();
   if (!origin) return null;
@@ -44,6 +93,8 @@ function buildUrl(path, params) {
   }
   u.searchParams.set("merchantId", merchantId);
   u.searchParams.set("token", token);
+  const ck = getOrCreateCartKey();
+  if (ck) u.searchParams.set("cartKey", ck);
   return u.toString();
 }
 

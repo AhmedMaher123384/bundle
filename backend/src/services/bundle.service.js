@@ -483,25 +483,27 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  const bestAppliedByTriggerProductId = new Map();
-  for (const ev of preEvaluations) {
-    const candidate = Boolean(ev.matched && ev.discountAmount > 0);
-    if (!candidate) continue;
-    const key = ev.triggerProductId || String(ev.bundle?._id || "");
-    const currentBest = bestAppliedByTriggerProductId.get(key);
-    if (!currentBest || ev.discountAmount > currentBest.discountAmount) {
-      bestAppliedByTriggerProductId.set(key, ev);
-    }
-  }
-  const appliedBundleIds = new Set(Array.from(bestAppliedByTriggerProductId.values()).map((ev) => String(ev.bundle?._id || "")));
-
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
+  const chosenBundleIdByTrigger = new Map();
+  const chosenDiscountByTrigger = new Map();
 
   for (const ev of preEvaluations) {
-    const applied = appliedBundleIds.has(String(ev.bundle?._id || ""));
+    const triggerKey = ev.triggerProductId ? String(ev.triggerProductId) : `__bundle:${String(ev.bundle?._id)}`;
+    if (!ev.matched || !(ev.discountAmount > 0)) continue;
+    const prev = chosenDiscountByTrigger.get(triggerKey);
+    if (prev == null || ev.discountAmount > prev) {
+      chosenDiscountByTrigger.set(triggerKey, ev.discountAmount);
+      chosenBundleIdByTrigger.set(triggerKey, String(ev.bundle?._id));
+    }
+  }
+
+  for (const ev of preEvaluations) {
+    const triggerKey = ev.triggerProductId ? String(ev.triggerProductId) : `__bundle:${String(ev.bundle?._id)}`;
+    const applied =
+      Boolean(ev.matched && ev.discountAmount > 0) && String(chosenBundleIdByTrigger.get(triggerKey) || "") === String(ev.bundle?._id);
     
     if (applied) {
       appliedBundles.push({

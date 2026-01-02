@@ -85,11 +85,17 @@ function amountsMatch(a, b) {
   return Math.abs(x - y) <= 0.01;
 }
 
-async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
+function normalizeCartKey(cartKey) {
+  const ck = String(cartKey || "").trim();
+  if (!ck) return null;
+  return ck.length > 200 ? ck.slice(0, 200) : ck;
+}
+
+async function getActiveIssuedCoupon(merchantObjectId, group) {
   const now = new Date();
   const existing = await CartCoupon.findOne({
     merchantId: merchantObjectId,
-    cartHash,
+    ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
     status: "issued",
     expiresAt: { $gt: now }
   });
@@ -99,9 +105,14 @@ async function getActiveIssuedCoupon(merchantObjectId, cartHash) {
   return existing;
 }
 
-async function markOtherIssuedCouponsSuperseded(merchantObjectId, currentCartHash) {
+async function markOtherIssuedCouponsSuperseded(merchantObjectId, group, keepCouponId) {
   await CartCoupon.updateMany(
-    { merchantId: merchantObjectId, status: "issued", cartHash: { $ne: currentCartHash } },
+    {
+      merchantId: merchantObjectId,
+      status: "issued",
+      ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
+      ...(keepCouponId ? { _id: { $ne: keepCouponId } } : {})
+    },
     { $set: { status: "superseded" } }
   );
 }
@@ -109,6 +120,8 @@ async function markOtherIssuedCouponsSuperseded(merchantObjectId, currentCartHas
 async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
   const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
   const { cartHash } = computeCartHash(cartItems);
+  const cartKey = normalizeCartKey(options?.cartKey);
+  const group = cartKey ? { cartKey } : { cartHash };
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) return null;
@@ -118,11 +131,11 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) return null;
 
-  const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
+  const existing = await getActiveIssuedCoupon(merchant._id, group);
   if (existing) {
     const existingType = String(existing?.sallaType || "").trim().toLowerCase();
     if (existingType === "fixed" && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return existing;
     }
   }
@@ -179,10 +192,11 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
     try {
       const record = await CartCoupon.findOneAndUpdate(
-        { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash },
         {
           $set: {
             couponId: sallaCouponId ? String(sallaCouponId) : undefined,
+            ...(cartKey ? { cartKey } : {}),
             code,
             status: "issued",
             sallaType: "fixed",
@@ -191,13 +205,13 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
             expiresAt,
             lastSeenAt: now
           },
-          $setOnInsert: { createdAt: now },
+          $setOnInsert: { createdAt: now, cartHash },
           $unset: { redeemedAt: "", orderId: "" }
         },
         { upsert: true, new: true }
       );
 
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, record?._id);
       return record;
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
@@ -211,6 +225,8 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
   const ttlHours = Math.max(1, Math.min(24, Number(options?.ttlHours || 24)));
   const { cartHash } = computeCartHash(cartItems);
+  const cartKey = normalizeCartKey(options?.cartKey);
+  const group = cartKey ? { cartKey } : { cartHash };
 
   const fail = (reason, extra) => ({
     coupon: null,
@@ -233,14 +249,14 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   }
 
   // ✅ التعديل الرئيسي: نبحث عن كوبون نشط بنفس الخصم والمنتجات
-  const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
+  const existing = await getActiveIssuedCoupon(merchant._id, group);
   if (existing) {
     const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
     const existingAmount = Number(existing?.discountAmount || 0);
     
     // ✅ نتحقق إذا الكوبون الموجود له نفس الخصم الإجمالي
     if (existingType === "fixed" && amountsMatch(existingAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return { coupon: existing, action: 'reuse', failure: null, reused: true };
     }
     
@@ -329,13 +345,14 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     try {
       // ✅ نحفظ معلومات الباقات المطبقة
       const record = await CartCoupon.findOneAndUpdate(
-        { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash },
         {
           $set: {
             sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,
             code,
             status: "issued",
             discountType: "fixed",
+            ...(cartKey ? { cartKey } : {}),
             discountAmount,
             includeProductIds,
             appliedBundleIds, // ✅ جديد
@@ -344,13 +361,13 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
             issuedAt: now,
             lastSeenAt: now
           },
-          $setOnInsert: { createdAt: now },
+          $setOnInsert: { createdAt: now, cartHash },
           $unset: { redeemedAt: "", orderId: "" }
         },
         { upsert: true, new: true }
       );
 
-      await markOtherIssuedCouponsSuperseded(merchant._id, cartHash);
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, record?._id);
       return { coupon: record, action: 'create', failure: null, reused: false };
     } catch (dbErr) {
       if (dbErr?.code === 11000) continue;
