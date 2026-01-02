@@ -170,16 +170,12 @@ async function markOtherIssuedCouponsSuperseded(merchantObjectId, group, keepCou
   );
 }
 
-async function supersedeIssuedCouponsForGroup(merchantObjectId, group) {
-  const now = new Date();
-  await CartCoupon.updateMany(
-    {
-      merchantId: merchantObjectId,
-      status: "issued",
-      ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") })
-    },
-    { $set: { status: "superseded", lastSeenAt: now } }
-  );
+async function clearCartStateForGroup(merchantObjectId, group) {
+  await CartCoupon.deleteMany({
+    merchantId: merchantObjectId,
+    ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
+    status: { $in: ["issued", "superseded", "expired"] }
+  });
 }
 
 async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, cartItems, evaluationResult, options) {
@@ -257,7 +253,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
     try {
       const record = await CartCoupon.findOneAndUpdate(
-        cartKey ? { merchantId: merchant._id, cartKey } : { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash, status: "issued" },
         {
           $set: {
             sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,
@@ -303,7 +299,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
-    await supersedeIssuedCouponsForGroup(merchant._id, group);
+    await clearCartStateForGroup(merchant._id, group);
     return { coupon: null, action: 'clear', failure: null };
   }
 
@@ -311,9 +307,8 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   const includeProductIds = resolveIncludeProductIdsFromEvaluation(evaluationResult);
   if (!includeProductIds.length) {
-    return fail("NO_MATCHED_PRODUCTS", {
-      matchedProductIds: Array.isArray(evaluationResult?.applied?.matchedProductIds) ? evaluationResult.applied.matchedProductIds : []
-    });
+    await clearCartStateForGroup(merchant._id, group);
+    return { coupon: null, action: 'clear', failure: null };
   }
 
   // ✅ التعديل الرئيسي: نبحث عن كوبون نشط بنفس الخصم والمنتجات
@@ -423,7 +418,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     try {
       // ✅ نحفظ معلومات الباقات المطبقة
       const record = await CartCoupon.findOneAndUpdate(
-        cartKey ? { merchantId: merchant._id, cartKey } : { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash, status: "issued" },
         {
           $set: {
             sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,
