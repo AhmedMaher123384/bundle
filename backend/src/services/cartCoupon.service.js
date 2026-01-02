@@ -236,7 +236,6 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const existing = await getActiveIssuedCoupon(merchant._id, cartHash);
   if (existing) {
     const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
-    const existingValue = Number(existing?.discountValue || 0);
     const existingAmount = Number(existing?.discountAmount || 0);
     
     // ✅ نتحقق إذا الكوبون الموجود له نفس الخصم الإجمالي

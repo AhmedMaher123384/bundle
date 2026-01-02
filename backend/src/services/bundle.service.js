@@ -483,14 +483,25 @@ async function evaluateBundles(merchant, cartItems, variantSnapshotById) {
     });
   }
 
-  // ✅ تطبيق جميع الباقات المطابقة
+  const bestAppliedByTriggerProductId = new Map();
+  for (const ev of preEvaluations) {
+    const candidate = Boolean(ev.matched && ev.discountAmount > 0);
+    if (!candidate) continue;
+    const key = ev.triggerProductId || String(ev.bundle?._id || "");
+    const currentBest = bestAppliedByTriggerProductId.get(key);
+    if (!currentBest || ev.discountAmount > currentBest.discountAmount) {
+      bestAppliedByTriggerProductId.set(key, ev);
+    }
+  }
+  const appliedBundleIds = new Set(Array.from(bestAppliedByTriggerProductId.values()).map((ev) => String(ev.bundle?._id || "")));
+
   const evaluations = [];
   const appliedBundles = [];
   let totalDiscount = 0;
   const appliedProductIds = new Set();
 
   for (const ev of preEvaluations) {
-    const applied = Boolean(ev.matched && ev.discountAmount > 0);
+    const applied = appliedBundleIds.has(String(ev.bundle?._id || ""));
     
     if (applied) {
       appliedBundles.push({
