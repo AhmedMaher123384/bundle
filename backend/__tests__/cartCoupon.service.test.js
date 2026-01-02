@@ -171,3 +171,69 @@ describe("cartCoupon.service.issueOrReuseCouponForCart", () => {
     expect(payload && payload.type).toBe("fixed");
   });
 });
+
+describe("cartCoupon.service.issueOrReuseCouponForCartVerbose", () => {
+  beforeEach(() => {
+    CartCoupon.findOne.mockReset();
+    CartCoupon.findOneAndUpdate.mockReset();
+    CartCoupon.updateMany.mockReset();
+    createCoupon.mockReset();
+  });
+
+  test("aggregates discount across bundles for same cartKey", async () => {
+    const existing = {
+      _id: "cc-existing",
+      cartKey: "ck1",
+      status: "issued",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      discountType: "fixed",
+      discountAmount: 1400,
+      includeProductIds: ["993951508"],
+      appliedBundleIds: ["b1"],
+      bundlesSummary: [{ bundleId: "b1", discountAmount: 1400 }],
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    CartCoupon.findOne.mockResolvedValueOnce(existing);
+    CartCoupon.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+    createCoupon.mockResolvedValue({ data: { id: 456 } });
+    CartCoupon.findOneAndUpdate.mockImplementation(async (_q, doc) => ({
+      _id: "cc-existing",
+      code: String(doc?.$set?.code || ""),
+      status: String(doc?.$set?.status || ""),
+      discountType: String(doc?.$set?.discountType || ""),
+      discountAmount: Number(doc?.$set?.discountAmount || 0),
+      includeProductIds: doc?.$set?.includeProductIds || [],
+      appliedBundleIds: doc?.$set?.appliedBundleIds || [],
+      bundlesSummary: doc?.$set?.bundlesSummary || []
+    }));
+
+    const { issueOrReuseCouponForCartVerbose } = require("../src/services/cartCoupon.service");
+
+    const config = { salla: {}, security: {} };
+    const merchant = { _id: "mongoMerchantId", merchantId: "storeMerchantId" };
+
+    const evaluationResult = {
+      applied: {
+        totalDiscount: 1800,
+        matchedProductIds: ["154200631"],
+        bundles: [{ bundleId: "b2", discountAmount: 1800 }]
+      }
+    };
+
+    const res = await issueOrReuseCouponForCartVerbose(
+      config,
+      merchant,
+      "accessToken",
+      [{ variantId: "v1", quantity: 1 }],
+      evaluationResult,
+      { ttlHours: 24, cartKey: "ck1" }
+    );
+
+    expect(res && res.coupon && res.coupon.discountAmount).toBe(3200);
+    const payload = createCoupon.mock.calls[0]?.[2] || null;
+    expect(payload && payload.amount).toBe(3200);
+    expect(payload && payload.include_product_ids.sort()).toEqual(["154200631", "993951508"].sort());
+    expect(res.coupon.appliedBundleIds.sort()).toEqual(["b1", "b2"].sort());
+  });
+});

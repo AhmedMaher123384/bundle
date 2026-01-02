@@ -336,13 +336,6 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   let expiryDate = formatDateOnlyInTimeZone(expiresAt, sallaTimeZone);
   if (expiryDate <= startDate) expiryDate = addDaysToDateOnly(startDate, 1);
 
-  // ✅ نضيف معلومات الباقات في الكوبون
-  const appliedBundleIds = (evaluationResult?.applied?.bundles || []).map(b => String(b?.bundleId || "")).filter(Boolean);
-  const bundlesSummary = (evaluationResult?.applied?.bundles || []).map(b => ({
-    bundleId: String(b?.bundleId || ""),
-    discountAmount: Number(b?.discountAmount || 0)
-  }));
-
   const basePayload = {
     free_shipping: false,
     exclude_sale_products: false,
