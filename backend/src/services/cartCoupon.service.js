@@ -126,6 +126,11 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
 function computeMinPurchaseAmountForDiscount(discountAmount) {
   const amt = Number(discountAmount);
   if (!Number.isFinite(amt) || amt <= 0) return 0;
+  // For high discounts, use a percentage of the discount to avoid requiring unrealistically high cart totals
+  // For discounts >= 1000, use 50% of discount amount, otherwise use discount + 1
+  if (amt >= 1000) {
+    return Math.max(100, Math.ceil(amt * 0.5)); // Minimum 100, or 50% of discount
+  }
   return Math.max(0, Math.ceil(amt + 1));
 }
 
