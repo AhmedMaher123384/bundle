@@ -293,7 +293,7 @@ function createWebhookController(config) {
             snapshot: {
               cartItems: evaluation?.cart || items,
               applied: evaluation?.applied,
-              coupon: { code: coupon.code, id: coupon.couponId || null, status: coupon.status },
+              coupon: { code: coupon.code, id: coupon.sallaCouponId || null, status: coupon.status },
               variants: Array.from(snapshots.values())
             }
           }).catch(() => undefined);

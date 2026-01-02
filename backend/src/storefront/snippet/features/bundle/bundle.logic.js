@@ -128,6 +128,17 @@ async function requestApplyBundle(bundleId, items) {
   });
 }
 
+async function requestCartBanner(items) {
+  const payload = { items: Array.isArray(items) ? items : [] };
+  const u = buildUrl("/api/proxy/cart/banner", {});
+  if (!u) return null;
+  return fetchJson(u, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function getProductVariantsByProductId(productId) {
   const p = String(productId || "").trim();
   if (!p) return null;
@@ -2705,5 +2716,101 @@ async function refreshProduct() {
     }
   }
 }
+`
+,
+`
+function cartItemsSignature(items) {
+  try {
+    const m = new Map();
+    for (const it of Array.isArray(items) ? items : []) {
+      const v = String(it && it.variantId || "").trim();
+      const q = Math.max(0, Math.floor(Number(it && it.quantity || 0)));
+      if (!v || !Number.isFinite(q) || q <= 0) continue;
+      m.set(v, (m.get(v) || 0) + q);
+    }
+    return Array.from(m.entries())
+      .sort(function (a, b) { return String(a[0]).localeCompare(String(b[0])); })
+      .map(function (e) { return String(e[0]) + ":" + String(e[1]); })
+      .join("|");
+  } catch (e) {
+    return "";
+  }
+}
+
+async function syncCartBannerOnce() {
+  if (storeClosedNow()) return;
+  if (!isCartLikePage()) return;
+  const st = (g.BundleApp.__cartBannerSyncState = g.BundleApp.__cartBannerSyncState || { inFlight: false, lastSig: "", lastAt: 0 });
+  if (st.inFlight) return;
+
+  let items = [];
+  try {
+    items = await readCartItems();
+  } catch (eRead) {
+    markStoreClosed(eRead);
+    return;
+  }
+
+  const sig = cartItemsSignature(items);
+  if (sig === st.lastSig && Date.now() - Number(st.lastAt || 0) < 4000) return;
+  st.lastSig = sig;
+  st.inFlight = true;
+  st.lastAt = Date.now();
+
+  try {
+    const res = await requestCartBanner(items);
+    if (res && res.ok) {
+      const hasDiscount = Boolean(res.hasDiscount);
+      const code = String(res.couponCode || "").trim();
+      const issueFailed = Boolean(res.couponIssueFailed);
+      if (hasDiscount && code && !issueFailed) {
+        try { g.BundleApp._couponAutoApplyUntil = Date.now() + 90000; } catch (e0) {}
+        await tryApplyCoupon(code);
+      } else {
+        await tryClearCoupon();
+      }
+    }
+  } catch (eReq) {
+    markStoreClosed(eReq);
+  } finally {
+    st.inFlight = false;
+  }
+}
+
+function startCartBannerSync() {
+  try {
+    if (!isCartLikePage()) return;
+    const st = (g.BundleApp.__cartBannerSync = g.BundleApp.__cartBannerSync || { started: false, timer: 0 });
+    if (st.started) return;
+    st.started = true;
+
+    function tick() {
+      try {
+        syncCartBannerOnce();
+      } catch (e) {}
+    }
+
+    tick();
+    try {
+      st.timer = setInterval(tick, 2000);
+    } catch (e0) {}
+
+    try {
+      window.addEventListener("focus", tick);
+      document.addEventListener("visibilitychange", function () {
+        try {
+          if (document.visibilityState === "visible") tick();
+        } catch (e2) {}
+      });
+      document.addEventListener("click", function () {
+        try {
+          setTimeout(tick, 450);
+        } catch (e3) {}
+      }, true);
+    } catch (e1) {}
+  } catch (e) {}
+}
+
+try { startCartBannerSync(); } catch (e) {}
 `
 ];

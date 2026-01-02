@@ -1212,7 +1212,7 @@ function createApiRouter(config) {
           quantity: Joi.number().integer().min(1).required()
         })
       )
-      .min(1)
+      .min(0)
       .required()
   }).required();
 
@@ -1250,6 +1250,34 @@ function createApiRouter(config) {
       await ensureMerchantTokenFresh(merchant);
 
       const rawItems = bValue.items;
+      const cartKey = String(qValue.cartKey || "").trim() || undefined;
+      if (!rawItems.length) {
+        const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, [], { applied: { totalDiscount: 0 } }, {
+          ttlHours: 24,
+          cartKey,
+          mode: "authoritative"
+        });
+        const couponAction = issued?.action || "clear";
+
+        return res.json({
+          ok: true,
+          merchantId: String(qValue.merchantId),
+          cartKey: cartKey || null,
+          couponAction,
+          hasDiscount: false,
+          discountAmount: 0,
+          couponCode: null,
+          couponIssueFailed: false,
+          couponIssueDetails: null,
+          banner: null,
+          applied: { totalDiscount: 0, matchedProductIds: [], bundles: [] },
+          validation: {
+            missing: [],
+            inactive: [],
+            messages: [{ level: "info", code: "CART_EMPTY", message: "Cart has no items." }]
+          }
+        });
+      }
       const productRefProductIds = uniqStrings(rawItems.map((i) => parseProductRefVariantId(i.variantId)).filter(Boolean));
       const singleVariant = productRefProductIds.length
         ? await fetchSingleVariantSnapshotsByProductId(config.salla, merchant.accessToken, productRefProductIds)
@@ -1273,10 +1301,10 @@ function createApiRouter(config) {
         .map((s) => s.variantId);
 
       const evaluation = await bundleService.evaluateBundles(merchant, items, combinedSnapshots);
-      const cartKey = String(qValue.cartKey || "").trim() || undefined;
       const issued = await issueOrReuseCouponForCartVerbose(config, merchant, merchant.accessToken, items, evaluation, {
         ttlHours: 24,
-        cartKey
+        cartKey,
+        mode: "authoritative"
       });
       const coupon = issued?.coupon || null;
       const couponAction = issued?.action || null;

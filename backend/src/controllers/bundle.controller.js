@@ -134,7 +134,7 @@ function createBundleController(config) {
     return res.json({
       ...result,
       validation: { missing: report.missing || [], inactive },
-      coupon: coupon ? { code: coupon.code, id: coupon.couponId || null, status: coupon.status } : null
+      coupon: coupon ? { code: coupon.code, id: coupon.sallaCouponId || null, status: coupon.status } : null
     });
   });
 

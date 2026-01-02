@@ -142,12 +142,16 @@ function normalizeCartKey(cartKey) {
 
 async function getActiveIssuedCoupon(merchantObjectId, group) {
   const now = new Date();
-  const existing = await CartCoupon.findOne({
-    merchantId: merchantObjectId,
-    ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
-    status: "issued",
-    expiresAt: { $gt: now }
-  });
+  const existing = await CartCoupon.findOne(
+    {
+      merchantId: merchantObjectId,
+      ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") }),
+      status: "issued",
+      expiresAt: { $gt: now }
+    },
+    null,
+    { sort: { lastSeenAt: -1, createdAt: -1, _id: -1 } }
+  );
   if (!existing) return null;
   existing.lastSeenAt = new Date();
   await existing.save();
@@ -163,6 +167,18 @@ async function markOtherIssuedCouponsSuperseded(merchantObjectId, group, keepCou
       ...(keepCouponId ? { _id: { $ne: keepCouponId } } : {})
     },
     { $set: { status: "superseded" } }
+  );
+}
+
+async function supersedeIssuedCouponsForGroup(merchantObjectId, group) {
+  const now = new Date();
+  await CartCoupon.updateMany(
+    {
+      merchantId: merchantObjectId,
+      status: "issued",
+      ...(group?.cartKey ? { cartKey: String(group.cartKey) } : { cartHash: String(group?.cartHash || "") })
+    },
+    { $set: { status: "superseded", lastSeenAt: now } }
   );
 }
 
@@ -182,7 +198,7 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
   const existing = await getActiveIssuedCoupon(merchant._id, group);
   if (existing) {
-    const existingType = String(existing?.sallaType || "").trim().toLowerCase();
+    const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
     if (existingType === "fixed" && amountsMatch(existing?.discountAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
       await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return existing;
@@ -241,14 +257,14 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
 
     try {
       const record = await CartCoupon.findOneAndUpdate(
-        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey } : { merchantId: merchant._id, cartHash },
         {
           $set: {
-            couponId: sallaCouponId ? String(sallaCouponId) : undefined,
+            sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,
             ...(cartKey ? { cartKey } : {}),
             code,
             status: "issued",
-            sallaType: "fixed",
+            discountType: "fixed",
             discountAmount,
             includeProductIds,
             expiresAt,
@@ -276,6 +292,8 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const { cartHash } = computeCartHash(cartItems);
   const cartKey = normalizeCartKey(options?.cartKey);
   const group = cartKey ? { cartKey } : { cartHash };
+  const mode = options?.mode ? String(options.mode) : cartKey ? "incremental" : "authoritative";
+  const resolvedMode = mode === "authoritative" ? "authoritative" : "incremental";
 
   const fail = (reason, extra) => ({
     coupon: null,
@@ -285,6 +303,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   const totalDiscount = evaluationResult?.applied?.totalDiscount;
   if (!Number.isFinite(totalDiscount) || totalDiscount <= 0) {
+    await supersedeIssuedCouponsForGroup(merchant._id, group);
     return { coupon: null, action: 'clear', failure: null };
   }
 
@@ -301,9 +320,10 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
   const existing = await getActiveIssuedCoupon(merchant._id, group);
 
   const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
-  const mergedBundles = cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const mergedBundles = resolvedMode === "incremental" && cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
   const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
-  const desiredIncludeProductIds = cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
+  const desiredIncludeProductIds =
+    resolvedMode === "incremental" && cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
   const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
   const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
 
@@ -366,8 +386,8 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
       }
 
       if (err instanceof ApiError && err.statusCode === 422) {
-        const floored = Math.floor(discountAmount);
-        if (Number.isFinite(floored) && floored >= 1 && floored < discountAmount) {
+        const floored = Math.floor(desiredDiscountAmount);
+        if (Number.isFinite(floored) && floored >= 1 && floored < desiredDiscountAmount) {
           try {
             triedPayloads.push({ ...fixedPayload, amount: floored });
             const createdCouponResponse = await createCoupon(config.salla, merchantAccessToken, { ...fixedPayload, amount: floored });
@@ -403,7 +423,7 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     try {
       // ✅ نحفظ معلومات الباقات المطبقة
       const record = await CartCoupon.findOneAndUpdate(
-        cartKey ? { merchantId: merchant._id, cartKey, status: "issued" } : { merchantId: merchant._id, cartHash },
+        cartKey ? { merchantId: merchant._id, cartKey } : { merchantId: merchant._id, cartHash },
         {
           $set: {
             sallaCouponId: sallaCouponId ? String(sallaCouponId) : undefined,

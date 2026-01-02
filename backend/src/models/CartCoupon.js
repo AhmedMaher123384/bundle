@@ -24,10 +24,10 @@ const CartCouponSchema = new mongoose.Schema(
   { timestamps: false, collection: "cart_coupons" }
 );
 
-CartCouponSchema.index({ merchantId: 1, cartHash: 1 }, { unique: true });
+CartCouponSchema.index({ merchantId: 1, cartHash: 1 });
 CartCouponSchema.index(
-  { merchantId: 1, cartKey: 1, status: 1 },
-  { unique: true, partialFilterExpression: { cartKey: { $exists: true, $type: "string" }, status: "issued" } }
+  { merchantId: 1, cartKey: 1 },
+  { unique: true, partialFilterExpression: { cartKey: { $exists: true, $type: "string" } } }
 );
 CartCouponSchema.index({ code: 1 }, { unique: true });
 
