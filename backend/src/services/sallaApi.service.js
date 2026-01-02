@@ -49,7 +49,7 @@ async function createCoupon(sallaConfig, accessToken, payload) {
 async function createSpecialOffer(sallaConfig, accessToken, payload) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.post("/admin/v2/specialoffers", payload, {
+    const response = await client.post("/admin/v2/special-offers", payload, {
       headers: { "Content-Type": "application/json" }
     });
     return response.data;
@@ -63,7 +63,7 @@ async function createSpecialOffer(sallaConfig, accessToken, payload) {
 async function updateSpecialOffer(sallaConfig, accessToken, offerId, payload) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.put(`/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`, payload, {
+    const response = await client.put(`/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`, payload, {
       headers: { "Content-Type": "application/json" }
     });
     return response.data;
@@ -78,7 +78,7 @@ async function changeSpecialOfferStatus(sallaConfig, accessToken, offerId, statu
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
     const response = await client.put(
-      `/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}/status`,
+      `/admin/v2/special-offers/${encodeURIComponent(String(offerId))}/status`,
       { status: String(status || "").trim() },
       { headers: { "Content-Type": "application/json" } }
     );
@@ -93,7 +93,7 @@ async function changeSpecialOfferStatus(sallaConfig, accessToken, offerId, statu
 async function deleteSpecialOffer(sallaConfig, accessToken, offerId) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.delete(`/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`);
+    const response = await client.delete(`/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`);
     return response.data;
   } catch (error) {
     const status = error?.response?.status;
