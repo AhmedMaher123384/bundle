@@ -67,6 +67,55 @@ function resolveIncludeProductIdsFromEvaluation(evaluationResult) {
   );
 }
 
+function unionStringIds(a, b) {
+  const out = new Set();
+  for (const v of Array.isArray(a) ? a : []) {
+    const s = String(v || "").trim();
+    if (/^\d+$/.test(s)) out.add(s);
+  }
+  for (const v of Array.isArray(b) ? b : []) {
+    const s = String(v || "").trim();
+    if (/^\d+$/.test(s)) out.add(s);
+  }
+  return Array.from(out);
+}
+
+function extractBundlesFromEvaluation(evaluationResult) {
+  const arr = evaluationResult?.applied?.bundles;
+  const out = [];
+  for (const b of Array.isArray(arr) ? arr : []) {
+    const bundleId = String(b?.bundleId || "").trim();
+    const discountAmount = Number(b?.discountAmount || 0);
+    if (!bundleId || !Number.isFinite(discountAmount) || discountAmount <= 0) continue;
+    out.push({ bundleId, discountAmount: Number(discountAmount.toFixed(2)) });
+  }
+  return out;
+}
+
+function normalizeBundlesSummary(summary) {
+  const out = [];
+  for (const b of Array.isArray(summary) ? summary : []) {
+    const bundleId = String(b?.bundleId || "").trim();
+    const discountAmount = Number(b?.discountAmount || 0);
+    if (!bundleId || !Number.isFinite(discountAmount) || discountAmount <= 0) continue;
+    out.push({ bundleId, discountAmount: Number(discountAmount.toFixed(2)) });
+  }
+  return out;
+}
+
+function mergeBundlesSummary(existingSummary, incomingSummary) {
+  const map = new Map();
+  for (const b of normalizeBundlesSummary(existingSummary)) map.set(b.bundleId, b.discountAmount);
+  for (const b of normalizeBundlesSummary(incomingSummary)) map.set(b.bundleId, b.discountAmount);
+  const merged = Array.from(map.entries()).map(([bundleId, discountAmount]) => ({ bundleId, discountAmount }));
+  const total = merged.reduce((acc, b) => acc + Number(b.discountAmount || 0), 0);
+  return {
+    bundlesSummary: merged,
+    appliedBundleIds: merged.map((b) => b.bundleId),
+    discountAmount: Number(Number(total).toFixed(2))
+  };
+}
+
 function sameStringIdSet(a, b) {
   const aa = Array.isArray(a) ? a : [];
   const bb = Array.isArray(b) ? b : [];
@@ -250,12 +299,28 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
 
   // ✅ التعديل الرئيسي: نبحث عن كوبون نشط بنفس الخصم والمنتجات
   const existing = await getActiveIssuedCoupon(merchant._id, group);
+
+  const incomingBundlesSummary = extractBundlesFromEvaluation(evaluationResult);
+  const mergedBundles = cartKey && existing ? mergeBundlesSummary(existing?.bundlesSummary, incomingBundlesSummary) : null;
+  const desiredDiscountAmount = mergedBundles?.discountAmount || discountAmount;
+  const desiredIncludeProductIds = cartKey && existing ? unionStringIds(existing?.includeProductIds, includeProductIds) : includeProductIds;
+  const desiredAppliedBundleIds = mergedBundles?.appliedBundleIds || incomingBundlesSummary.map((b) => b.bundleId);
+  const desiredBundlesSummary = mergedBundles?.bundlesSummary || incomingBundlesSummary;
+
   if (existing) {
     const existingType = String(existing?.discountType || existing?.sallaType || "").trim().toLowerCase();
     const existingAmount = Number(existing?.discountAmount || 0);
     
     // ✅ نتحقق إذا الكوبون الموجود له نفس الخصم الإجمالي
-    if (existingType === "fixed" && amountsMatch(existingAmount, discountAmount) && sameStringIdSet(existing?.includeProductIds, includeProductIds)) {
+    if (
+      existingType === "fixed" &&
+      amountsMatch(existingAmount, desiredDiscountAmount) &&
+      sameStringIdSet(existing?.includeProductIds, desiredIncludeProductIds)
+    ) {
+      existing.appliedBundleIds = desiredAppliedBundleIds;
+      existing.bundlesSummary = desiredBundlesSummary;
+      existing.lastSeenAt = new Date();
+      await existing.save();
       await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return { coupon: existing, action: 'reuse', failure: null, reused: true };
     }
@@ -286,14 +351,14 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
     expiry_date: expiryDate,
     usage_limit: 1,
     usage_limit_per_user: 1,
-    include_product_ids: includeProductIds
+    include_product_ids: desiredIncludeProductIds
   };
 
   let lastCreateError = null;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const code = buildCouponCode(merchant.merchantId, cartHash);
-    const fixedPayload = { ...basePayload, code, type: "fixed", amount: discountAmount };
+    const fixedPayload = { ...basePayload, code, type: "fixed", amount: desiredDiscountAmount };
 
     let sallaCouponId = null;
     const triedPayloads = [];
@@ -353,10 +418,10 @@ async function issueOrReuseCouponForCartVerbose(config, merchant, merchantAccess
             status: "issued",
             discountType: "fixed",
             ...(cartKey ? { cartKey } : {}),
-            discountAmount,
-            includeProductIds,
-            appliedBundleIds, // ✅ جديد
-            bundlesSummary, // ✅ جديد
+            discountAmount: desiredDiscountAmount,
+            includeProductIds: desiredIncludeProductIds,
+            appliedBundleIds: desiredAppliedBundleIds,
+            bundlesSummary: desiredBundlesSummary,
             expiresAt,
             issuedAt: now,
             lastSeenAt: now
