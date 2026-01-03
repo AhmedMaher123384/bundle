@@ -2566,10 +2566,22 @@ async function syncCartBannerOnce() {
     const res = await requestCartBanner(items);
     if (res && res.ok) {
       try {
+        var prevAmt = g.BundleApp ? Number(g.BundleApp._lastOfferDiscountAmount || 0) : null;
         g.BundleApp._lastOfferId = String(res.offerId || "").trim();
         g.BundleApp._lastHasDiscount = Boolean(res.hasDiscount);
         g.BundleApp._lastOfferIssueFailed = Boolean(res.offerIssueFailed);
         g.BundleApp._lastOfferDiscountAmount = res.discountAmount != null ? Number(res.discountAmount) : null;
+
+        if (res.hasDiscount && Number.isFinite(Number(res.discountAmount)) && Number(res.discountAmount) > 0) {
+          if (prevAmt == null || Number(prevAmt) !== Number(res.discountAmount)) {
+            try {
+              await withTimeout(
+                fetch("/api/cart", { headers: { Accept: "application/json", "Cache-Control": "no-cache" }, credentials: "same-origin" }),
+                4500
+              );
+            } catch (eF) {}
+          }
+        }
       } catch (e0) {}
     }
   } catch (eReq) {

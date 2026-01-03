@@ -335,9 +335,11 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
   }
 
   const minPurchaseAmount = computeMinPurchaseAmountForDiscount(desiredDiscountAmount);
+  const minQty = productNumbers.length;
+  const messageText = `خصم الباندل: ${Number(desiredDiscountAmount.toFixed(2))} • نوع: fixed_amount • أقل كمية: ${minQty} • أولوية: 100`;
   const payloadBase = {
     name: buildSpecialOfferName(merchant.merchantId, cartKey || cartHash),
-    message: buildSpecialOfferMessage(desiredDiscountAmount),
+    message: messageText,
     applied_channel: "browser_and_application",
     offer_type: "fixed_amount",
     applied_to: "product",
@@ -353,6 +355,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
       products: productNumbers
     },
     get: {
+      discount_type: "fixed_amount",
       discount_amount: desiredDiscountAmount
     }
   };
@@ -370,7 +373,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     if (amountsMatch(existing?.discountAmount, desiredDiscountAmount) && sameStringIdSet(existing?.includeProductIds, desiredIncludeProductIds)) {
       // Update the message in Salla even when reusing to ensure it shows the correct amount
       const messageUpdatePayload = {
-        message: buildSpecialOfferMessage(desiredDiscountAmount)
+        message: `خصم الباندل: ${Number(desiredDiscountAmount.toFixed(2))} • نوع: fixed_amount • أقل كمية: ${minQty} • أولوية: 100`
       };
       await updateSpecialOffer(config.salla, merchantAccessToken, existingOfferId, messageUpdatePayload).catch(() => undefined);
       
@@ -453,7 +456,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
     // Build payload with fresh unique name on each attempt (Salla rejects duplicate names)
     const attemptPayload = {
       name: buildSpecialOfferName(merchant.merchantId, cartKey || cartHash),
-      message: buildSpecialOfferMessage(desiredDiscountAmount),
+      message: messageText,
       applied_channel: "browser_and_application",
       offer_type: "fixed_amount",
       applied_to: "product",
@@ -469,6 +472,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
         products: productNumbers
       },
       get: {
+        discount_type: "fixed_amount",
         discount_amount: desiredDiscountAmount
       }
     };
@@ -492,8 +496,8 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
             ...attemptPayload,
             min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
             buy: { ...attemptPayload.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
-            get: { discount_amount: floored },
-            message: buildSpecialOfferMessage(floored)
+            get: { discount_type: "fixed_amount", discount_amount: floored },
+            message: `خصم الباندل: ${Number(floored.toFixed(2))} • نوع: fixed_amount • أقل كمية: ${minQty} • أولوية: 100`
           };
           try {
             triedPayloads.push(payload2);

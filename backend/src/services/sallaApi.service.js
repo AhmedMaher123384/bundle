@@ -15,7 +15,9 @@ function createSallaApiClient(sallaConfig, accessToken) {
     baseURL: sallaConfig.apiBaseUrl,
     timeout: 15000,
     headers: {
-      Authorization: `Bearer ${accessToken}`
+      Authorization: `Bearer ${accessToken}`,
+      "X-Salla-Sync-Cart": "true",
+      "Cache-Control": "no-cache"
     }
   });
 }
