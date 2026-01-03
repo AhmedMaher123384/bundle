@@ -59,6 +59,7 @@ export function AppLayout() {
             <NavItem to="/" label="Dashboard" />
             <NavItem to="/products" label="Products" />
             <NavItem to="/bundles" label="Bundles" />
+            <NavItem to="/bundles?tab=new" label="New Bundels" />
             <NavItem to="/announcement-banners" label="Top Banner" />
             <NavItem to="/cart-preview" label="Cart Preview" />
           </div>
@@ -84,6 +85,7 @@ export function AppLayout() {
                 <NavItem to="/" label="Dashboard" />
                 <NavItem to="/products" label="Products" />
                 <NavItem to="/bundles" label="Bundles" />
+                <NavItem to="/bundles?tab=new" label="New Bundels" />
                 <NavItem to="/announcement-banners" label="Top Banner" />
                 <NavItem to="/cart-preview" label="Cart Preview" />
               </div>
