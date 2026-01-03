@@ -871,11 +871,24 @@ async function readCartItems() {
 
   async function fetchCartViaHttpApi() {
     try {
+      var g = typeof globalThis !== "undefined" ? globalThis : window;
+      try {
+        var until = Number((g && g.BundleApp && g.BundleApp.__cartHttpBackoffUntil) || 0);
+        if (Number.isFinite(until) && until > Date.now()) return [];
+      } catch (eB0) {}
+
       const r = await withTimeout(
         fetch("/api/cart", { headers: { Accept: "application/json" }, credentials: "same-origin" }),
         4500
       );
-      if (!r || !r.ok) return [];
+      if (!r) return [];
+      if (r.status === 429) {
+        try {
+          if (g && g.BundleApp) g.BundleApp.__cartHttpBackoffUntil = Date.now() + 60000;
+        } catch (eB1) {}
+        return [];
+      }
+      if (!r.ok) return [];
       const t = await withTimeout(r.text(), 4500);
       let j = null;
       try {
@@ -2581,7 +2594,7 @@ function startCartBannerSync() {
 
     tick();
     try {
-      st.timer = setInterval(tick, 2000);
+      st.timer = setInterval(tick, 5000);
     } catch (e0) {}
 
     try {
