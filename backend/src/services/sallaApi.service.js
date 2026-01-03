@@ -51,10 +51,26 @@ async function createCoupon(sallaConfig, accessToken, payload) {
 async function createSpecialOffer(sallaConfig, accessToken, payload) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.post("/admin/v2/special-offers", payload, {
-      headers: { "Content-Type": "application/json" }
-    });
-    return response.data;
+    const headers = { "Content-Type": "application/json" };
+    const paths = ["/admin/v2/special-offers", "/admin/v2/specialoffers"];
+    let lastErr = null;
+    for (const p of paths) {
+      try {
+        const response = await client.post(p, payload, { headers });
+        return response.data;
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          lastErr = error;
+          continue;
+        }
+        const details = error?.response?.data || error?.message;
+        throw new ApiError(status || 503, "Failed to create special offer in Salla", { code: "SALLA_SPECIALOFFER_CREATE_FAILED", details });
+      }
+    }
+    const status = lastErr?.response?.status;
+    const details = lastErr?.response?.data || lastErr?.message;
+    throw new ApiError(status || 503, "Failed to create special offer in Salla", { code: "SALLA_SPECIALOFFER_CREATE_FAILED", details });
   } catch (error) {
     const status = error?.response?.status;
     const details = error?.response?.data || error?.message;
@@ -65,10 +81,29 @@ async function createSpecialOffer(sallaConfig, accessToken, payload) {
 async function updateSpecialOffer(sallaConfig, accessToken, offerId, payload) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.put(`/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`, payload, {
-      headers: { "Content-Type": "application/json" }
-    });
-    return response.data;
+    const headers = { "Content-Type": "application/json" };
+    const paths = [
+      `/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`,
+      `/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`
+    ];
+    let lastErr = null;
+    for (const p of paths) {
+      try {
+        const response = await client.put(p, payload, { headers });
+        return response.data;
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          lastErr = error;
+          continue;
+        }
+        const details = error?.response?.data || error?.message;
+        throw new ApiError(status || 503, "Failed to update special offer in Salla", { code: "SALLA_SPECIALOFFER_UPDATE_FAILED", details });
+      }
+    }
+    const status = lastErr?.response?.status;
+    const details = lastErr?.response?.data || lastErr?.message;
+    throw new ApiError(status || 503, "Failed to update special offer in Salla", { code: "SALLA_SPECIALOFFER_UPDATE_FAILED", details });
   } catch (error) {
     const status = error?.response?.status;
     const details = error?.response?.data || error?.message;
@@ -79,12 +114,30 @@ async function updateSpecialOffer(sallaConfig, accessToken, offerId, payload) {
 async function changeSpecialOfferStatus(sallaConfig, accessToken, offerId, status) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.put(
+    const headers = { "Content-Type": "application/json" };
+    const body = { status: String(status || "").trim() };
+    const paths = [
       `/admin/v2/special-offers/${encodeURIComponent(String(offerId))}/status`,
-      { status: String(status || "").trim() },
-      { headers: { "Content-Type": "application/json" } }
-    );
-    return response.data;
+      `/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}/status`
+    ];
+    let lastErr = null;
+    for (const p of paths) {
+      try {
+        const response = await client.put(p, body, { headers });
+        return response.data;
+      } catch (error) {
+        const st = error?.response?.status;
+        if (st === 404) {
+          lastErr = error;
+          continue;
+        }
+        const details = error?.response?.data || error?.message;
+        throw new ApiError(st || 503, "Failed to change special offer status in Salla", { code: "SALLA_SPECIALOFFER_STATUS_FAILED", details });
+      }
+    }
+    const st = lastErr?.response?.status;
+    const details = lastErr?.response?.data || lastErr?.message;
+    throw new ApiError(st || 503, "Failed to change special offer status in Salla", { code: "SALLA_SPECIALOFFER_STATUS_FAILED", details });
   } catch (error) {
     const st = error?.response?.status;
     const details = error?.response?.data || error?.message;
@@ -95,8 +148,28 @@ async function changeSpecialOfferStatus(sallaConfig, accessToken, offerId, statu
 async function deleteSpecialOffer(sallaConfig, accessToken, offerId) {
   try {
     const client = createSallaApiClient(sallaConfig, accessToken);
-    const response = await client.delete(`/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`);
-    return response.data;
+    const paths = [
+      `/admin/v2/special-offers/${encodeURIComponent(String(offerId))}`,
+      `/admin/v2/specialoffers/${encodeURIComponent(String(offerId))}`
+    ];
+    let lastErr = null;
+    for (const p of paths) {
+      try {
+        const response = await client.delete(p);
+        return response.data;
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          lastErr = error;
+          continue;
+        }
+        const details = error?.response?.data || error?.message;
+        throw new ApiError(status || 503, "Failed to delete special offer in Salla", { code: "SALLA_SPECIALOFFER_DELETE_FAILED", details });
+      }
+    }
+    const status = lastErr?.response?.status;
+    const details = lastErr?.response?.data || lastErr?.message;
+    throw new ApiError(status || 503, "Failed to delete special offer in Salla", { code: "SALLA_SPECIALOFFER_DELETE_FAILED", details });
   } catch (error) {
     const status = error?.response?.status;
     const details = error?.response?.data || error?.message;
