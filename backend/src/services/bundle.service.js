@@ -261,7 +261,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
-  const maxUses = Math.max(1, Math.min(50, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1))));
+  const maxUses = 1; // أجبر كل باقة على التطبيق مرة واحدة فقط لكل طلب
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 
