@@ -598,6 +598,17 @@ async function issueOrReuseCouponForCart(config, merchant, merchantAccessToken, 
       await markOtherIssuedCouponsSuperseded(merchant._id, group, existing?._id);
       return existing;
     }
+    
+    // ✅ If existing coupon has different discount amount, cancel it first to prevent accumulation
+    if (existingType === "fixed" && !amountsMatch(existing?.discountAmount, discountAmount)) {
+      try {
+        await changeSpecialOfferStatus(config.salla, merchantAccessToken, existing.sallaCouponId, "inactive");
+      } catch (err) {
+        // Log error but continue - don't block new coupon creation
+        console.error(`Failed to cancel existing coupon ${existing.sallaCouponId}:`, err.message);
+      }
+      await markOtherIssuedCouponsSuperseded(merchant._id, group, existing._id);
+    }
   }
 
   const now = new Date();
