@@ -114,6 +114,14 @@ async function getProductBundlesByProductId(productId) {
   return fetchJson(u);
 }
 
+async function getPopupBundlesByTrigger(trigger) {
+  const t = String(trigger || "").trim();
+  if (!t) return null;
+  const u = buildUrl("/api/proxy/bundles/popup", { trigger: t });
+  if (!u) return null;
+  return fetchJson(u);
+}
+
 async function requestApplyBundle(bundleId, items) {
   const payload = {
     bundleId: String(bundleId || ""),
@@ -707,6 +715,9 @@ function ensureCartHooks() {
         const idNum = Number(idStr);
         if (Number.isFinite(idNum) && idNum > 0) markTriggerInCart(String(idNum));
         if (idStr) markTriggerVariantInCart(idStr);
+        try {
+          triggerPopup("cart_add", idStr || null);
+        } catch (eP0) {}
         scheduleUpsellRefresh();
       } catch (eM) {}
     });
@@ -716,10 +727,186 @@ function ensureCartHooks() {
         const pid = String(productId || "").trim();
         const pidNum = Number(pid);
         if (Number.isFinite(pidNum) && pidNum > 0) markTriggerInCart(String(pidNum));
+        try {
+          triggerPopup("cart_add", pid || null);
+        } catch (eP1) {}
         scheduleUpsellRefresh();
       } catch (eM2) {}
     });
+
+    hookMethod("removeItem", function (payload) {
+      try {
+        const idRaw = payload && payload.id != null ? payload.id : payload;
+        const idStr = String(idRaw || "").trim();
+        try {
+          triggerPopup("cart_remove", idStr || null);
+        } catch (eP2) {}
+        scheduleUpsellRefresh();
+      } catch (eM3) {}
+    });
+
+    hookMethod("deleteItem", function (payload) {
+      try {
+        const idRaw = payload && payload.id != null ? payload.id : payload;
+        const idStr = String(idRaw || "").trim();
+        try {
+          triggerPopup("cart_remove", idStr || null);
+        } catch (eP3) {}
+        scheduleUpsellRefresh();
+      } catch (eM4) {}
+    });
   } catch (e2) {}
+}
+
+function popupDismissKey(bundleId) {
+  return "bundle_app_popup_dismissed:" + String(merchantId || "") + ":" + String(bundleId || "");
+}
+
+function popupViewsKey(bundleId, scope) {
+  return "bundle_app_popup_views:" + String(merchantId || "") + ":" + String(scope || "session") + ":" + String(bundleId || "");
+}
+
+function popupLastShownKey() {
+  return "bundle_app_popup_last_shown:" + String(merchantId || "");
+}
+
+function popupReadJsonFromStorage(storage, key) {
+  try {
+    const raw = storage.getItem(String(key || ""));
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    return j && typeof j === "object" ? j : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function popupWriteJsonToStorage(storage, key, value) {
+  try {
+    storage.setItem(String(key || ""), JSON.stringify(value || {}));
+  } catch (e) {}
+}
+
+function markPopupDismissed(bundleId) {
+  try {
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+    popupWriteJsonToStorage(localStorage, popupDismissKey(bid), { ts: Date.now() });
+  } catch (e) {}
+}
+
+function isPopupDismissed(bundleId) {
+  try {
+    const bid = String(bundleId || "").trim();
+    if (!bid) return false;
+    const m = popupReadJsonFromStorage(localStorage, popupDismissKey(bid));
+    return Boolean(m && Number(m.ts) > 0);
+  } catch (e) {
+    return false;
+  }
+}
+
+function popupReadViews(bundleId, scope) {
+  try {
+    const bid = String(bundleId || "").trim();
+    if (!bid) return 0;
+    const sc = scope === "user" ? "user" : "session";
+    const storage = sc === "user" ? localStorage : sessionStorage;
+    const m = popupReadJsonFromStorage(storage, popupViewsKey(bid, sc));
+    const n = Number(m && m.count);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
+  } catch (e) {
+    return 0;
+  }
+}
+
+function popupIncViews(bundleId, scope) {
+  try {
+    const bid = String(bundleId || "").trim();
+    if (!bid) return;
+    const sc = scope === "user" ? "user" : "session";
+    const storage = sc === "user" ? localStorage : sessionStorage;
+    const key = popupViewsKey(bid, sc);
+    const m = popupReadJsonFromStorage(storage, key);
+    const next = { ts: Date.now(), count: Math.max(0, Math.floor(Number(m && m.count) || 0)) + 1 };
+    popupWriteJsonToStorage(storage, key, next);
+  } catch (e) {}
+}
+
+function popupCanShowBundle(bundle) {
+  try {
+    const bid = String((bundle && bundle.id) || "").trim();
+    if (!bid) return false;
+    if (isPopupDismissed(bid)) return false;
+
+    let lastShownAt = 0;
+    try {
+      const m = popupReadJsonFromStorage(sessionStorage, popupLastShownKey());
+      lastShownAt = Number(m && m.ts) || 0;
+    } catch (e0) {
+      lastShownAt = 0;
+    }
+    if (Number.isFinite(lastShownAt) && lastShownAt > 0 && Date.now() - lastShownAt < 30000) return false;
+
+    const settings = (bundle && bundle.popupSettings) || {};
+    const maxViewsRaw = settings && settings.maxViews != null ? Number(settings.maxViews) : 3;
+    const maxViews = Number.isFinite(maxViewsRaw) && maxViewsRaw >= 1 ? Math.floor(maxViewsRaw) : 3;
+    const scope = String((settings && settings.viewScope) || "session").trim() === "user" ? "user" : "session";
+    const views = popupReadViews(bid, scope);
+    if (views >= maxViews) return false;
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function popupMarkShown(bundle) {
+  try {
+    const bid = String((bundle && bundle.id) || "").trim();
+    if (!bid) return;
+    const settings = (bundle && bundle.popupSettings) || {};
+    const scope = String((settings && settings.viewScope) || "session").trim() === "user" ? "user" : "session";
+    popupIncViews(bid, scope);
+    try {
+      popupWriteJsonToStorage(sessionStorage, popupLastShownKey(), { ts: Date.now() });
+    } catch (e0) {}
+  } catch (e) {}
+}
+
+async function triggerPopup(triggerType, payload) {
+  const trg = String(triggerType || "").trim();
+  if (!trg) return;
+  try {
+    const state =
+      g.BundleApp && g.BundleApp.__popupState
+        ? g.BundleApp.__popupState
+        : (g.BundleApp.__popupState = { busy: false, lastAt: 0, lastTrg: "" });
+    if (state.busy) return;
+    const now = Date.now();
+    if (Number.isFinite(state.lastAt) && now - state.lastAt < 800 && String(state.lastTrg || "") === trg) return;
+    state.busy = true;
+    state.lastAt = now;
+    state.lastTrg = trg;
+    let res = null;
+    try {
+      res = await getPopupBundlesByTrigger(trg);
+    } catch (e0) {
+      return;
+    }
+    const bundles = (res && res.bundles) || [];
+    if (!Array.isArray(bundles) || !bundles.length) return;
+    const b0 = bundles.find((b) => String((b && b.kind) || "").trim() === "popup") || bundles[0] || null;
+    if (!b0) return;
+    if (!popupCanShowBundle(b0)) return;
+    popupMarkShown(b0);
+    if (typeof showBundlePopup === "function") showBundlePopup(b0, { trigger: trg, payload: payload || null });
+  } finally {
+    try {
+      if (g && g.BundleApp && g.BundleApp.__popupState) g.BundleApp.__popupState.busy = false;
+    } catch (e1) {}
+  }
 }
 
 function ensureCartSignals() {
@@ -840,6 +1027,53 @@ function isCartLikePage() {
   } catch (e) {
     return false;
   }
+}
+
+function isHomeLikePage() {
+  try {
+    const p = String(window.location.pathname || "").trim();
+    if (!p || p === "/") return true;
+    const s = p.toLowerCase();
+    return s === "/home" || s === "/index" || s === "/index.html";
+  } catch (e) {
+    return false;
+  }
+}
+
+function popupRouteChanged() {
+  try {
+    const pid = typeof findProductId === "function" ? String(findProductId() || "").trim() : "";
+    const was = String((g && g.BundleApp && g.BundleApp.__popupLastProductId) || "").trim();
+    if (was && !pid) {
+      try {
+        triggerPopup("product_exit", was);
+      } catch (e0) {}
+    }
+    try {
+      if (g && g.BundleApp) g.BundleApp.__popupLastProductId = pid || "";
+    } catch (e1) {}
+
+    if (pid) return;
+
+    if (typeof isCartLikePage === "function" && isCartLikePage()) {
+      try {
+        triggerPopup("cart_view", null);
+      } catch (e2) {}
+      return;
+    }
+
+    if (typeof isHomeLikePage === "function" && isHomeLikePage()) {
+      try {
+        if (g && g.BundleApp && g.BundleApp.__homeLoadTriggered) return;
+      } catch (e3) {}
+      try {
+        if (g && g.BundleApp) g.BundleApp.__homeLoadTriggered = true;
+      } catch (e4) {}
+      try {
+        triggerPopup("home_load", null);
+      } catch (e5) {}
+    }
+  } catch (e) {}
 }
 
 async function readCartItems() {
@@ -2029,7 +2263,8 @@ async function applyBundleSelection(bundle) {
   const kind = String((bundle && bundle.kind) || "").trim();
 
   if (!bid) return;
-  if (!trigger && kind !== "products_no_discount" && kind !== "post_add_upsell") return;
+  if (!trigger && kind !== "products_no_discount" && kind !== "post_add_upsell" && kind !== "popup") return;
+  const selectionScopeKey = kind === "popup" ? "popup:" + bid : trigger;
 
   if (storeClosedNow()) {
     messageByBundleId[bid] = "لم يتم إضافة الباقة (المتجر مغلق حالياً)";
@@ -2114,7 +2349,7 @@ async function applyBundleSelection(bundle) {
       }
     }
 
-    const prev = loadSelection(trigger);
+    const prev = loadSelection(selectionScopeKey);
     if (prev && prev.bundleId && String(prev.bundleId) !== bid && Array.isArray(prev.items) && prev.items.length) {
       try {
         removeItemsFromCart(prev.items);
@@ -2143,7 +2378,7 @@ async function applyBundleSelection(bundle) {
       return;
     }
 
-    saveSelection(trigger, { bundleId: bid, items: items });
+    saveSelection(selectionScopeKey, { bundleId: bid, items: items });
     messageByBundleId[bid] = "تمت إضافة الباقة للسلة";
     try {
       renderProductBanners(lastBundles || []);
@@ -2285,6 +2520,10 @@ async function refreshProduct() {
     const productId = findProductId();
     const key = productId ? "p:" + String(productId) : variantId ? "v:" + String(variantId) : "";
     log("bundle-app: ids", { variantId: variantId, productId: productId });
+
+    try {
+      if (productId && key && key !== state.lastKey) triggerPopup("product_view", String(productId));
+    } catch (ePV) {}
     try {
       const pid0 = String(productId || "").trim();
       const vid0 = String(variantId || "").trim();

@@ -57,23 +57,43 @@ const presentationSchema = Joi.object({
 
 const createBundleSchema = Joi.object({
   version: Joi.number().integer().valid(1).default(1),
-  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup"),
   name: Joi.string().trim().min(1).max(200).required(),
   status: Joi.string().valid("draft", "active", "paused").default("draft"),
   components: Joi.array().items(componentSchema).min(1).required(),
   rules: rulesSchema.required(),
   settings: settingsSchema,
-  presentation: presentationSchema
+  presentation: presentationSchema,
+  popupTriggers: Joi.array()
+    .items(Joi.string().valid("all", "home_load", "product_view", "product_exit", "cart_add", "cart_remove", "cart_view"))
+    .max(20),
+  popupSettings: Joi.object({
+    allowDoNotShow: Joi.boolean().default(true),
+    maxViews: Joi.number().integer().min(1).max(999).default(3),
+    viewScope: Joi.string().valid("session", "user").default("session"),
+    showCartTotal: Joi.boolean().default(true),
+    allowBulkAdd: Joi.boolean().default(true)
+  })
 });
 
 const updateBundleSchema = Joi.object({
-  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup"),
   name: Joi.string().trim().min(1).max(200),
   status: Joi.string().valid("draft", "active", "paused"),
   components: Joi.array().items(componentSchema).min(1),
   rules: rulesSchema,
   settings: settingsSchema,
-  presentation: presentationSchema
+  presentation: presentationSchema,
+  popupTriggers: Joi.array()
+    .items(Joi.string().valid("all", "home_load", "product_view", "product_exit", "cart_add", "cart_remove", "cart_view"))
+    .max(20),
+  popupSettings: Joi.object({
+    allowDoNotShow: Joi.boolean().default(true),
+    maxViews: Joi.number().integer().min(1).max(999).default(3),
+    viewScope: Joi.string().valid("session", "user").default("session"),
+    showCartTotal: Joi.boolean().default(true),
+    allowBulkAdd: Joi.boolean().default(true)
+  })
 }).min(1);
 
 const listQuerySchema = Joi.object({
@@ -100,11 +120,21 @@ const evaluateSchema = Joi.object({
 
 const previewSchema = Joi.object({
   name: Joi.string().trim().min(1).max(200).allow(""),
-  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"),
+  kind: Joi.string().valid("quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup"),
   components: Joi.array().items(componentSchema).min(1).required(),
   rules: rulesSchema.required(),
   settings: settingsSchema,
   presentation: presentationSchema,
+  popupTriggers: Joi.array()
+    .items(Joi.string().valid("all", "home_load", "product_view", "product_exit", "cart_add", "cart_remove", "cart_view"))
+    .max(20),
+  popupSettings: Joi.object({
+    allowDoNotShow: Joi.boolean().default(true),
+    maxViews: Joi.number().integer().min(1).max(999).default(3),
+    viewScope: Joi.string().valid("session", "user").default("session"),
+    showCartTotal: Joi.boolean().default(true),
+    allowBulkAdd: Joi.boolean().default(true)
+  }),
   items: cartItemsSchema
 });
 

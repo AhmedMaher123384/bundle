@@ -17,7 +17,7 @@ const BundleSchema = new mongoose.Schema(
     kind: {
       type: String,
       required: false,
-      enum: ["quantity_discount", "products_discount", "products_no_discount", "post_add_upsell"],
+      enum: ["quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup"],
       default: undefined,
       index: true
     },
@@ -72,6 +72,26 @@ const BundleSchema = new mongoose.Schema(
       showItems: { type: Boolean, default: null },
       showPrice: { type: Boolean, default: null },
       showTiers: { type: Boolean, default: null }
+    },
+    popupTriggers: {
+      type: [String],
+      required: false,
+      enum: ["all", "home_load", "product_view", "product_exit", "cart_add", "cart_remove", "cart_view"],
+      default: undefined
+    },
+    popupSettings: {
+      type: new mongoose.Schema(
+        {
+          allowDoNotShow: { type: Boolean, default: true },
+          maxViews: { type: Number, min: 1, default: 3 },
+          viewScope: { type: String, enum: ["session", "user"], default: "session" },
+          showCartTotal: { type: Boolean, default: true },
+          allowBulkAdd: { type: Boolean, default: true }
+        },
+        { _id: false }
+      ),
+      required: false,
+      default: undefined
     },
     triggerProductId: { type: String, default: null, index: true },
     deletedAt: { type: Date, default: null, index: true }

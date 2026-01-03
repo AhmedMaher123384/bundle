@@ -2,12 +2,14 @@ const kindQuantityDiscountUi = require("./kinds/quantity_discount.ui");
 const kindProductsDiscountUi = require("./kinds/products_discount.ui");
 const kindProductsNoDiscountUi = require("./kinds/products_no_discount.ui");
 const kindPostAddUpsellUi = require("./kinds/post_add_upsell.ui");
+const kindPopupUi = require("./kinds/popup.ui");
 
 module.exports = [
   kindQuantityDiscountUi,
   kindProductsDiscountUi,
   kindProductsNoDiscountUi,
   kindPostAddUpsellUi,
+  kindPopupUi,
   `
 async function resolveProductRefItems(items, bundleId) {
   const bid = String(bundleId || "").trim();

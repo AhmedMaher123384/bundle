@@ -66,7 +66,8 @@ function createBundleController(config) {
         throw new ApiError(400, "Bundle contains invalid variants", { code: "BUNDLE_VARIANTS_INVALID", details: { invalid } });
       }
 
-      const triggerProductId = resolveTriggerProductIdFromReport(report, coverVariantId);
+      const kind = String(req.body?.kind || "").trim();
+      const triggerProductId = kind === "popup" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
       const bundle = await bundleService.createBundle(storeId, { ...req.body, triggerProductId });
       return res.status(201).json({ bundle });
     }
@@ -87,6 +88,7 @@ function createBundleController(config) {
     const nextComponents = req.body?.components ?? current.components ?? [];
     const nextPresentation = req.body?.presentation ?? current.presentation ?? {};
     const nextStatus = req.body?.status ?? current.status;
+    const nextKind = String(req.body?.kind ?? current.kind ?? "").trim();
 
     if (nextStatus === "active") {
       const componentIds = componentsVariantIds(nextComponents);
@@ -97,7 +99,7 @@ function createBundleController(config) {
       if (invalid.length) {
         throw new ApiError(400, "Bundle contains invalid variants", { code: "BUNDLE_VARIANTS_INVALID", details: { invalid } });
       }
-      const triggerProductId = resolveTriggerProductIdFromReport(report, coverVariantId);
+      const triggerProductId = nextKind === "popup" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
       const bundle = await bundleService.updateBundle(storeId, req.params.id, { ...req.body, triggerProductId });
       return res.json({ bundle });
     }
@@ -151,7 +153,9 @@ function createBundleController(config) {
       components: req.body?.components || [],
       rules: req.body?.rules || {},
       settings: req.body?.settings || {},
-      presentation: req.body?.presentation || {}
+      presentation: req.body?.presentation || {},
+      popupTriggers: req.body?.popupTriggers,
+      popupSettings: req.body?.popupSettings
     };
 
     const cartVariantIds = uniqStrings((req.body?.items || []).map((i) => i?.variantId));

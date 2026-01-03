@@ -201,7 +201,13 @@ function computeSelectionForUse(groupMap, rules, availableQtyByVariant, cartLine
       if (!picked) continue;
       if (!best || picked.cost < best.cost) best = picked;
     }
-    if (!best) return null;
+    if (!best || !best.lines?.length) return null;
+    for (const line of best.lines) {
+      availableQtyByVariant.set(
+        String(line.variantId),
+        Math.max(0, Math.floor(Number(availableQtyByVariant.get(String(line.variantId)) || 0))) - Math.max(0, Math.floor(Number(line.quantity || 0)))
+      );
+    }
     return best.lines;
   }
 
@@ -261,7 +267,7 @@ function computeBundleApplications(bundle, normalizedCart, variantSnapshotById) 
   }
   const baseAvailable = buildAvailableQtyByVariant(normalizedCart);
 
-  const maxUses = 1; // أجبر كل باقة على التطبيق مرة واحدة فقط لكل طلب
+  const maxUses = Math.max(1, Math.floor(Number(rules?.limits?.maxUsesPerOrder || 1)));
   const applications = [];
   const availableQtyByVariant = new Map(baseAvailable);
 
@@ -356,7 +362,11 @@ async function listBundles(storeId, filters) {
   if (!s) throw new ApiError(400, "Invalid storeId", { code: "INVALID_STORE_ID" });
   const query = { storeId: s, deletedAt: null };
   if (filters?.status) query.status = String(filters.status).trim();
+  if (filters?.kind) query.kind = String(filters.kind).trim();
   if (filters?.triggerProductId) query.triggerProductId = String(filters.triggerProductId).trim();
+  if (filters?.popupTriggers && Array.isArray(filters.popupTriggers) && filters.popupTriggers.length) {
+    query.popupTriggers = { $in: filters.popupTriggers.map((v) => String(v || "").trim()).filter(Boolean) };
+  }
   return Bundle.find(query).sort({ updatedAt: -1, _id: -1 }).lean();
 }
 
