@@ -42,6 +42,8 @@ function bundleTypeLabel(bundle) {
   if (rawKind === 'products_discount') return 'Products discount'
   if (rawKind === 'products_no_discount') return 'Products (no discount)'
   if (rawKind === 'post_add_upsell') return 'Post-add upsell'
+  if (rawKind === 'popup') return 'Smart popup'
+  if (rawKind === 'also_bought') return 'Products our customers also bought'
   if (Array.isArray(bundle?.rules?.tiers) && bundle.rules.tiers.length) return 'Quantity'
   const unique = new Set((Array.isArray(bundle?.components) ? bundle.components : []).map((c) => String(c?.variantId || '').trim()).filter(Boolean))
   if (unique.size >= 2) return 'Bundle products'

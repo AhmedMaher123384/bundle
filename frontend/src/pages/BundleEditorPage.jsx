@@ -109,6 +109,7 @@ export function BundleEditorPage({ mode }) {
   const [variantMetaById, setVariantMetaById] = useState({})
   const [pickerOpen, setPickerOpen] = useState(false)
   const [alsoBoughtPlacements, setAlsoBoughtPlacements] = useState(['cart'])
+  const [popupTriggers, setPopupTriggers] = useState(['all'])
 
   useEffect(() => {
     if (mode !== 'edit') return
@@ -149,6 +150,9 @@ export function BundleEditorPage({ mode }) {
             ? found.alsoBoughtPlacements.map((x) => String(x || '').trim()).filter(Boolean)
             : ['cart']
         )
+        setPopupTriggers(
+          Array.isArray(found?.popupTriggers) ? found.popupTriggers.map((x) => String(x || '').trim()).filter(Boolean) : ['all']
+        )
 
         const cover = normalizeVariantId(found?.presentation?.coverVariantId) || normalizeVariantId(found?.components?.[0]?.variantId)
         const comps = Array.isArray(found?.components) ? found.components : []
@@ -163,6 +167,20 @@ export function BundleEditorPage({ mode }) {
           setOfferType('bundle')
           setDiscountType('fixed')
           setDiscountValue(0)
+          setBaseVariantId(null)
+          setBaseRefMode('product')
+          setBaseQty(1)
+          setQtyTiers([{ minQty: 1, type: 'percentage', value: 0 }])
+          setAddons(
+            comps
+              .map((c) => ({
+                variantId: normalizeVariantId(c?.variantId),
+                quantity: Math.max(1, Math.min(999, toInt(c?.quantity, 1))),
+              }))
+              .filter((x) => x.variantId)
+          )
+        } else if (effectiveKind === 'popup') {
+          setOfferType('bundle')
           setBaseVariantId(null)
           setBaseRefMode('product')
           setBaseQty(1)
@@ -311,6 +329,7 @@ export function BundleEditorPage({ mode }) {
   }, [productVariants])
 
   useEffect(() => {
+    if (kind === 'also_bought' || kind === 'popup') return
     if (baseVariantId) return
     if (effectiveProductId) {
       setBaseVariantId(toProductRef(effectiveProductId))
@@ -322,14 +341,15 @@ export function BundleEditorPage({ mode }) {
       setBaseVariantId(fallback)
       setBaseRefMode(isProductRef(fallback) ? 'product' : 'variant')
     }
-  }, [baseVariantId, effectiveProductId, pickDefaultVariantId])
+  }, [baseVariantId, effectiveProductId, kind, pickDefaultVariantId])
 
   useEffect(() => {
     if (mode !== 'create') return
     if (!effectiveProductId) return
+    if (kind === 'also_bought' || kind === 'popup') return
     setBaseRefMode('product')
     setBaseVariantId(toProductRef(effectiveProductId))
-  }, [effectiveProductId, mode])
+  }, [effectiveProductId, kind, mode])
 
   useEffect(() => {
     if (name.trim()) return
@@ -412,7 +432,7 @@ export function BundleEditorPage({ mode }) {
       .filter((a) => a.variantId)
 
     const components = []
-    if (baseId && kind !== 'post_add_upsell' && kind !== 'also_bought') {
+    if (baseId && kind !== 'post_add_upsell' && kind !== 'also_bought' && kind !== 'popup') {
       const qty = offerType === 'quantity' ? 1 : Math.max(1, Math.min(999, toInt(baseQty, 1)))
       components.push({ variantId: baseId, quantity: qty, group: groupFromVariantId(baseId) })
     }
@@ -425,13 +445,13 @@ export function BundleEditorPage({ mode }) {
     const requiredQty =
       offerType === 'quantity'
         ? Math.max(1, Math.floor(Number(qtyTiersNormalized[0]?.minQty || 1)))
-        : kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell' || kind === 'also_bought'
+        : kind === 'products_discount' || kind === 'products_no_discount' || kind === 'post_add_upsell' || kind === 'also_bought' || kind === 'popup'
           ? 1
           : Math.max(1, sumQty(components))
     const primaryTier = offerType === 'quantity' ? qtyTiersNormalized[0] : null
 
     const presentation = {}
-    if (baseId && kind !== 'also_bought') presentation.coverVariantId = baseId
+    if (baseId && kind !== 'also_bought' && kind !== 'popup') presentation.coverVariantId = baseId
     if (String(presentationTitle || '').trim()) presentation.title = String(presentationTitle || '').trim()
     if (String(presentationSubtitle || '').trim()) presentation.subtitle = String(presentationSubtitle || '').trim()
     if (String(presentationLabel || '').trim()) presentation.label = String(presentationLabel || '').trim()
@@ -464,12 +484,23 @@ export function BundleEditorPage({ mode }) {
             .filter(Boolean)
         : undefined
 
+    const normalizedPopupTriggers =
+      kind === 'popup'
+        ? (() => {
+            const current = (Array.isArray(popupTriggers) ? popupTriggers : []).map((x) => String(x || '').trim()).filter(Boolean)
+            if (current.includes('all')) return ['all']
+            const next = current.filter((x) => x !== 'all')
+            return next.length ? next : ['all']
+          })()
+        : undefined
+
     return {
       version: 1,
       kind,
       name: String(name || '').trim(),
       status: 'draft',
       components,
+      popupTriggers: normalizedPopupTriggers,
       alsoBoughtPlacements: normalizedAlsoBoughtPlacements,
       rules: {
         type:
@@ -526,6 +557,7 @@ export function BundleEditorPage({ mode }) {
     presentationTitle,
     qtyTiersNormalized,
     alsoBoughtPlacements,
+    popupTriggers,
     settingsDefaultSelectedProductIds,
     settingsProductOrder,
     settingsSelectionRequired,
@@ -534,10 +566,10 @@ export function BundleEditorPage({ mode }) {
   ])
 
   const canSubmit = useMemo(() => {
-    if (!effectiveProductId && kind !== 'also_bought') return false
+    if (!effectiveProductId && kind !== 'also_bought' && kind !== 'popup') return false
     if (!draft.name.trim()) return false
     if (!draft.components.length) return false
-    if (offerType === 'bundle' && kind !== 'post_add_upsell' && kind !== 'also_bought' && draft.components.length < 2) return false
+    if (offerType === 'bundle' && kind !== 'post_add_upsell' && kind !== 'also_bought' && kind !== 'popup' && draft.components.length < 2) return false
     if (offerType === 'quantity') {
       if (!qtyTiersNormalized.length) return false
       if (qtyTiersNormalized.some((t) => !Number.isFinite(Number(t?.minQty)) || Number(t.minQty) < 1)) return false
@@ -663,7 +695,7 @@ export function BundleEditorPage({ mode }) {
       toasts.error('كمّل البيانات الأول.')
       return
     }
-    if (offerType === 'bundle' && kind !== 'post_add_upsell' && kind !== 'also_bought' && draft.components.length < 2) {
+    if (offerType === 'bundle' && kind !== 'post_add_upsell' && kind !== 'also_bought' && kind !== 'popup' && draft.components.length < 2) {
       toasts.error('اختار منتج/منتجات تانية مع المنتج الأساسي.')
       return
     }
@@ -684,6 +716,7 @@ export function BundleEditorPage({ mode }) {
           kind: body.kind,
           name: body.name,
           components: body.components,
+          popupTriggers: body.popupTriggers,
           alsoBoughtPlacements: body.alsoBoughtPlacements,
           rules: body.rules,
           settings: body.settings,
@@ -757,6 +790,22 @@ export function BundleEditorPage({ mode }) {
               disabled={saving || activating}
             >
               Upsell بعد الإضافة
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+              onClick={() => {
+                setPickerOpen(false)
+                setOfferType('bundle')
+                setKind('popup')
+                setPopupTriggers(['all'])
+                setBaseVariantId(null)
+                setBaseRefMode('product')
+                setBaseQty(1)
+              }}
+              disabled={saving || activating}
+            >
+              Popup ذكي
             </button>
             <button
               type="button"
@@ -855,6 +904,50 @@ export function BundleEditorPage({ mode }) {
                         disabled={saving || activating}
                       />
                       <span className="text-slate-700">{p.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {kind === 'popup' ? (
+            <div className="md:col-span-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-900">محفزات الظهور</div>
+                <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                  {[
+                    { id: 'all', label: 'كل الحالات' },
+                    { id: 'home_load', label: 'عند فتح الرئيسية' },
+                    { id: 'product_view', label: 'عند فتح صفحة المنتج' },
+                    { id: 'product_exit', label: 'عند محاولة الخروج من صفحة المنتج' },
+                    { id: 'cart_view', label: 'عند فتح السلة' },
+                    { id: 'cart_add', label: 'عند إضافة للسلة' },
+                    { id: 'cart_remove', label: 'عند حذف من السلة' },
+                  ].map((t) => (
+                    <label key={t.id} className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={(Array.isArray(popupTriggers) ? popupTriggers : []).includes(t.id)}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setPopupTriggers((prev) => {
+                            const current = Array.isArray(prev) ? prev.map((x) => String(x || '').trim()).filter(Boolean) : []
+                            const hasAll = current.includes('all')
+                            if (t.id === 'all') {
+                              const next = checked ? ['all'] : current.filter((x) => x !== 'all')
+                              return next.length ? next : ['all']
+                            }
+
+                            const base = hasAll ? current.filter((x) => x !== 'all') : current
+                            const has = base.includes(t.id)
+                            const next = checked ? (has ? base : [...base, t.id]) : base.filter((x) => x !== t.id)
+                            return next.length ? next : ['all']
+                          })
+                        }}
+                        disabled={saving || activating}
+                      />
+                      <span className="text-slate-700">{t.label}</span>
                     </label>
                   ))}
                 </div>
@@ -1110,7 +1203,7 @@ export function BundleEditorPage({ mode }) {
             </div>
           </div>
 
-          {kind !== 'also_bought' ? (
+          {kind !== 'also_bought' && kind !== 'popup' ? (
             <div className="md:col-span-2">
               <label className="text-sm font-medium text-slate-700">المنتج الأساسي</label>
               {mode !== 'create' ? (
@@ -1251,7 +1344,7 @@ export function BundleEditorPage({ mode }) {
             </div>
           ) : (
             <>
-              {kind !== 'also_bought' ? (
+              {kind !== 'also_bought' && kind !== 'popup' ? (
                 <div className="md:col-span-2">
                   <label className="text-sm font-medium text-slate-700">كمية المنتج الأساسي</label>
                   <input
