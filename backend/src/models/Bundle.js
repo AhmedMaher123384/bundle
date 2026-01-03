@@ -17,7 +17,7 @@ const BundleSchema = new mongoose.Schema(
     kind: {
       type: String,
       required: false,
-      enum: ["quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup"],
+      enum: ["quantity_discount", "products_discount", "products_no_discount", "post_add_upsell", "popup", "also_bought"],
       default: undefined,
       index: true
     },
@@ -91,6 +91,12 @@ const BundleSchema = new mongoose.Schema(
         { _id: false }
       ),
       required: false,
+      default: undefined
+    },
+    alsoBoughtPlacements: {
+      type: [String],
+      required: false,
+      enum: ["all", "home", "product", "cart", "checkout"],
       default: undefined
     },
     triggerProductId: { type: String, default: null, index: true },

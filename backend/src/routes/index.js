@@ -429,7 +429,8 @@ function createApiRouter(config) {
       rawKind === "products_discount" ||
       rawKind === "products_no_discount" ||
       rawKind === "post_add_upsell" ||
-      rawKind === "popup"
+      rawKind === "popup" ||
+      rawKind === "also_bought"
         ? rawKind
         : Array.isArray(rules?.tiers) && rules.tiers.length
           ? "quantity_discount"
@@ -448,6 +449,9 @@ function createApiRouter(config) {
     const settings = bundle?.settings && typeof bundle.settings === "object" ? bundle.settings : {};
     const popupTriggers = Array.isArray(bundle?.popupTriggers) ? bundle.popupTriggers.map((x) => String(x || "").trim()).filter(Boolean) : [];
     const popupSettings = bundle?.popupSettings && typeof bundle.popupSettings === "object" ? bundle.popupSettings : null;
+    const alsoBoughtPlacements = Array.isArray(bundle?.alsoBoughtPlacements)
+      ? bundle.alsoBoughtPlacements.map((x) => String(x || "").trim()).filter(Boolean)
+      : [];
     return {
       id: String(bundle?._id),
       kind,
@@ -494,7 +498,8 @@ function createApiRouter(config) {
       offer,
       pricing,
       popupTriggers,
-      popupSettings
+      popupSettings,
+      alsoBoughtPlacements
     };
   }
 
@@ -908,6 +913,92 @@ function createApiRouter(config) {
         ok: true,
         merchantId: String(value.merchantId),
         trigger,
+        bundles: safeBundles,
+        validation: {
+          missing: [...(componentReport.missing || []), ...(singleVariant?.report?.missing || [])],
+          inactive: inactiveVariantIds
+        }
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyAlsoBoughtBundlesQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    placement: Joi.string().valid("all", "home", "product", "cart", "checkout").required(),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.get("/proxy/bundles/also-bought", async (req, res, next) => {
+    try {
+      const { error, value } = proxyAlsoBoughtBundlesQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      await ensureMerchantTokenFresh(merchant);
+
+      const placement = String(value.placement || "").trim();
+      const placements = placement === "all" ? ["all"] : [placement, "all"];
+
+      const bundles = await bundleService.listBundles(String(value.merchantId), {
+        status: "active",
+        kind: "also_bought",
+        alsoBoughtPlacements: placements
+      });
+
+      const componentVariantIds = Array.from(
+        new Set(
+          bundles
+            .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+            .map((c) => String(c?.variantId || "").trim())
+            .filter((v) => Boolean(v))
+        )
+      );
+
+      const componentReport = componentVariantIds.length
+        ? await fetchVariantsSnapshotReport(config.salla, merchant.accessToken, componentVariantIds, { concurrency: 4, maxAttempts: 3 })
+        : { snapshots: new Map(), missing: [] };
+
+      const productRefProductIds = uniqStrings(
+        bundles
+          .flatMap((b) => (Array.isArray(b?.components) ? b.components : []))
+          .map((c) => parseProductRefVariantId(String(c?.variantId || "").trim()))
+          .filter(Boolean)
+      );
+      const singleVariant = productRefProductIds.length
+        ? await fetchSingleVariantSnapshotsByProductId(config.salla, merchant.accessToken, productRefProductIds)
+        : { snapshotByProductId: new Map(), report: { snapshots: new Map(), missing: [] } };
+
+      const combinedSnapshots = new Map(componentReport.snapshots);
+      for (const s of singleVariant.snapshotByProductId.values()) combinedSnapshots.set(String(s.variantId), s);
+
+      const ctx = { triggerProductId: null, triggerVariantId: null, singleVariantSnapshotByProductId: singleVariant.snapshotByProductId };
+      const safeBundles = bundles.map((b) => serializeBundleForStorefront(b, combinedSnapshots, "", ctx));
+
+      const inactiveVariantIds = Array.from(combinedSnapshots.values())
+        .filter((s) => s?.isActive !== true)
+        .map((s) => String(s?.variantId || "").trim())
+        .filter(Boolean);
+
+      return res.json({
+        ok: true,
+        merchantId: String(value.merchantId),
+        placement,
         bundles: safeBundles,
         validation: {
           missing: [...(componentReport.missing || []), ...(singleVariant?.report?.missing || [])],

@@ -67,7 +67,7 @@ function createBundleController(config) {
       }
 
       const kind = String(req.body?.kind || "").trim();
-      const triggerProductId = kind === "popup" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
+      const triggerProductId = kind === "popup" || kind === "also_bought" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
       const bundle = await bundleService.createBundle(storeId, { ...req.body, triggerProductId });
       return res.status(201).json({ bundle });
     }
@@ -99,7 +99,7 @@ function createBundleController(config) {
       if (invalid.length) {
         throw new ApiError(400, "Bundle contains invalid variants", { code: "BUNDLE_VARIANTS_INVALID", details: { invalid } });
       }
-      const triggerProductId = nextKind === "popup" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
+      const triggerProductId = nextKind === "popup" || nextKind === "also_bought" ? null : resolveTriggerProductIdFromReport(report, coverVariantId);
       const bundle = await bundleService.updateBundle(storeId, req.params.id, { ...req.body, triggerProductId });
       return res.json({ bundle });
     }

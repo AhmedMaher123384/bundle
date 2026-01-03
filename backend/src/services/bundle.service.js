@@ -367,6 +367,9 @@ async function listBundles(storeId, filters) {
   if (filters?.popupTriggers && Array.isArray(filters.popupTriggers) && filters.popupTriggers.length) {
     query.popupTriggers = { $in: filters.popupTriggers.map((v) => String(v || "").trim()).filter(Boolean) };
   }
+  if (filters?.alsoBoughtPlacements && Array.isArray(filters.alsoBoughtPlacements) && filters.alsoBoughtPlacements.length) {
+    query.alsoBoughtPlacements = { $in: filters.alsoBoughtPlacements.map((v) => String(v || "").trim()).filter(Boolean) };
+  }
   return Bundle.find(query).sort({ updatedAt: -1, _id: -1 }).lean();
 }
 

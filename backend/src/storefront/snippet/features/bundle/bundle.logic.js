@@ -122,6 +122,14 @@ async function getPopupBundlesByTrigger(trigger) {
   return fetchJson(u);
 }
 
+async function getAlsoBoughtBundlesByPlacement(placement) {
+  const p = String(placement || "").trim();
+  if (!p) return null;
+  const u = buildUrl("/api/proxy/bundles/also-bought", { placement: p });
+  if (!u) return null;
+  return fetchJson(u);
+}
+
 async function requestApplyBundle(bundleId, items) {
   const payload = {
     bundleId: String(bundleId || ""),
@@ -1038,6 +1046,40 @@ function isHomeLikePage() {
   } catch (e) {
     return false;
   }
+}
+
+function alsoBoughtPlacementFromPage() {
+  try {
+    const pid = typeof findProductId === "function" ? String(findProductId() || "").trim() : "";
+    if (pid) return "product";
+    const p = String(window.location.pathname || "").toLowerCase();
+    if (p.indexOf("checkout") !== -1) return "checkout";
+    if (p.indexOf("cart") !== -1) return "cart";
+    if (typeof isHomeLikePage === "function" && isHomeLikePage()) return "home";
+    return "";
+  } catch (e) {
+    return "";
+  }
+}
+
+async function alsoBoughtRouteChanged() {
+  try {
+    const placement = alsoBoughtPlacementFromPage();
+    const was = String((g && g.BundleApp && g.BundleApp.__alsoBoughtPlacement) || "").trim();
+    if (was === placement) return;
+    try {
+      if (typeof clearAlsoBoughtWidget === "function") clearAlsoBoughtWidget();
+    } catch (e0) {}
+    try {
+      if (g && g.BundleApp) g.BundleApp.__alsoBoughtPlacement = placement || "";
+    } catch (e1) {}
+    if (!placement) return;
+    const res = await getAlsoBoughtBundlesByPlacement(placement);
+    const bundles = (res && res.bundles) || [];
+    const b0 = bundles.find((b) => String((b && b.kind) || "").trim() === "also_bought") || bundles[0] || null;
+    if (!b0) return;
+    if (typeof showAlsoBoughtWidget === "function") showAlsoBoughtWidget(b0, placement);
+  } catch (e) {}
 }
 
 function popupRouteChanged() {

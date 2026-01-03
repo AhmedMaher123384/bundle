@@ -3,6 +3,7 @@ const kindProductsDiscountUi = require("./kinds/products_discount.ui");
 const kindProductsNoDiscountUi = require("./kinds/products_no_discount.ui");
 const kindPostAddUpsellUi = require("./kinds/post_add_upsell.ui");
 const kindPopupUi = require("./kinds/popup.ui");
+const kindAlsoBoughtUi = require("./kinds/also_bought.ui");
 
 module.exports = [
   kindQuantityDiscountUi,
@@ -10,6 +11,7 @@ module.exports = [
   kindProductsNoDiscountUi,
   kindPostAddUpsellUi,
   kindPopupUi,
+  kindAlsoBoughtUi,
   `
 async function resolveProductRefItems(items, bundleId) {
   const bid = String(bundleId || "").trim();
