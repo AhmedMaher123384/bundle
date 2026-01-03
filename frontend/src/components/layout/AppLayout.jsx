@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../../auth/useAuth.js'
 
@@ -23,6 +23,30 @@ export function AppLayout() {
   const { logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const pageTitle =
+    location.pathname === '/'
+      ? 'Dashboard'
+      : location.pathname.startsWith('/products')
+        ? 'Products'
+        : location.pathname.startsWith('/bundles')
+          ? 'Bundles'
+          : location.pathname.startsWith('/announcement-banners')
+            ? 'Top Banner'
+          : location.pathname.startsWith('/cart-preview')
+            ? 'Cart Preview'
+            : 'Bundle Manager'
+
+  const showNewBundlesTabs = location.pathname === '/' || location.pathname === '/bundles'
+  const currentTab = String(searchParams.get('tab') || '').trim() === 'all' ? 'all' : 'new'
+
+  function setTab(next) {
+    const n = next === 'all' ? 'all' : 'new'
+    const sp = new URLSearchParams(searchParams)
+    sp.set('tab', n)
+    setSearchParams(sp, { replace: true })
+  }
 
   return (
     <div className="flex h-full">
@@ -78,19 +102,31 @@ export function AppLayout() {
             >
               Menu
             </button>
-            <div className="text-sm font-semibold text-slate-900">
-              {location.pathname === '/'
-                ? 'Dashboard'
-                : location.pathname.startsWith('/products')
-                  ? 'Products'
-                  : location.pathname.startsWith('/bundles')
-                    ? 'Bundles'
-                    : location.pathname.startsWith('/announcement-banners')
-                      ? 'Top Banner'
-                    : location.pathname.startsWith('/cart-preview')
-                      ? 'Cart Preview'
-                      : 'Bundle Manager'}
-            </div>
+            <div className="text-sm font-semibold text-slate-900">{pageTitle}</div>
+            {showNewBundlesTabs ? (
+              <div className="ml-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  className={[
+                    'rounded-xl border px-3 py-2 text-sm font-semibold',
+                    currentTab === 'new' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+                  ].join(' ')}
+                  onClick={() => setTab('new')}
+                >
+                  New Bundels
+                </button>
+                <button
+                  type="button"
+                  className={[
+                    'rounded-xl border px-3 py-2 text-sm font-semibold',
+                    currentTab === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+                  ].join(' ')}
+                  onClick={() => setTab('all')}
+                >
+                  All
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             <button

@@ -4,7 +4,7 @@ import { requestJson, HttpError } from '../lib/http.js'
 import { useToasts } from '../components/useToasts.js'
 import { Badge } from '../components/ui/Badge.jsx'
 import { Loading } from '../components/ui/Loading.jsx'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 function StatCard({ label, value, hint }) {
   return (
@@ -54,9 +54,9 @@ export function DashboardPage() {
   const { token, logout } = useAuth()
   const toasts = useToasts()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [bundles, setBundles] = useState([])
-  const [bundlesTab, setBundlesTab] = useState('new')
 
   useEffect(() => {
     let cancelled = false
@@ -103,7 +103,8 @@ export function DashboardPage() {
     })
   }, [sortedBundles])
 
-  const visibleBundles = bundlesTab === 'new' ? newBundles : sortedBundles
+  const bundlesTab = String(searchParams.get('tab') || '').trim() === 'all' ? 'all' : 'new'
+  const visibleBundles = bundlesTab === 'all' ? sortedBundles : newBundles
 
   return (
     <div className="space-y-6">
@@ -158,29 +159,11 @@ export function DashboardPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-semibold text-slate-900">Bundles</div>
-              <div className="mt-1 text-xs text-slate-600">تاب سريع للوصول للباندلز الجديدة (popup / also_bought).</div>
+              <div className="mt-1 text-xs text-slate-600">
+                {bundlesTab === 'all' ? 'كل الباندلز (آخر تحديث أولاً).' : 'popup و also_bought (آخر تحديث أولاً).'}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={[
-                  'rounded-xl border px-3 py-2 text-sm font-semibold',
-                  bundlesTab === 'new' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
-                ].join(' ')}
-                onClick={() => setBundlesTab('new')}
-              >
-                New Bundels
-              </button>
-              <button
-                type="button"
-                className={[
-                  'rounded-xl border px-3 py-2 text-sm font-semibold',
-                  bundlesTab === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
-                ].join(' ')}
-                onClick={() => setBundlesTab('all')}
-              >
-                All
-              </button>
               <button
                 type="button"
                 className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"

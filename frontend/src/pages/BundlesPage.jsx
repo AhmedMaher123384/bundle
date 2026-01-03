@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth.js'
 import { useToasts } from '../components/useToasts.js'
 import { BundlesTable } from '../components/bundles/BundlesTable.jsx'
@@ -20,9 +20,9 @@ export function BundlesPage() {
   const { token, logout } = useAuth()
   const toasts = useToasts()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [status, setStatus] = useState('all')
-  const [kindTab, setKindTab] = useState('new')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [bundles, setBundles] = useState([])
@@ -52,6 +52,7 @@ export function BundlesPage() {
   }, [logout, status, toasts, token])
 
   const sorted = useMemo(() => {
+    const kindTab = String(searchParams.get('tab') || '').trim() === 'all' ? 'all' : 'new'
     const q = String(search || '').trim().toLowerCase()
     const byKind =
       kindTab === 'new'
@@ -73,7 +74,7 @@ export function BundlesPage() {
       return mult * compare(x?.[sort.key], y?.[sort.key])
     })
     return arr
-  }, [bundles, kindTab, search, sort.dir, sort.key])
+  }, [bundles, search, searchParams, sort.dir, sort.key])
 
   async function duplicateBundle(bundle) {
     try {
@@ -144,28 +145,6 @@ export function BundlesPage() {
           <div className="mt-1 text-sm text-slate-600">Create, edit, activate, pause, delete. Activation validates live variants.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={[
-                'rounded-xl border px-3 py-2 text-sm font-semibold',
-                kindTab === 'new' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
-              ].join(' ')}
-              onClick={() => setKindTab('new')}
-            >
-              New Bundels
-            </button>
-            <button
-              type="button"
-              className={[
-                'rounded-xl border px-3 py-2 text-sm font-semibold',
-                kindTab === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
-              ].join(' ')}
-              onClick={() => setKindTab('all')}
-            >
-              All
-            </button>
-          </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
