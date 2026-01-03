@@ -4,6 +4,7 @@ import { requestJson, HttpError } from '../lib/http.js'
 import { useToasts } from '../components/useToasts.js'
 import { Badge } from '../components/ui/Badge.jsx'
 import { Loading } from '../components/ui/Loading.jsx'
+import { useNavigate } from 'react-router-dom'
 
 function StatCard({ label, value, hint }) {
   return (
@@ -15,11 +16,47 @@ function StatCard({ label, value, hint }) {
   )
 }
 
+function statusTone(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'active') return 'green'
+  if (s === 'paused') return 'amber'
+  if (s === 'draft') return 'slate'
+  return 'slate'
+}
+
+function statusLabel(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'active') return 'ACTIVE'
+  if (s === 'paused') return 'PAUSED'
+  if (s === 'draft') return 'DRAFT'
+  return '—'
+}
+
+function kindLabel(kind) {
+  const k = String(kind || '').trim()
+  if (k === 'quantity_discount') return 'خصم كميات'
+  if (k === 'products_discount') return 'خصم منتجات'
+  if (k === 'products_no_discount') return 'منتجات بدون خصم'
+  if (k === 'post_add_upsell') return 'Upsell بعد الإضافة'
+  if (k === 'popup') return 'Popup ذكي'
+  if (k === 'also_bought') return 'منتجات اشترها عملاؤنا ايضا'
+  return '—'
+}
+
+function formatDate(v) {
+  if (!v) return '—'
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
+}
+
 export function DashboardPage() {
   const { token, logout } = useAuth()
   const toasts = useToasts()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [bundles, setBundles] = useState([])
+  const [bundlesTab, setBundlesTab] = useState('new')
 
   useEffect(() => {
     let cancelled = false
@@ -52,6 +89,21 @@ export function DashboardPage() {
       ...byStatus,
     }
   }, [bundles])
+
+  const sortedBundles = useMemo(() => {
+    const arr = [...(Array.isArray(bundles) ? bundles : [])]
+    arr.sort((a, b) => new Date(b?.updatedAt || 0).getTime() - new Date(a?.updatedAt || 0).getTime())
+    return arr
+  }, [bundles])
+
+  const newBundles = useMemo(() => {
+    return sortedBundles.filter((b) => {
+      const k = String(b?.kind || '').trim()
+      return k === 'popup' || k === 'also_bought'
+    })
+  }, [sortedBundles])
+
+  const visibleBundles = bundlesTab === 'new' ? newBundles : sortedBundles
 
   return (
     <div className="space-y-6">
@@ -97,6 +149,93 @@ export function DashboardPage() {
               <div className="text-xs font-semibold text-slate-600">Rate limits</div>
               <div className="mt-1 text-sm text-slate-800">Handles 429 gracefully with clear toasts.</div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Bundles</div>
+              <div className="mt-1 text-xs text-slate-600">تاب سريع للوصول للباندلز الجديدة (popup / also_bought).</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={[
+                  'rounded-xl border px-3 py-2 text-sm font-semibold',
+                  bundlesTab === 'new' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+                ].join(' ')}
+                onClick={() => setBundlesTab('new')}
+              >
+                New Bundels
+              </button>
+              <button
+                type="button"
+                className={[
+                  'rounded-xl border px-3 py-2 text-sm font-semibold',
+                  bundlesTab === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+                ].join(' ')}
+                onClick={() => setBundlesTab('all')}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => navigate('/bundles')}
+              >
+                فتح صفحة الباندلز
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
+                <tr>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Updated</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {visibleBundles.slice(0, 20).map((b) => (
+                  <tr key={b._id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-slate-900">{b.name || '—'}</div>
+                      <div className="mt-1 font-mono text-xs text-slate-500">{b._id}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-semibold text-slate-900">{kindLabel(b.kind)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={statusTone(b.status)}>{statusLabel(b.status)}</Badge>
+                    </td>
+                    <td className="px-4 py-3">{formatDate(b.updatedAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                        onClick={() => navigate(`/bundles/${encodeURIComponent(b._id)}/edit`)}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!visibleBundles.length ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-sm text-slate-600" colSpan={5}>
+                      مفيش باندلز في التاب ده.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}

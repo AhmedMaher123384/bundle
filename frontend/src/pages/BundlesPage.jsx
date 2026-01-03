@@ -22,6 +22,7 @@ export function BundlesPage() {
   const navigate = useNavigate()
 
   const [status, setStatus] = useState('all')
+  const [kindTab, setKindTab] = useState('new')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [bundles, setBundles] = useState([])
@@ -52,19 +53,27 @@ export function BundlesPage() {
 
   const sorted = useMemo(() => {
     const q = String(search || '').trim().toLowerCase()
+    const byKind =
+      kindTab === 'new'
+        ? bundles.filter((b) => {
+            const k = String(b?.kind || '').trim()
+            return k === 'popup' || k === 'also_bought'
+          })
+        : [...bundles]
+
     const arr = q
-      ? bundles.filter((b) => {
+      ? byKind.filter((b) => {
           const name = String(b?.name || '').toLowerCase()
           const id = String(b?._id || '').toLowerCase()
           return name.includes(q) || id.includes(q)
         })
-      : [...bundles]
+      : [...byKind]
     arr.sort((x, y) => {
       const mult = sort.dir === 'asc' ? 1 : -1
       return mult * compare(x?.[sort.key], y?.[sort.key])
     })
     return arr
-  }, [bundles, search, sort.dir, sort.key])
+  }, [bundles, kindTab, search, sort.dir, sort.key])
 
   async function duplicateBundle(bundle) {
     try {
@@ -135,6 +144,28 @@ export function BundlesPage() {
           <div className="mt-1 text-sm text-slate-600">Create, edit, activate, pause, delete. Activation validates live variants.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={[
+                'rounded-xl border px-3 py-2 text-sm font-semibold',
+                kindTab === 'new' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+              ].join(' ')}
+              onClick={() => setKindTab('new')}
+            >
+              New Bundels
+            </button>
+            <button
+              type="button"
+              className={[
+                'rounded-xl border px-3 py-2 text-sm font-semibold',
+                kindTab === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50',
+              ].join(' ')}
+              onClick={() => setKindTab('all')}
+            >
+              All
+            </button>
+          </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
