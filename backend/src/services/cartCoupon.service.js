@@ -355,7 +355,6 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
       products: productNumbers
     },
     get: {
-      discount_type: "fixed_amount",
       discount_amount: desiredDiscountAmount
     }
   };
@@ -472,7 +471,6 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
         products: productNumbers
       },
       get: {
-        discount_type: "fixed_amount",
         discount_amount: desiredDiscountAmount
       }
     };
@@ -496,7 +494,7 @@ async function issueOrReuseSpecialOfferForCartVerbose(config, merchant, merchant
             ...attemptPayload,
             min_purchase_amount: computeMinPurchaseAmountForDiscount(floored),
             buy: { ...attemptPayload.buy, min_amount: computeMinPurchaseAmountForDiscount(floored) },
-            get: { discount_type: "fixed_amount", discount_amount: floored },
+            get: { discount_amount: floored },
             message: `خصم الباندل: ${Number(floored.toFixed(2))} • نوع: fixed_amount • أقل كمية: ${minQty} • أولوية: 100`
           };
           try {
