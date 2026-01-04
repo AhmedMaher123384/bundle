@@ -2,6 +2,8 @@ import { API_BASE_URL } from '../lib/http.js'
 
 export function AdminMediaPlatformPage() {
   const adminUrl = new URL('/api/admin/media', API_BASE_URL).toString()
+  const baseOrigin = new URL(API_BASE_URL).origin
+  const sameOrigin = typeof window !== 'undefined' && baseOrigin === window.location.origin
 
   return (
     <div className="min-h-full bg-slate-50 p-4 lg:p-6">
@@ -21,9 +23,15 @@ export function AdminMediaPlatformPage() {
           </a>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <iframe title="Admin Media Dashboard" src={adminUrl} className="h-[80vh] w-full" />
-        </div>
+        {sameOrigin ? (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <iframe title="Admin Media Dashboard" src={adminUrl} className="h-[80vh] w-full" />
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700 shadow-sm">
+            افتح اللوحة في تبويب جديد (الموقع مختلف عن الـ API، فالعرض داخل الصفحة ممكن يتمنع).
+          </div>
+        )}
       </div>
     </div>
   )

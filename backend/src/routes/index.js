@@ -63,22 +63,35 @@ function createApiRouter(config) {
   }
 
   function adminAuth(req, res, next) {
-    const expectedUser = String(process.env.ADMIN_DASH_USER || "");
-    const expectedPass = String(process.env.ADMIN_DASH_PASS || "");
-    if (!expectedUser || !expectedPass) {
+    const expectedB64 = String(process.env.ADMIN_MEDIA_BASIC_AUTH || process.env.ADMIN_DASH_BASIC_AUTH || "").trim();
+    const expectedUser = String(process.env.ADMIN_DASH_USER || process.env.ADMIN_MEDIA_USER || "").trim();
+    const expectedPass = String(process.env.ADMIN_DASH_PASS || process.env.ADMIN_MEDIA_PASS || "").trim();
+
+    const authHeader = String(req.headers.authorization || "").trim();
+    const hasAnySecret = Boolean(expectedB64 || (expectedUser && expectedPass));
+
+    if (!hasAnySecret) {
       res.status(403);
       return res.send("Forbidden");
     }
-    const creds = parseBasicAuth(req);
-    const ok =
-      creds &&
-      timingSafeEqualString(String(creds.user || ""), expectedUser) &&
-      timingSafeEqualString(String(creds.pass || ""), expectedPass);
+
+    let ok = false;
+    if (expectedB64) {
+      ok = authHeader.toLowerCase().startsWith("basic ") && timingSafeEqualString(authHeader.slice(6).trim(), expectedB64);
+    } else {
+      const creds = parseBasicAuth(req);
+      ok =
+        Boolean(creds) &&
+        timingSafeEqualString(String(creds.user || ""), expectedUser) &&
+        timingSafeEqualString(String(creds.pass || ""), expectedPass);
+    }
+
     if (!ok) {
       res.setHeader("WWW-Authenticate", 'Basic realm="BundleApp Admin", charset="UTF-8"');
       res.status(401);
       return res.send("Unauthorized");
     }
+
     return next();
   }
 
