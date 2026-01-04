@@ -4,7 +4,7 @@ const { createBundleRouter } = require("./bundle.routes");
 const { merchantAuth } = require("../middlewares/merchantAuth.middleware");
 const { createOAuthRouter } = require("./oauth.routes");
 const { validate } = require("../middlewares/validate.middleware");
-const { listProducts, getProductById, getProductVariant } = require("../services/sallaApi.service");
+const { listProducts, getProductById, getProductVariant, getStoreInfo } = require("../services/sallaApi.service");
 const { refreshAccessToken } = require("../services/sallaOAuth.service");
 const { ApiError } = require("../utils/apiError");
 const { fetchVariantsSnapshotReport } = require("../services/sallaCatalog.service");
@@ -45,6 +45,41 @@ function createApiRouter(config) {
     const bBuf = Buffer.from(String(b || ""), "utf8");
     if (aBuf.length !== bBuf.length) return false;
     return require("crypto").timingSafeEqual(aBuf, bBuf);
+  }
+
+  function parseBasicAuth(req) {
+    const header = String(req.headers.authorization || "");
+    if (!header.toLowerCase().startsWith("basic ")) return null;
+    const encoded = header.slice(6).trim();
+    let decoded = "";
+    try {
+      decoded = Buffer.from(encoded, "base64").toString("utf8");
+    } catch {
+      return null;
+    }
+    const idx = decoded.indexOf(":");
+    if (idx < 0) return null;
+    return { user: decoded.slice(0, idx), pass: decoded.slice(idx + 1) };
+  }
+
+  function adminAuth(req, res, next) {
+    const expectedUser = String(process.env.ADMIN_DASH_USER || "");
+    const expectedPass = String(process.env.ADMIN_DASH_PASS || "");
+    if (!expectedUser || !expectedPass) {
+      res.status(403);
+      return res.send("Forbidden");
+    }
+    const creds = parseBasicAuth(req);
+    const ok =
+      creds &&
+      timingSafeEqualString(String(creds.user || ""), expectedUser) &&
+      timingSafeEqualString(String(creds.pass || ""), expectedPass);
+    if (!ok) {
+      res.setHeader("WWW-Authenticate", 'Basic realm="BundleApp Admin", charset="UTF-8"');
+      res.status(401);
+      return res.send("Unauthorized");
+    }
+    return next();
   }
 
   function buildCanonicalQueryString(query, delimiter) {
@@ -667,6 +702,10 @@ function createApiRouter(config) {
       id: String(doc._id),
       merchantId: String(doc.merchantId),
       storeId: String(doc.storeId),
+      storeSallaId: doc.storeSallaId != null ? String(doc.storeSallaId) : null,
+      storeName: doc.storeName != null ? String(doc.storeName) : null,
+      storeDomain: doc.storeDomain != null ? String(doc.storeDomain) : null,
+      storeUrl: doc.storeUrl != null ? String(doc.storeUrl) : null,
       resourceType: doc.resourceType,
       publicId: doc.publicId,
       assetId: doc.assetId || null,
@@ -687,6 +726,280 @@ function createApiRouter(config) {
       updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null
     };
   }
+
+  function normalizeSallaStoreInfo(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const data = raw && typeof raw === "object" ? (raw.data && typeof raw.data === "object" ? raw.data : raw) : null;
+    const store = data && typeof data === "object"
+      ? (data.store && typeof data.store === "object" ? data.store : data.merchant && typeof data.merchant === "object" ? data.merchant : data)
+      : null;
+    if (!store || typeof store !== "object") return null;
+
+    const id = store.id != null ? String(store.id) : null;
+    const name =
+      store.name != null ? String(store.name) : store.store_name != null ? String(store.store_name) : store.storeName != null ? String(store.storeName) : null;
+    const domain =
+      store.domain != null
+        ? String(store.domain)
+        : Array.isArray(store.domains) && store.domains.length
+          ? String(store.domains[0])
+          : null;
+    const url = store.url != null ? String(store.url) : store.website != null ? String(store.website) : null;
+
+    return { id, name, domain, url };
+  }
+
+  const adminMediaAssetsQuerySchema = Joi.object({
+    storeId: Joi.string().trim().min(1).max(80),
+    resourceType: Joi.string().trim().valid("image", "video", "raw"),
+    q: Joi.string().trim().max(120),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(200).default(50)
+  }).unknown(true);
+
+  router.get("/admin/media", adminAuth, (_req, res) => {
+    res.type("html");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BundleApp • Admin Media</title>
+  <style>
+    :root{color-scheme:light}
+    body{margin:0;background:#0b1220;color:#0b1220;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 18px}
+    .card{background:#fff;border:1px solid rgba(15,23,42,.10);border-radius:18px;box-shadow:0 18px 50px rgba(2,6,23,.10)}
+    .head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:18px 18px 12px;border-bottom:1px solid rgba(15,23,42,.08)}
+    h1{margin:0;font-size:16px;font-weight:950;letter-spacing:.2px}
+    .sub{margin-top:6px;color:rgba(15,23,42,.70);font-size:12px;font-weight:800}
+    .tools{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
+    .row{display:grid;grid-template-columns:1.1fr 1fr .8fr .7fr;gap:10px;padding:14px 18px}
+    label{display:block;font-size:12px;font-weight:900;color:rgba(15,23,42,.75);margin-bottom:6px}
+    input,select{width:100%;border:1px solid rgba(15,23,42,.12);border-radius:14px;padding:12px 12px;font-size:13px;font-weight:800;outline:none}
+    input:focus,select:focus{box-shadow:0 0 0 4px rgba(15,23,42,.10)}
+    button{border:0;border-radius:14px;padding:12px 14px;font-size:13px;font-weight:950;background:#0f172a;color:#fff;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .status{padding:0 18px 14px;color:rgba(15,23,42,.75);font-size:12px;font-weight:900}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    thead th{position:sticky;top:0;background:#fff;z-index:1;text-align:right;font-size:12px;font-weight:950;color:rgba(15,23,42,.75);padding:12px 14px;border-bottom:1px solid rgba(15,23,42,.08)}
+    tbody td{font-size:12px;font-weight:850;color:#0b1220;padding:12px 14px;border-bottom:1px solid rgba(15,23,42,.06);vertical-align:top}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    a{color:#0369a1;text-decoration:underline}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid rgba(15,23,42,.12);border-radius:999px;background:rgba(15,23,42,.02);font-weight:950}
+    .footer{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:14px 18px}
+    .pager{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+  <script>
+    function qs(name){return new URLSearchParams(location.search).get(name) || '';}
+    function setQs(values){
+      const u = new URL(location.href);
+      for (const [k,v] of Object.entries(values)) {
+        if (v == null || String(v).trim() === '') u.searchParams.delete(k);
+        else u.searchParams.set(k, String(v));
+      }
+      history.replaceState(null, '', u.toString());
+    }
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g, (ch)=>ch==='&'?'&amp;':ch==='<'?'&lt;':ch==='>'?'&gt;':ch==='"'?'&quot;':'&#39;');}
+    function fmtBytes(n){
+      const b = Number(n);
+      if (!Number.isFinite(b) || b < 0) return '—';
+      if (b < 1024) return b+' B';
+      const kb=b/1024; if (kb < 1024) return kb.toFixed(1)+' KB';
+      const mb=kb/1024; if (mb < 1024) return mb.toFixed(1)+' MB';
+      const gb=mb/1024; return gb.toFixed(2)+' GB';
+    }
+    function fmtDate(v){
+      if (!v) return '—';
+      const d=new Date(v); if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString();
+    }
+    async function load(){
+      const storeId = qs('storeId');
+      const resourceType = qs('resourceType');
+      const q = qs('q');
+      const page = Number(qs('page') || 1);
+      const limit = Number(qs('limit') || 50);
+      document.getElementById('storeId').value = storeId;
+      document.getElementById('resourceType').value = resourceType;
+      document.getElementById('q').value = q;
+      document.getElementById('limit').value = String(limit);
+      const st = document.getElementById('status');
+      st.textContent = 'Loading…';
+      const url = '/api/admin/media/assets?' + new URLSearchParams({ ...(storeId?{storeId}:{}), ...(resourceType?{resourceType}:{}), ...(q?{q}:{}), page: String(page), limit: String(limit) }).toString();
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) {
+        const t = await res.text().catch(()=> '');
+        st.textContent = 'Failed: ' + res.status;
+        throw new Error(t || ('HTTP ' + res.status));
+      }
+      const data = await res.json();
+      const total = Number(data.total || 0);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      st.textContent = 'Total: ' + total + ' • Page: ' + page + '/' + totalPages;
+      document.getElementById('prev').disabled = page <= 1;
+      document.getElementById('next').disabled = page >= totalPages;
+      document.getElementById('prev').onclick = () => { setQs({ page: String(Math.max(1, page - 1)) }); load(); };
+      document.getElementById('next').onclick = () => { setQs({ page: String(Math.min(totalPages, page + 1)) }); load(); };
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      const items = Array.isArray(data.items) ? data.items : [];
+      for (const it of items) {
+        const storeName = it.storeName || it.merchant?.storeName || '';
+        const store = storeName ? (storeName + ' (' + (it.storeId||'') + ')') : (it.storeId||'');
+        const link = it.secureUrl || it.url || '';
+        const type = it.resourceType || '—';
+        const filename = it.originalFilename || it.publicId || '—';
+        const uploadedAt = fmtDate(it.cloudinaryCreatedAt || it.createdAt);
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td><div class="pill">' + esc(store || '—') + '</div><div class="sub mono" style="margin-top:8px;">' + esc(it.storeDomain || it.storeUrl || '') + '</div></td>' +
+          '<td><div style="font-weight:950;">' + esc(filename) + '</div><div class="sub mono" style="margin-top:8px;">' + esc(it.publicId || '—') + '</div></td>' +
+          '<td><div class="mono">' + esc(type) + '</div><div class="sub" style="margin-top:8px;">' + esc(fmtBytes(it.bytes)) + '</div></td>' +
+          '<td><div>' + esc(uploadedAt) + '</div>' + (link ? ('<div class="sub" style="margin-top:8px;"><a target="_blank" rel="noopener noreferrer" href="' + esc(link) + '">فتح</a></div>') : '') + '</td>';
+        tbody.appendChild(tr);
+      }
+    }
+    function onApply(ev){
+      ev.preventDefault();
+      const storeId = document.getElementById('storeId').value.trim();
+      const resourceType = document.getElementById('resourceType').value.trim();
+      const q = document.getElementById('q').value.trim();
+      const limit = document.getElementById('limit').value.trim();
+      setQs({ storeId, resourceType, q, limit, page: '1' });
+      load();
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('filters').addEventListener('submit', onApply);
+      load().catch(()=>undefined);
+    });
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div>
+          <h1>لوحة الأدمن • الميديا (كل العملاء)</h1>
+          <div class="sub">يعرض كل ملفات Cloudinary المسجلة في قاعدة البيانات حسب المتجر</div>
+        </div>
+      </div>
+      <form id="filters" class="row">
+        <div>
+          <label>Store ID (Merchant ID)</label>
+          <input id="storeId" placeholder="مثال: 123456" />
+        </div>
+        <div>
+          <label>بحث (Public ID / Filename)</label>
+          <input id="q" placeholder="مثال: bundle_app/123456/…" />
+        </div>
+        <div>
+          <label>النوع</label>
+          <select id="resourceType">
+            <option value="">الكل</option>
+            <option value="image">صور</option>
+            <option value="video">فيديو</option>
+            <option value="raw">ملفات</option>
+          </select>
+        </div>
+        <div>
+          <label>Page size</label>
+          <div class="tools">
+            <select id="limit">
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+            <button type="submit">تطبيق</button>
+          </div>
+        </div>
+      </form>
+      <div id="status" class="status"></div>
+      <div style="overflow:auto;max-height:70vh;">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:320px;">المتجر</th>
+              <th style="min-width:420px;">الملف</th>
+              <th style="min-width:140px;">النوع</th>
+              <th style="min-width:220px;">التاريخ</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="footer">
+        <div class="pager">
+          <button id="prev" type="button">Prev</button>
+          <button id="next" type="button">Next</button>
+        </div>
+        <div class="sub">/api/admin/media</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+    return res.send(html);
+  });
+
+  router.get("/admin/media/assets", adminAuth, async (req, res, next) => {
+    try {
+      const { error, value } = adminMediaAssetsQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const filter = { deletedAt: null };
+      if (value.storeId) filter.storeId = String(value.storeId);
+      if (value.resourceType) filter.resourceType = String(value.resourceType);
+      if (value.q) {
+        const q = String(value.q);
+        const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        filter.$or = [{ publicId: rx }, { originalFilename: rx }, { storeId: rx }, { storeName: rx }];
+      }
+
+      const page = Number(value.page);
+      const limit = Number(value.limit);
+      const skip = (page - 1) * limit;
+
+      const [total, docs] = await Promise.all([
+        MediaAsset.countDocuments(filter),
+        MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean()
+      ]);
+
+      const storeIds = Array.from(new Set(docs.map((d) => String(d.storeId || "")).filter(Boolean)));
+      const merchants = storeIds.length
+        ? await require("../models/Merchant").find({ merchantId: { $in: storeIds } }).select("merchantId appStatus createdAt updatedAt").lean()
+        : [];
+      const merchantById = new Map(merchants.map((m) => [String(m.merchantId), m]));
+
+      const items = docs.map((d) => {
+        const base = serializeMediaAsset(d);
+        const mid = base && base.storeId ? String(base.storeId) : "";
+        const m = mid ? merchantById.get(mid) : null;
+        return {
+          ...base,
+          merchant: m
+            ? {
+              merchantId: String(m.merchantId),
+              appStatus: String(m.appStatus || ""),
+              createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : null,
+              updatedAt: m.updatedAt ? new Date(m.updatedAt).toISOString() : null
+            }
+            : null
+        };
+      });
+
+      return res.json({ ok: true, page, limit, total, items });
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   const mediaSignatureBodySchema = Joi.object({
     resourceType: Joi.string().valid("image", "video", "raw").default("image"),
@@ -787,12 +1100,24 @@ function createApiRouter(config) {
       const contextObj = c.context && typeof c.context === "object" ? c.context : null;
       const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
 
+      let storeInfo = null;
+      try {
+        const raw = await getStoreInfo(config.salla, req.merchantAccessToken);
+        storeInfo = normalizeSallaStoreInfo(raw);
+      } catch (err) {
+        void err;
+      }
+
       const doc = await MediaAsset.findOneAndUpdate(
         { storeId, publicId: String(c.public_id), deletedAt: null },
         {
           $set: {
             merchantId,
             storeId,
+            storeSallaId: storeInfo?.id || null,
+            storeName: storeInfo?.name || null,
+            storeDomain: storeInfo?.domain || null,
+            storeUrl: storeInfo?.url || null,
             resourceType: String(c.resource_type),
             publicId: String(c.public_id),
             assetId: c.asset_id ? String(c.asset_id) : null,
@@ -861,8 +1186,26 @@ function createApiRouter(config) {
         MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit)
       ]);
 
+      let storeInfo = null;
+      try {
+        const raw = await getStoreInfo(config.salla, req.merchantAccessToken);
+        storeInfo = normalizeSallaStoreInfo(raw);
+      } catch (err) {
+        void err;
+      }
+
       return res.json({
         ok: true,
+        merchant: {
+          merchantId,
+          appStatus: String(req.merchant?.appStatus || ""),
+          createdAt: req.merchant?.createdAt ? new Date(req.merchant.createdAt).toISOString() : null,
+          updatedAt: req.merchant?.updatedAt ? new Date(req.merchant.updatedAt).toISOString() : null
+        },
+        store: {
+          storeId,
+          info: storeInfo
+        },
         storeId,
         page,
         limit,
@@ -893,6 +1236,14 @@ function createApiRouter(config) {
       const merchantId = String(req.merchant?.merchantId || "").trim();
       const storeId = merchantId;
       const folder = mediaFolderForMerchant(folderPrefix, merchantId);
+
+      let storeInfo = null;
+      try {
+        const raw = await getStoreInfo(config.salla, req.merchantAccessToken);
+        storeInfo = normalizeSallaStoreInfo(raw);
+      } catch (err) {
+        void err;
+      }
 
       const types = value.resourceType === "all" ? ["image", "video"] : [String(value.resourceType)];
       const maxResults = Number(value.maxResults);
@@ -937,6 +1288,10 @@ function createApiRouter(config) {
                 $set: {
                   merchantId,
                   storeId,
+                  storeSallaId: storeInfo?.id || null,
+                  storeName: storeInfo?.name || null,
+                  storeDomain: storeInfo?.domain || null,
+                  storeUrl: storeInfo?.url || null,
                   resourceType: String(r.resource_type),
                   publicId: String(r.public_id),
                   assetId: r.asset_id ? String(r.asset_id) : null,
@@ -1225,12 +1580,25 @@ function createApiRouter(config) {
       const contextObj = c.context && typeof c.context === "object" ? c.context : null;
       const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
 
+      let storeInfo = null;
+      try {
+        await ensureMerchantTokenFresh(merchant);
+        const raw = await getStoreInfo(config.salla, merchant.accessToken);
+        storeInfo = normalizeSallaStoreInfo(raw);
+      } catch (err) {
+        void err;
+      }
+
       const doc = await MediaAsset.findOneAndUpdate(
         { storeId, publicId: String(c.public_id), deletedAt: null },
         {
           $set: {
             merchantId,
             storeId,
+            storeSallaId: storeInfo?.id || null,
+            storeName: storeInfo?.name || null,
+            storeDomain: storeInfo?.domain || null,
+            storeUrl: storeInfo?.url || null,
             resourceType: String(c.resource_type),
             publicId: String(c.public_id),
             assetId: c.asset_id ? String(c.asset_id) : null,

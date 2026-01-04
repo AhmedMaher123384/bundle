@@ -4,6 +4,10 @@ const MediaAssetSchema = new mongoose.Schema(
   {
     merchantId: { type: String, required: true, index: true },
     storeId: { type: String, required: true, index: true },
+    storeSallaId: { type: String, default: null, index: true },
+    storeName: { type: String, default: null, index: true },
+    storeDomain: { type: String, default: null, index: true },
+    storeUrl: { type: String, default: null },
 
     resourceType: { type: String, required: true, enum: ["image", "video", "raw"], index: true },
     publicId: { type: String, required: true, index: true },
@@ -36,4 +40,3 @@ MediaAssetSchema.index({ storeId: 1, resourceType: 1, deletedAt: 1, cloudinaryCr
 MediaAssetSchema.index({ storeId: 1, publicId: 1, deletedAt: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
 
 module.exports = mongoose.model("MediaAsset", MediaAssetSchema);
-

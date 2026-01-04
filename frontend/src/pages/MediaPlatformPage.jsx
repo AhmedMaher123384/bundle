@@ -31,9 +31,11 @@ function mediaLabel(rt) {
   return '—'
 }
 
-function MediaCard({ item }) {
+function MediaCard({ item, store }) {
   const isVideo = String(item?.resourceType) === 'video'
   const src = item?.secureUrl || item?.url || null
+  const storeName = store?.info?.name || null
+  const storeId = item?.storeId || store?.storeId || null
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -81,9 +83,15 @@ function MediaCard({ item }) {
 
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <div className="grid grid-cols-1 gap-2 text-xs">
+            {storeName ? (
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-slate-600">اسم المتجر</div>
+                <div className="truncate text-xs font-semibold text-slate-900">{storeName}</div>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-slate-600">متجر سلة</div>
-              <div className="font-mono text-xs font-semibold text-slate-900">{item?.storeId || '—'}</div>
+              <div className="font-mono text-xs font-semibold text-slate-900">{storeId || '—'}</div>
             </div>
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-slate-600">مجلد Cloudinary</div>
@@ -125,7 +133,7 @@ export function MediaPlatformPage() {
   const [limit, setLimit] = useState(18)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [data, setData] = useState({ total: 0, items: [], storeId: null })
+  const [data, setData] = useState({ total: 0, items: [], storeId: null, store: null, merchant: null })
 
   const typeParam = resourceType === 'all' ? '' : resourceType
 
@@ -135,7 +143,7 @@ export function MediaPlatformPage() {
       setLoading(true)
       try {
         const res = await requestJson('/api/media/assets', { token, query: { resourceType: typeParam, q: query, page, limit } })
-        if (!cancelled) setData({ total: res?.total || 0, items: res?.items || [], storeId: res?.storeId || null })
+        if (!cancelled) setData({ total: res?.total || 0, items: res?.items || [], storeId: res?.storeId || null, store: res?.store || null, merchant: res?.merchant || null })
       } catch (err) {
         if (err instanceof HttpError && (err.status === 401 || err.status === 403)) logout()
         toasts.error('فشل تحميل منصة الرفع.')
@@ -156,10 +164,11 @@ export function MediaPlatformPage() {
   }, [data?.total, limit])
 
   const headerSubtitle = useMemo(() => {
-    const storeId = data?.storeId || '—'
+    const storeId = data?.storeId || data?.store?.storeId || '—'
+    const storeName = data?.store?.info?.name || null
     const t = Number(data?.total || 0)
-    return `Store: ${storeId} • Total: ${t}`
-  }, [data?.storeId, data?.total])
+    return storeName ? `Store: ${storeName} (${storeId}) • Total: ${t}` : `Store: ${storeId} • Total: ${t}`
+  }, [data?.store?.info?.name, data?.store?.storeId, data?.storeId, data?.total])
 
   async function syncFromCloudinary() {
     setSyncing(true)
@@ -283,7 +292,7 @@ export function MediaPlatformPage() {
       {!loading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {Array.isArray(data?.items) && data.items.length ? (
-            data.items.map((it) => <MediaCard key={it.id} item={it} />)
+            data.items.map((it) => <MediaCard key={it.id} item={it} store={data?.store} />)
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">مفيش نتائج.</div>
           )}
@@ -292,4 +301,3 @@ export function MediaPlatformPage() {
     </div>
   )
 }
-
