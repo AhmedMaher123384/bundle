@@ -13,11 +13,15 @@ const bundleService = require("../services/bundle.service");
 const { issueOrReuseSpecialOfferForCartVerbose } = require("../services/cartCoupon.service");
 const { hmacSha256, sha256Hex } = require("../utils/hash");
 const { Buffer } = require("buffer");
+const crypto = require("crypto");
+const axios = require("axios");
 const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
 const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
+const mountMediaPlatform = require("../storefront/snippet/features/mediaPlatform/media.mount");
 const { createAnnouncementBannerRouter } = require("./announcementBanner.routes");
 const announcementBannerService = require("../services/announcementBanner.service");
+const MediaAsset = require("../models/MediaAsset");
 
 function createApiRouter(config) {
   const router = express.Router();
@@ -615,6 +619,7 @@ function createApiRouter(config) {
       const context = { parts: [], merchantId, token, cssBase, cssPickers, cssTraditional };
       mountBundle(context);
       mountAnnouncementBanner(context);
+      mountMediaPlatform(context);
       const js = context.parts.join("");
       res.setHeader("X-BundleApp-Snippet-Path", "/api/storefront/snippet.js");
       res.setHeader("X-BundleApp-Snippet-Sha256", sha256Hex(js));
@@ -628,6 +633,391 @@ function createApiRouter(config) {
   router.use("/oauth/salla", createOAuthRouter(config));
   router.use("/bundles", merchantAuth(config), createBundleRouter(config));
   router.use("/announcement-banners", merchantAuth(config), createAnnouncementBannerRouter(config));
+
+  function requireCloudinaryConfig() {
+    const cloudName = String(config?.cloudinary?.cloudName || "").trim();
+    const apiKey = String(config?.cloudinary?.apiKey || "").trim();
+    const apiSecret = String(config?.cloudinary?.apiSecret || "").trim();
+    const folderPrefix = String(config?.cloudinary?.folderPrefix || "bundle_app").trim() || "bundle_app";
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new ApiError(500, "Cloudinary is not configured", { code: "CLOUDINARY_NOT_CONFIGURED" });
+    }
+    return { cloudName, apiKey, apiSecret, folderPrefix };
+  }
+
+  function cloudinarySign(params, apiSecret) {
+    const entries = Object.entries(params || {})
+      .filter(([, v]) => v != null && String(v) !== "")
+      .map(([k, v]) => [String(k), Array.isArray(v) ? v.map((x) => String(x)).join(",") : String(v)])
+      .sort(([a], [b]) => a.localeCompare(b));
+    const base = entries.map(([k, v]) => `${k}=${v}`).join("&");
+    return crypto.createHash("sha1").update(`${base}${apiSecret}`, "utf8").digest("hex");
+  }
+
+  function mediaFolderForMerchant(folderPrefix, merchantId) {
+    const m = String(merchantId || "").trim();
+    const p = String(folderPrefix || "").trim();
+    const cleanP = p.replace(/\/+$/g, "");
+    return `${cleanP}/${m}`;
+  }
+
+  function serializeMediaAsset(doc) {
+    if (!doc) return null;
+    return {
+      id: String(doc._id),
+      merchantId: String(doc.merchantId),
+      storeId: String(doc.storeId),
+      resourceType: doc.resourceType,
+      publicId: doc.publicId,
+      assetId: doc.assetId || null,
+      folder: doc.folder || null,
+      originalFilename: doc.originalFilename || null,
+      format: doc.format || null,
+      bytes: doc.bytes != null ? Number(doc.bytes) : null,
+      width: doc.width != null ? Number(doc.width) : null,
+      height: doc.height != null ? Number(doc.height) : null,
+      duration: doc.duration != null ? Number(doc.duration) : null,
+      url: doc.url || null,
+      secureUrl: doc.secureUrl || null,
+      thumbnailUrl: doc.thumbnailUrl || null,
+      tags: Array.isArray(doc.tags) ? doc.tags : [],
+      context: doc.context || null,
+      cloudinaryCreatedAt: doc.cloudinaryCreatedAt ? new Date(doc.cloudinaryCreatedAt).toISOString() : null,
+      createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
+      updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null
+    };
+  }
+
+  const mediaSignatureBodySchema = Joi.object({
+    resourceType: Joi.string().valid("image", "video", "raw").default("image"),
+    tags: Joi.array().items(Joi.string().trim().min(1).max(50)).max(20).default([]),
+    context: Joi.object().unknown(true).default({})
+  }).required();
+
+  router.post("/media/signature", merchantAuth(config), async (req, res, next) => {
+    try {
+      const { error, value } = mediaSignatureBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const { cloudName, apiKey, apiSecret, folderPrefix } = requireCloudinaryConfig();
+      const merchantId = String(req.merchant?.merchantId || "").trim();
+      const folder = mediaFolderForMerchant(folderPrefix, merchantId);
+      const timestamp = Math.floor(Date.now() / 1000);
+
+      const context = value.context && typeof value.context === "object" ? value.context : {};
+      const contextParts = [];
+      for (const [k, v] of Object.entries(context)) {
+        const key = String(k || "").trim();
+        if (!key) continue;
+        const val = String(v == null ? "" : v).trim();
+        if (!val) continue;
+        contextParts.push(`${key}=${val}`);
+      }
+      const contextStr = contextParts.length ? contextParts.join("|") : null;
+
+      const tags = Array.isArray(value.tags) ? value.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+      const tagsStr = tags.length ? tags.join(",") : null;
+
+      const paramsToSign = { folder, timestamp, ...(contextStr ? { context: contextStr } : {}), ...(tagsStr ? { tags: tagsStr } : {}) };
+      const signature = cloudinarySign(paramsToSign, apiSecret);
+
+      return res.json({
+        ok: true,
+        cloudinary: {
+          cloudName,
+          apiKey,
+          resourceType: value.resourceType,
+          uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${value.resourceType}/upload`,
+          folder,
+          timestamp,
+          signature,
+          ...(contextStr ? { context: contextStr } : {}),
+          ...(tagsStr ? { tags: tagsStr } : {})
+        }
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const mediaRecordBodySchema = Joi.object({
+    cloudinary: Joi.object({
+      public_id: Joi.string().trim().min(1).required(),
+      asset_id: Joi.string().trim().min(1).allow(null),
+      resource_type: Joi.string().trim().valid("image", "video", "raw").required(),
+      secure_url: Joi.string().uri().allow(null),
+      url: Joi.string().uri().allow(null),
+      bytes: Joi.number().integer().min(0).allow(null),
+      format: Joi.string().trim().allow(null),
+      width: Joi.number().integer().min(0).allow(null),
+      height: Joi.number().integer().min(0).allow(null),
+      duration: Joi.number().min(0).allow(null),
+      original_filename: Joi.string().trim().allow(null),
+      folder: Joi.string().trim().allow(null),
+      tags: Joi.array().items(Joi.string()).default([]),
+      context: Joi.object().unknown(true).allow(null),
+      created_at: Joi.string().trim().allow(null)
+    })
+      .unknown(true)
+      .required()
+  }).required();
+
+  router.post("/media/assets", merchantAuth(config), async (req, res, next) => {
+    try {
+      const { error, value } = mediaRecordBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const merchantId = String(req.merchant?.merchantId || "").trim();
+      const storeId = merchantId;
+      const c = value.cloudinary || {};
+
+      const createdAt = c.created_at ? new Date(String(c.created_at)) : null;
+      const cloudinaryCreatedAt = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null;
+
+      const contextObj = c.context && typeof c.context === "object" ? c.context : null;
+      const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
+
+      const doc = await MediaAsset.findOneAndUpdate(
+        { storeId, publicId: String(c.public_id), deletedAt: null },
+        {
+          $set: {
+            merchantId,
+            storeId,
+            resourceType: String(c.resource_type),
+            publicId: String(c.public_id),
+            assetId: c.asset_id ? String(c.asset_id) : null,
+            folder: c.folder ? String(c.folder) : null,
+            originalFilename: c.original_filename ? String(c.original_filename) : null,
+            format: c.format ? String(c.format) : null,
+            bytes: c.bytes != null ? Number(c.bytes) : null,
+            width: c.width != null ? Number(c.width) : null,
+            height: c.height != null ? Number(c.height) : null,
+            duration: c.duration != null ? Number(c.duration) : null,
+            url: c.url ? String(c.url) : null,
+            secureUrl: c.secure_url ? String(c.secure_url) : null,
+            thumbnailUrl: c.secure_url ? String(c.secure_url) : null,
+            tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t)).filter(Boolean) : [],
+            context: ctx || null,
+            cloudinaryCreatedAt,
+            cloudinary: c
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      return res.json({ ok: true, asset: serializeMediaAsset(doc) });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const mediaListQuerySchema = Joi.object({
+    storeId: Joi.string().trim().min(1).max(80),
+    resourceType: Joi.string().trim().valid("image", "video", "raw"),
+    q: Joi.string().trim().max(120),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(24)
+  }).unknown(true);
+
+  router.get("/media/assets", merchantAuth(config), async (req, res, next) => {
+    try {
+      const { error, value } = mediaListQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const merchantId = String(req.merchant?.merchantId || "").trim();
+      const storeId = String(value.storeId || "").trim() || merchantId;
+      if (storeId !== merchantId) {
+        throw new ApiError(403, "Forbidden", { code: "FORBIDDEN" });
+      }
+
+      const filter = { storeId, deletedAt: null };
+      if (value.resourceType) filter.resourceType = String(value.resourceType);
+      if (value.q) {
+        const q = String(value.q);
+        filter.$or = [{ publicId: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }];
+      }
+
+      const page = Number(value.page);
+      const limit = Number(value.limit);
+      const skip = (page - 1) * limit;
+
+      const [total, docs] = await Promise.all([
+        MediaAsset.countDocuments(filter),
+        MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit)
+      ]);
+
+      return res.json({
+        ok: true,
+        storeId,
+        page,
+        limit,
+        total,
+        items: docs.map(serializeMediaAsset)
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const mediaSyncBodySchema = Joi.object({
+    resourceType: Joi.string().trim().valid("image", "video", "raw", "all").default("all"),
+    maxResults: Joi.number().integer().min(1).max(500).default(100)
+  }).required();
+
+  router.post("/media/sync", merchantAuth(config), async (req, res, next) => {
+    try {
+      const { error, value } = mediaSyncBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const { cloudName, apiKey, apiSecret, folderPrefix } = requireCloudinaryConfig();
+      const merchantId = String(req.merchant?.merchantId || "").trim();
+      const storeId = merchantId;
+      const folder = mediaFolderForMerchant(folderPrefix, merchantId);
+
+      const types = value.resourceType === "all" ? ["image", "video"] : [String(value.resourceType)];
+      const maxResults = Number(value.maxResults);
+
+      const upserted = [];
+      const errors = [];
+
+      for (const resourceType of types) {
+        let remaining = maxResults - upserted.length;
+        if (remaining <= 0) break;
+
+        let nextCursor = null;
+        while (remaining > 0) {
+          const payload = {
+            expression: `folder:${folder} AND resource_type:${resourceType}`,
+            max_results: Math.min(100, remaining)
+          };
+          if (nextCursor) payload.next_cursor = nextCursor;
+
+          let resp = null;
+          try {
+            resp = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/resources/search`, payload, {
+              auth: { username: apiKey, password: apiSecret },
+              timeout: 15000
+            });
+          } catch (e) {
+            errors.push({ resourceType, message: String(e?.response?.data?.error?.message || e?.message || e) });
+            break;
+          }
+
+          const resources = Array.isArray(resp?.data?.resources) ? resp.data.resources : [];
+          for (const r of resources) {
+            const createdAt = r.created_at ? new Date(String(r.created_at)) : null;
+            const cloudinaryCreatedAt = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null;
+
+            const contextObj = r.context && typeof r.context === "object" ? r.context : null;
+            const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
+
+            const doc = await MediaAsset.findOneAndUpdate(
+              { storeId, publicId: String(r.public_id), deletedAt: null },
+              {
+                $set: {
+                  merchantId,
+                  storeId,
+                  resourceType: String(r.resource_type),
+                  publicId: String(r.public_id),
+                  assetId: r.asset_id ? String(r.asset_id) : null,
+                  folder: r.folder ? String(r.folder) : null,
+                  originalFilename: r.original_filename ? String(r.original_filename) : null,
+                  format: r.format ? String(r.format) : null,
+                  bytes: r.bytes != null ? Number(r.bytes) : null,
+                  width: r.width != null ? Number(r.width) : null,
+                  height: r.height != null ? Number(r.height) : null,
+                  duration: r.duration != null ? Number(r.duration) : null,
+                  url: r.url ? String(r.url) : null,
+                  secureUrl: r.secure_url ? String(r.secure_url) : null,
+                  thumbnailUrl: r.secure_url ? String(r.secure_url) : null,
+                  tags: Array.isArray(r.tags) ? r.tags.map((t) => String(t)).filter(Boolean) : [],
+                  context: ctx || null,
+                  cloudinaryCreatedAt,
+                  cloudinary: r
+                }
+              },
+              { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+            upserted.push(doc);
+            remaining -= 1;
+            if (remaining <= 0) break;
+          }
+
+          nextCursor = String(resp?.data?.next_cursor || "").trim() || null;
+          if (!nextCursor || !resources.length || remaining <= 0) break;
+        }
+      }
+
+      return res.json({
+        ok: true,
+        storeId,
+        folder,
+        requested: maxResults,
+        synced: upserted.length,
+        errors
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const mediaDeleteParamsSchema = Joi.object({
+    id: Joi.string().trim().min(10).required()
+  });
+
+  router.delete("/media/assets/:id", merchantAuth(config), validate(mediaDeleteParamsSchema, "params"), async (req, res, next) => {
+    try {
+      const { cloudName, apiKey, apiSecret } = requireCloudinaryConfig();
+      const merchantId = String(req.merchant?.merchantId || "").trim();
+      const storeId = merchantId;
+      const id = String(req.params.id);
+
+      const asset = await MediaAsset.findOne({ _id: id, storeId, deletedAt: null });
+      if (!asset) throw new ApiError(404, "Not found", { code: "NOT_FOUND" });
+
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = cloudinarySign({ public_id: String(asset.publicId), timestamp }, apiSecret);
+
+      const url = `https://api.cloudinary.com/v1_1/${cloudName}/${String(asset.resourceType)}/destroy`;
+      const body = new URLSearchParams();
+      body.set("public_id", String(asset.publicId));
+      body.set("api_key", apiKey);
+      body.set("timestamp", String(timestamp));
+      body.set("signature", signature);
+
+      await axios.post(url, body.toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        timeout: 15000
+      });
+
+      asset.deletedAt = new Date();
+      await asset.save();
+
+      return res.json({ ok: true });
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   const proxyAnnouncementBannerQuerySchema = Joi.object({
     merchantId: Joi.string().trim().min(1).max(80).required(),
@@ -662,6 +1052,208 @@ function createApiRouter(config) {
         page: String(value.page || "all"),
         banner: announcementBannerService.serializeAnnouncementBannerForStorefront(banner)
       });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyMediaAssetsQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    resourceType: Joi.string().trim().valid("image", "video", "raw"),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(60).default(24),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.get("/proxy/media/assets", async (req, res, next) => {
+    try {
+      const { error, value } = proxyMediaAssetsQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: false });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(value, value.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(value.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      const storeId = String(value.merchantId);
+      const filter = { storeId, deletedAt: null };
+      if (value.resourceType) filter.resourceType = String(value.resourceType);
+
+      const page = Number(value.page);
+      const limit = Number(value.limit);
+      const skip = (page - 1) * limit;
+
+      const [total, docs] = await Promise.all([
+        MediaAsset.countDocuments(filter),
+        MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit)
+      ]);
+
+      return res.json({
+        ok: true,
+        merchantId: storeId,
+        page,
+        limit,
+        total,
+        items: docs.map(serializeMediaAsset)
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const proxyMediaSignatureQuerySchema = Joi.object({
+    merchantId: Joi.string().trim().min(1).max(80).required(),
+    token: Joi.string().trim().min(10),
+    signature: Joi.string().trim().min(8),
+    hmac: Joi.string().trim().min(8)
+  })
+    .or("signature", "hmac", "token")
+    .unknown(true);
+
+  router.post("/proxy/media/signature", async (req, res, next) => {
+    try {
+      const { error: qErr, value: qValue } = proxyMediaSignatureQuerySchema.validate(req.query, {
+        abortEarly: false,
+        stripUnknown: false
+      });
+      if (qErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: qErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const { error: bErr, value: bValue } = mediaSignatureBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (bErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: bErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(qValue, qValue.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(qValue.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      const { cloudName, apiKey, apiSecret, folderPrefix } = requireCloudinaryConfig();
+      const merchantId = String(qValue.merchantId);
+      const folder = mediaFolderForMerchant(folderPrefix, merchantId);
+      const timestamp = Math.floor(Date.now() / 1000);
+
+      const context = bValue.context && typeof bValue.context === "object" ? bValue.context : {};
+      const contextParts = [];
+      for (const [k, v] of Object.entries(context)) {
+        const key = String(k || "").trim();
+        if (!key) continue;
+        const val = String(v == null ? "" : v).trim();
+        if (!val) continue;
+        contextParts.push(`${key}=${val}`);
+      }
+      const contextStr = contextParts.length ? contextParts.join("|") : null;
+
+      const tags = Array.isArray(bValue.tags) ? bValue.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+      const tagsStr = tags.length ? tags.join(",") : null;
+
+      const paramsToSign = { folder, timestamp, ...(contextStr ? { context: contextStr } : {}), ...(tagsStr ? { tags: tagsStr } : {}) };
+      const signature = cloudinarySign(paramsToSign, apiSecret);
+
+      return res.json({
+        ok: true,
+        cloudinary: {
+          cloudName,
+          apiKey,
+          resourceType: bValue.resourceType,
+          uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${bValue.resourceType}/upload`,
+          folder,
+          timestamp,
+          signature,
+          ...(contextStr ? { context: contextStr } : {}),
+          ...(tagsStr ? { tags: tagsStr } : {})
+        }
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  router.post("/proxy/media/assets", async (req, res, next) => {
+    try {
+      const { error: qErr, value: qValue } = proxyMediaSignatureQuerySchema.validate(req.query, {
+        abortEarly: false,
+        stripUnknown: false
+      });
+      if (qErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: qErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const { error: bErr, value: bValue } = mediaRecordBodySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+      if (bErr) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: bErr.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      ensureValidProxyAuth(qValue, qValue.merchantId);
+
+      const merchant = await findMerchantByMerchantId(String(qValue.merchantId));
+      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
+      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
+
+      const merchantId = String(qValue.merchantId);
+      const storeId = merchantId;
+      const c = bValue.cloudinary || {};
+
+      const createdAt = c.created_at ? new Date(String(c.created_at)) : null;
+      const cloudinaryCreatedAt = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null;
+
+      const contextObj = c.context && typeof c.context === "object" ? c.context : null;
+      const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
+
+      const doc = await MediaAsset.findOneAndUpdate(
+        { storeId, publicId: String(c.public_id), deletedAt: null },
+        {
+          $set: {
+            merchantId,
+            storeId,
+            resourceType: String(c.resource_type),
+            publicId: String(c.public_id),
+            assetId: c.asset_id ? String(c.asset_id) : null,
+            folder: c.folder ? String(c.folder) : null,
+            originalFilename: c.original_filename ? String(c.original_filename) : null,
+            format: c.format ? String(c.format) : null,
+            bytes: c.bytes != null ? Number(c.bytes) : null,
+            width: c.width != null ? Number(c.width) : null,
+            height: c.height != null ? Number(c.height) : null,
+            duration: c.duration != null ? Number(c.duration) : null,
+            url: c.url ? String(c.url) : null,
+            secureUrl: c.secure_url ? String(c.secure_url) : null,
+            thumbnailUrl: c.secure_url ? String(c.secure_url) : null,
+            tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t)).filter(Boolean) : [],
+            context: ctx || null,
+            cloudinaryCreatedAt,
+            cloudinary: c
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      return res.json({ ok: true, asset: serializeMediaAsset(doc) });
     } catch (err) {
       return next(err);
     }

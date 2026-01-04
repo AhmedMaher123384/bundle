@@ -11,6 +11,12 @@ function loadConfig() {
     port: Number(process.env.PORT || 3000),
     mongodbUri: process.env.MONGODB_URI,
     mongodbDbName: process.env.MONGODB_DB_NAME || "bundles_app",
+    cloudinary: {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      apiSecret: process.env.CLOUDINARY_API_SECRET,
+      folderPrefix: process.env.CLOUDINARY_FOLDER_PREFIX || "bundle_app"
+    },
     salla: {
       apiBaseUrl: process.env.SALLA_API_BASE_URL || "https://api.salla.dev",
       oauthAuthorizeUrl: process.env.SALLA_OAUTH_AUTHORIZE_URL || "https://accounts.salla.sa/oauth2/authorize",

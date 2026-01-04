@@ -36,6 +36,8 @@ export function AppLayout() {
             ? 'Top Banner'
           : location.pathname.startsWith('/cart-preview')
             ? 'Cart Preview'
+          : location.pathname.startsWith('/media-platform')
+            ? 'منصة الرفع'
             : 'Bundle Manager'
 
   const showNewBundlesTabs = location.pathname === '/' || location.pathname === '/bundles'
@@ -62,6 +64,7 @@ export function AppLayout() {
             <NavItem to="/bundles?tab=new" label="New Bundels" />
             <NavItem to="/announcement-banners" label="Top Banner" />
             <NavItem to="/cart-preview" label="Cart Preview" />
+            <NavItem to="/media-platform" label="منصة الرفع" />
           </div>
         </nav>
       </aside>
@@ -88,6 +91,7 @@ export function AppLayout() {
                 <NavItem to="/bundles?tab=new" label="New Bundels" />
                 <NavItem to="/announcement-banners" label="Top Banner" />
                 <NavItem to="/cart-preview" label="Cart Preview" />
+                <NavItem to="/media-platform" label="منصة الرفع" />
               </div>
             </nav>
           </div>
