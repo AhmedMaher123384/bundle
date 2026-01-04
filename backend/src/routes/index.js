@@ -25,6 +25,21 @@ const MediaAsset = require("../models/MediaAsset");
 
 function createApiRouter(config) {
   const router = express.Router();
+  const publicCache = new Map();
+
+  function cacheGet(key) {
+    const hit = publicCache.get(key);
+    if (!hit) return null;
+    if (hit.expiresAt <= Date.now()) {
+      publicCache.delete(key);
+      return null;
+    }
+    return hit.value;
+  }
+
+  function cacheSet(key, value, ttlMs) {
+    publicCache.set(key, { value, expiresAt: Date.now() + Math.max(0, Number(ttlMs || 0)) });
+  }
 
   function base64UrlEncodeUtf8(input) {
     return Buffer.from(String(input || ""), "utf8")
@@ -45,54 +60,6 @@ function createApiRouter(config) {
     const bBuf = Buffer.from(String(b || ""), "utf8");
     if (aBuf.length !== bBuf.length) return false;
     return require("crypto").timingSafeEqual(aBuf, bBuf);
-  }
-
-  function parseBasicAuth(req) {
-    const header = String(req.headers.authorization || "");
-    if (!header.toLowerCase().startsWith("basic ")) return null;
-    const encoded = header.slice(6).trim();
-    let decoded = "";
-    try {
-      decoded = Buffer.from(encoded, "base64").toString("utf8");
-    } catch {
-      return null;
-    }
-    const idx = decoded.indexOf(":");
-    if (idx < 0) return null;
-    return { user: decoded.slice(0, idx), pass: decoded.slice(idx + 1) };
-  }
-
-  function adminAuth(req, res, next) {
-    const expectedB64 = String(process.env.ADMIN_MEDIA_BASIC_AUTH || process.env.ADMIN_DASH_BASIC_AUTH || "").trim();
-    const expectedUser = String(process.env.ADMIN_DASH_USER || process.env.ADMIN_MEDIA_USER || "").trim();
-    const expectedPass = String(process.env.ADMIN_DASH_PASS || process.env.ADMIN_MEDIA_PASS || "").trim();
-
-    const authHeader = String(req.headers.authorization || "").trim();
-    const hasAnySecret = Boolean(expectedB64 || (expectedUser && expectedPass));
-
-    if (!hasAnySecret) {
-      res.status(403);
-      return res.send("Forbidden");
-    }
-
-    let ok = false;
-    if (expectedB64) {
-      ok = authHeader.toLowerCase().startsWith("basic ") && timingSafeEqualString(authHeader.slice(6).trim(), expectedB64);
-    } else {
-      const creds = parseBasicAuth(req);
-      ok =
-        Boolean(creds) &&
-        timingSafeEqualString(String(creds.user || ""), expectedUser) &&
-        timingSafeEqualString(String(creds.pass || ""), expectedPass);
-    }
-
-    if (!ok) {
-      res.setHeader("WWW-Authenticate", 'Basic realm="BundleApp Admin", charset="UTF-8"');
-      res.status(401);
-      return res.send("Unauthorized");
-    }
-
-    return next();
   }
 
   function buildCanonicalQueryString(query, delimiter) {
@@ -715,10 +682,6 @@ function createApiRouter(config) {
       id: String(doc._id),
       merchantId: String(doc.merchantId),
       storeId: String(doc.storeId),
-      storeSallaId: doc.storeSallaId != null ? String(doc.storeSallaId) : null,
-      storeName: doc.storeName != null ? String(doc.storeName) : null,
-      storeDomain: doc.storeDomain != null ? String(doc.storeDomain) : null,
-      storeUrl: doc.storeUrl != null ? String(doc.storeUrl) : null,
       resourceType: doc.resourceType,
       publicId: doc.publicId,
       assetId: doc.assetId || null,
@@ -761,258 +724,6 @@ function createApiRouter(config) {
 
     return { id, name, domain, url };
   }
-
-  const adminMediaAssetsQuerySchema = Joi.object({
-    storeId: Joi.string().trim().min(1).max(80),
-    resourceType: Joi.string().trim().valid("image", "video", "raw"),
-    q: Joi.string().trim().max(120),
-    page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(200).default(50)
-  }).unknown(true);
-
-  router.get("/admin/media", adminAuth, (_req, res) => {
-    res.type("html");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    const html = `<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BundleApp • Admin Media</title>
-  <style>
-    :root{color-scheme:light}
-    body{margin:0;background:#0b1220;color:#0b1220;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    .wrap{max-width:1200px;margin:0 auto;padding:28px 18px}
-    .card{background:#fff;border:1px solid rgba(15,23,42,.10);border-radius:18px;box-shadow:0 18px 50px rgba(2,6,23,.10)}
-    .head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:18px 18px 12px;border-bottom:1px solid rgba(15,23,42,.08)}
-    h1{margin:0;font-size:16px;font-weight:950;letter-spacing:.2px}
-    .sub{margin-top:6px;color:rgba(15,23,42,.70);font-size:12px;font-weight:800}
-    .tools{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
-    .row{display:grid;grid-template-columns:1.1fr 1fr .8fr .7fr;gap:10px;padding:14px 18px}
-    label{display:block;font-size:12px;font-weight:900;color:rgba(15,23,42,.75);margin-bottom:6px}
-    input,select{width:100%;border:1px solid rgba(15,23,42,.12);border-radius:14px;padding:12px 12px;font-size:13px;font-weight:800;outline:none}
-    input:focus,select:focus{box-shadow:0 0 0 4px rgba(15,23,42,.10)}
-    button{border:0;border-radius:14px;padding:12px 14px;font-size:13px;font-weight:950;background:#0f172a;color:#fff;cursor:pointer}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .status{padding:0 18px 14px;color:rgba(15,23,42,.75);font-size:12px;font-weight:900}
-    table{width:100%;border-collapse:separate;border-spacing:0}
-    thead th{position:sticky;top:0;background:#fff;z-index:1;text-align:right;font-size:12px;font-weight:950;color:rgba(15,23,42,.75);padding:12px 14px;border-bottom:1px solid rgba(15,23,42,.08)}
-    tbody td{font-size:12px;font-weight:850;color:#0b1220;padding:12px 14px;border-bottom:1px solid rgba(15,23,42,.06);vertical-align:top}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-    a{color:#0369a1;text-decoration:underline}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid rgba(15,23,42,.12);border-radius:999px;background:rgba(15,23,42,.02);font-weight:950}
-    .footer{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:14px 18px}
-    .pager{display:flex;gap:8px;flex-wrap:wrap}
-  </style>
-  <script>
-    function qs(name){return new URLSearchParams(location.search).get(name) || '';}
-    function setQs(values){
-      const u = new URL(location.href);
-      for (const [k,v] of Object.entries(values)) {
-        if (v == null || String(v).trim() === '') u.searchParams.delete(k);
-        else u.searchParams.set(k, String(v));
-      }
-      history.replaceState(null, '', u.toString());
-    }
-    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g, (ch)=>ch==='&'?'&amp;':ch==='<'?'&lt;':ch==='>'?'&gt;':ch==='"'?'&quot;':'&#39;');}
-    function fmtBytes(n){
-      const b = Number(n);
-      if (!Number.isFinite(b) || b < 0) return '—';
-      if (b < 1024) return b+' B';
-      const kb=b/1024; if (kb < 1024) return kb.toFixed(1)+' KB';
-      const mb=kb/1024; if (mb < 1024) return mb.toFixed(1)+' MB';
-      const gb=mb/1024; return gb.toFixed(2)+' GB';
-    }
-    function fmtDate(v){
-      if (!v) return '—';
-      const d=new Date(v); if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleString();
-    }
-    async function load(){
-      const storeId = qs('storeId');
-      const resourceType = qs('resourceType');
-      const q = qs('q');
-      const page = Number(qs('page') || 1);
-      const limit = Number(qs('limit') || 50);
-      document.getElementById('storeId').value = storeId;
-      document.getElementById('resourceType').value = resourceType;
-      document.getElementById('q').value = q;
-      document.getElementById('limit').value = String(limit);
-      const st = document.getElementById('status');
-      st.textContent = 'Loading…';
-      const url = '/api/admin/media/assets?' + new URLSearchParams({ ...(storeId?{storeId}:{}), ...(resourceType?{resourceType}:{}), ...(q?{q}:{}), page: String(page), limit: String(limit) }).toString();
-      const res = await fetch(url, { credentials: 'same-origin' });
-      if (!res.ok) {
-        const t = await res.text().catch(()=> '');
-        st.textContent = 'Failed: ' + res.status;
-        throw new Error(t || ('HTTP ' + res.status));
-      }
-      const data = await res.json();
-      const total = Number(data.total || 0);
-      const totalPages = Math.max(1, Math.ceil(total / limit));
-      st.textContent = 'Total: ' + total + ' • Page: ' + page + '/' + totalPages;
-      document.getElementById('prev').disabled = page <= 1;
-      document.getElementById('next').disabled = page >= totalPages;
-      document.getElementById('prev').onclick = () => { setQs({ page: String(Math.max(1, page - 1)) }); load(); };
-      document.getElementById('next').onclick = () => { setQs({ page: String(Math.min(totalPages, page + 1)) }); load(); };
-      const tbody = document.getElementById('rows');
-      tbody.innerHTML = '';
-      const items = Array.isArray(data.items) ? data.items : [];
-      for (const it of items) {
-        const storeName = it.storeName || it.merchant?.storeName || '';
-        const store = storeName ? (storeName + ' (' + (it.storeId||'') + ')') : (it.storeId||'');
-        const link = it.secureUrl || it.url || '';
-        const type = it.resourceType || '—';
-        const filename = it.originalFilename || it.publicId || '—';
-        const uploadedAt = fmtDate(it.cloudinaryCreatedAt || it.createdAt);
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td><div class="pill">' + esc(store || '—') + '</div><div class="sub mono" style="margin-top:8px;">' + esc(it.storeDomain || it.storeUrl || '') + '</div></td>' +
-          '<td><div style="font-weight:950;">' + esc(filename) + '</div><div class="sub mono" style="margin-top:8px;">' + esc(it.publicId || '—') + '</div></td>' +
-          '<td><div class="mono">' + esc(type) + '</div><div class="sub" style="margin-top:8px;">' + esc(fmtBytes(it.bytes)) + '</div></td>' +
-          '<td><div>' + esc(uploadedAt) + '</div>' + (link ? ('<div class="sub" style="margin-top:8px;"><a target="_blank" rel="noopener noreferrer" href="' + esc(link) + '">فتح</a></div>') : '') + '</td>';
-        tbody.appendChild(tr);
-      }
-    }
-    function onApply(ev){
-      ev.preventDefault();
-      const storeId = document.getElementById('storeId').value.trim();
-      const resourceType = document.getElementById('resourceType').value.trim();
-      const q = document.getElementById('q').value.trim();
-      const limit = document.getElementById('limit').value.trim();
-      setQs({ storeId, resourceType, q, limit, page: '1' });
-      load();
-    }
-    window.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('filters').addEventListener('submit', onApply);
-      load().catch(()=>undefined);
-    });
-  </script>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="head">
-        <div>
-          <h1>لوحة الأدمن • الميديا (كل العملاء)</h1>
-          <div class="sub">يعرض كل ملفات Cloudinary المسجلة في قاعدة البيانات حسب المتجر</div>
-        </div>
-      </div>
-      <form id="filters" class="row">
-        <div>
-          <label>Store ID (Merchant ID)</label>
-          <input id="storeId" placeholder="مثال: 123456" />
-        </div>
-        <div>
-          <label>بحث (Public ID / Filename)</label>
-          <input id="q" placeholder="مثال: bundle_app/123456/…" />
-        </div>
-        <div>
-          <label>النوع</label>
-          <select id="resourceType">
-            <option value="">الكل</option>
-            <option value="image">صور</option>
-            <option value="video">فيديو</option>
-            <option value="raw">ملفات</option>
-          </select>
-        </div>
-        <div>
-          <label>Page size</label>
-          <div class="tools">
-            <select id="limit">
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-              <option value="200">200</option>
-            </select>
-            <button type="submit">تطبيق</button>
-          </div>
-        </div>
-      </form>
-      <div id="status" class="status"></div>
-      <div style="overflow:auto;max-height:70vh;">
-        <table>
-          <thead>
-            <tr>
-              <th style="min-width:320px;">المتجر</th>
-              <th style="min-width:420px;">الملف</th>
-              <th style="min-width:140px;">النوع</th>
-              <th style="min-width:220px;">التاريخ</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-      <div class="footer">
-        <div class="pager">
-          <button id="prev" type="button">Prev</button>
-          <button id="next" type="button">Next</button>
-        </div>
-        <div class="sub">/api/admin/media</div>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-    return res.send(html);
-  });
-
-  router.get("/admin/media/assets", adminAuth, async (req, res, next) => {
-    try {
-      const { error, value } = adminMediaAssetsQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
-      if (error) {
-        throw new ApiError(400, "Validation error", {
-          code: "VALIDATION_ERROR",
-          details: error.details.map((d) => ({ message: d.message, path: d.path }))
-        });
-      }
-
-      const filter = { deletedAt: null };
-      if (value.storeId) filter.storeId = String(value.storeId);
-      if (value.resourceType) filter.resourceType = String(value.resourceType);
-      if (value.q) {
-        const q = String(value.q);
-        const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-        filter.$or = [{ publicId: rx }, { originalFilename: rx }, { storeId: rx }, { storeName: rx }];
-      }
-
-      const page = Number(value.page);
-      const limit = Number(value.limit);
-      const skip = (page - 1) * limit;
-
-      const [total, docs] = await Promise.all([
-        MediaAsset.countDocuments(filter),
-        MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean()
-      ]);
-
-      const storeIds = Array.from(new Set(docs.map((d) => String(d.storeId || "")).filter(Boolean)));
-      const merchants = storeIds.length
-        ? await require("../models/Merchant").find({ merchantId: { $in: storeIds } }).select("merchantId appStatus createdAt updatedAt").lean()
-        : [];
-      const merchantById = new Map(merchants.map((m) => [String(m.merchantId), m]));
-
-      const items = docs.map((d) => {
-        const base = serializeMediaAsset(d);
-        const mid = base && base.storeId ? String(base.storeId) : "";
-        const m = mid ? merchantById.get(mid) : null;
-        return {
-          ...base,
-          merchant: m
-            ? {
-              merchantId: String(m.merchantId),
-              appStatus: String(m.appStatus || ""),
-              createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : null,
-              updatedAt: m.updatedAt ? new Date(m.updatedAt).toISOString() : null
-            }
-            : null
-        };
-      });
-
-      return res.json({ ok: true, page, limit, total, items });
-    } catch (err) {
-      return next(err);
-    }
-  });
 
   const mediaSignatureBodySchema = Joi.object({
     resourceType: Joi.string().valid("image", "video", "raw").default("image"),
@@ -1113,24 +824,12 @@ function createApiRouter(config) {
       const contextObj = c.context && typeof c.context === "object" ? c.context : null;
       const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
 
-      let storeInfo = null;
-      try {
-        const raw = await getStoreInfo(config.salla, req.merchantAccessToken);
-        storeInfo = normalizeSallaStoreInfo(raw);
-      } catch (err) {
-        void err;
-      }
-
       const doc = await MediaAsset.findOneAndUpdate(
         { storeId, publicId: String(c.public_id), deletedAt: null },
         {
           $set: {
             merchantId,
             storeId,
-            storeSallaId: storeInfo?.id || null,
-            storeName: storeInfo?.name || null,
-            storeDomain: storeInfo?.domain || null,
-            storeUrl: storeInfo?.url || null,
             resourceType: String(c.resource_type),
             publicId: String(c.public_id),
             assetId: c.asset_id ? String(c.asset_id) : null,
@@ -1250,14 +949,6 @@ function createApiRouter(config) {
       const storeId = merchantId;
       const folder = mediaFolderForMerchant(folderPrefix, merchantId);
 
-      let storeInfo = null;
-      try {
-        const raw = await getStoreInfo(config.salla, req.merchantAccessToken);
-        storeInfo = normalizeSallaStoreInfo(raw);
-      } catch (err) {
-        void err;
-      }
-
       const types = value.resourceType === "all" ? ["image", "video"] : [String(value.resourceType)];
       const maxResults = Number(value.maxResults);
 
@@ -1301,10 +992,6 @@ function createApiRouter(config) {
                 $set: {
                   merchantId,
                   storeId,
-                  storeSallaId: storeInfo?.id || null,
-                  storeName: storeInfo?.name || null,
-                  storeDomain: storeInfo?.domain || null,
-                  storeUrl: storeInfo?.url || null,
                   resourceType: String(r.resource_type),
                   publicId: String(r.public_id),
                   assetId: r.asset_id ? String(r.asset_id) : null,
@@ -1382,6 +1069,157 @@ function createApiRouter(config) {
       await asset.save();
 
       return res.json({ ok: true });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const publicMediaStoresQuerySchema = Joi.object({
+    q: Joi.string().trim().max(80).allow("").default(""),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(80).default(24)
+  }).unknown(true);
+
+  router.get("/public/media/stores", async (req, res, next) => {
+    try {
+      const { error, value } = publicMediaStoresQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const q = String(value.q || "").trim();
+      const page = Number(value.page);
+      const limit = Number(value.limit);
+      const skip = (page - 1) * limit;
+
+      const cacheKey = `public:media:stores:${JSON.stringify({ q, page, limit })}`;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        res.setHeader("Cache-Control", "public, max-age=5");
+        return res.json(cached);
+      }
+
+      const match = { deletedAt: null };
+      if (q) {
+        const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        match.storeId = new RegExp(safe, "i");
+      }
+
+      const pipeline = [
+        { $match: match },
+        {
+          $group: {
+            _id: "$storeId",
+            total: { $sum: 1 },
+            images: { $sum: { $cond: [{ $eq: ["$resourceType", "image"] }, 1, 0] } },
+            videos: { $sum: { $cond: [{ $eq: ["$resourceType", "video"] }, 1, 0] } },
+            raws: { $sum: { $cond: [{ $eq: ["$resourceType", "raw"] }, 1, 0] } },
+            lastCloudinaryCreatedAt: { $max: "$cloudinaryCreatedAt" },
+            lastCreatedAt: { $max: "$createdAt" }
+          }
+        },
+        { $addFields: { lastAt: { $ifNull: ["$lastCloudinaryCreatedAt", "$lastCreatedAt"] } } },
+        { $sort: { lastAt: -1, _id: 1 } },
+        {
+          $facet: {
+            meta: [{ $count: "total" }],
+            items: [{ $skip: skip }, { $limit: limit }]
+          }
+        }
+      ];
+
+      const agg = await MediaAsset.aggregate(pipeline, { allowDiskUse: true });
+      const root = Array.isArray(agg) && agg.length ? agg[0] : null;
+      const total = Number(root?.meta?.[0]?.total || 0) || 0;
+      const items = Array.isArray(root?.items) ? root.items : [];
+
+      const payload = {
+        ok: true,
+        page,
+        limit,
+        total,
+        stores: items.map((it) => ({
+          storeId: String(it._id),
+          total: Number(it.total || 0) || 0,
+          images: Number(it.images || 0) || 0,
+          videos: Number(it.videos || 0) || 0,
+          raws: Number(it.raws || 0) || 0,
+          lastAt: it.lastAt ? new Date(it.lastAt).toISOString() : null
+        }))
+      };
+
+      cacheSet(cacheKey, payload, 5_000);
+      res.setHeader("Cache-Control", "public, max-age=5");
+      return res.json(payload);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const publicMediaStoreParamsSchema = Joi.object({
+    storeId: Joi.string().trim().min(1).max(80).required()
+  });
+
+  const publicMediaAssetsQuerySchema = Joi.object({
+    resourceType: Joi.string().trim().valid("image", "video", "raw", "").allow("").default(""),
+    q: Joi.string().trim().max(120).allow("").default(""),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(60).default(24)
+  }).unknown(true);
+
+  router.get("/public/media/stores/:storeId/assets", validate(publicMediaStoreParamsSchema, "params"), async (req, res, next) => {
+    try {
+      const { error, value } = publicMediaAssetsQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const storeId = String(req.params.storeId);
+      const page = Number(value.page);
+      const limit = Number(value.limit);
+      const skip = (page - 1) * limit;
+
+      const q = String(value.q || "").trim();
+      const resourceType = String(value.resourceType || "").trim();
+
+      const cacheKey = `public:media:assets:${JSON.stringify({ storeId, q, resourceType, page, limit })}`;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        res.setHeader("Cache-Control", "public, max-age=3");
+        return res.json(cached);
+      }
+
+      const filter = { storeId, deletedAt: null };
+      if (resourceType) filter.resourceType = resourceType;
+      if (q) {
+        const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(safe, "i");
+        filter.$or = [{ publicId: re }, { originalFilename: re }];
+      }
+
+      const [total, docs] = await Promise.all([
+        MediaAsset.countDocuments(filter),
+        MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit)
+      ]);
+
+      const payload = {
+        ok: true,
+        storeId,
+        page,
+        limit,
+        total: Number(total || 0) || 0,
+        items: docs.map(serializeMediaAsset)
+      };
+
+      cacheSet(cacheKey, payload, 3_000);
+      res.setHeader("Cache-Control", "public, max-age=3");
+      return res.json(payload);
     } catch (err) {
       return next(err);
     }
@@ -1593,25 +1431,12 @@ function createApiRouter(config) {
       const contextObj = c.context && typeof c.context === "object" ? c.context : null;
       const ctx = contextObj && typeof contextObj.custom === "object" ? contextObj.custom : contextObj;
 
-      let storeInfo = null;
-      try {
-        await ensureMerchantTokenFresh(merchant);
-        const raw = await getStoreInfo(config.salla, merchant.accessToken);
-        storeInfo = normalizeSallaStoreInfo(raw);
-      } catch (err) {
-        void err;
-      }
-
       const doc = await MediaAsset.findOneAndUpdate(
         { storeId, publicId: String(c.public_id), deletedAt: null },
         {
           $set: {
             merchantId,
             storeId,
-            storeSallaId: storeInfo?.id || null,
-            storeName: storeInfo?.name || null,
-            storeDomain: storeInfo?.domain || null,
-            storeUrl: storeInfo?.url || null,
             resourceType: String(c.resource_type),
             publicId: String(c.public_id),
             assetId: c.asset_id ? String(c.asset_id) : null,

@@ -11,7 +11,8 @@ import { BundleEditorPage } from './pages/BundleEditorPage.jsx'
 import { CartPreviewPage } from './pages/CartPreviewPage.jsx'
 import { AnnouncementBannersPage } from './pages/AnnouncementBannersPage.jsx'
 import { MediaPlatformPage } from './pages/MediaPlatformPage.jsx'
-import { AdminMediaPlatformPage } from './pages/AdminMediaPlatformPage.jsx'
+import { PublicMediaDashboardPage } from './pages/PublicMediaDashboardPage.jsx'
+import { PublicMediaStorePage } from './pages/PublicMediaStorePage.jsx'
 
 function Protected({ children }) {
   const { token } = useAuth()
@@ -23,7 +24,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/admin/media-platform" element={<AdminMediaPlatformPage />} />
+      <Route path="/public-media" element={<PublicMediaDashboardPage />} />
+      <Route path="/public-media/:storeId" element={<PublicMediaStorePage />} />
 
       <Route
         path="/"
