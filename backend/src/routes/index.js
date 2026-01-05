@@ -1130,6 +1130,10 @@ function createApiRouter(config) {
 
   const publicMediaStoresQuerySchema = Joi.object({
     q: Joi.string().trim().max(80).allow("").default(""),
+    sort: Joi.string()
+      .trim()
+      .valid("lastAt_desc", "lastAt_asc", "firstAt_desc", "firstAt_asc", "total_desc", "total_asc")
+      .default("lastAt_desc"),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(80).default(24)
   }).unknown(true);
@@ -1145,11 +1149,12 @@ function createApiRouter(config) {
       }
 
       const q = String(value.q || "").trim();
+      const sort = String(value.sort || "lastAt_desc").trim();
       const page = Number(value.page);
       const limit = Number(value.limit);
       const skip = (page - 1) * limit;
 
-      const cacheKey = `public:media:stores:${JSON.stringify({ q, page, limit })}`;
+      const cacheKey = `public:media:stores:${JSON.stringify({ q, sort, page, limit })}`;
       const cached = cacheGet(cacheKey);
       if (cached) {
         res.setHeader("Cache-Control", "public, max-age=5");
@@ -1162,8 +1167,22 @@ function createApiRouter(config) {
         match.storeId = new RegExp(safe, "i");
       }
 
+      const sortStage =
+        sort === "lastAt_asc"
+          ? { lastAt: 1, _id: 1 }
+          : sort === "firstAt_desc"
+            ? { firstAt: -1, _id: 1 }
+            : sort === "firstAt_asc"
+              ? { firstAt: 1, _id: 1 }
+              : sort === "total_desc"
+                ? { total: -1, lastAt: -1, _id: 1 }
+                : sort === "total_asc"
+                  ? { total: 1, lastAt: -1, _id: 1 }
+                  : { lastAt: -1, _id: 1 };
+
       const pipeline = [
         { $match: match },
+        { $addFields: { at: { $ifNull: ["$cloudinaryCreatedAt", "$createdAt"] } } },
         {
           $group: {
             _id: "$storeId",
@@ -1171,12 +1190,11 @@ function createApiRouter(config) {
             images: { $sum: { $cond: [{ $eq: ["$resourceType", "image"] }, 1, 0] } },
             videos: { $sum: { $cond: [{ $eq: ["$resourceType", "video"] }, 1, 0] } },
             raws: { $sum: { $cond: [{ $eq: ["$resourceType", "raw"] }, 1, 0] } },
-            lastCloudinaryCreatedAt: { $max: "$cloudinaryCreatedAt" },
-            lastCreatedAt: { $max: "$createdAt" }
+            firstAt: { $min: "$at" },
+            lastAt: { $max: "$at" }
           }
         },
-        { $addFields: { lastAt: { $ifNull: ["$lastCloudinaryCreatedAt", "$lastCreatedAt"] } } },
-        { $sort: { lastAt: -1, _id: 1 } },
+        { $sort: sortStage },
         {
           $facet: {
             meta: [{ $count: "total" }],
@@ -1201,6 +1219,7 @@ function createApiRouter(config) {
 
       const payload = {
         ok: true,
+        sort,
         page,
         limit,
         total,
@@ -1211,12 +1230,138 @@ function createApiRouter(config) {
           images: Number(it.images || 0) || 0,
           videos: Number(it.videos || 0) || 0,
           raws: Number(it.raws || 0) || 0,
+          firstAt: it.firstAt ? new Date(it.firstAt).toISOString() : null,
           lastAt: it.lastAt ? new Date(it.lastAt).toISOString() : null
         }))
       };
 
       cacheSet(cacheKey, payload, 5_000);
       res.setHeader("Cache-Control", "public, max-age=5");
+      return res.json(payload);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  const publicMediaOverviewQuerySchema = Joi.object({
+    top: Joi.number().integer().min(1).max(12).default(6)
+  }).unknown(true);
+
+  router.get("/public/media/overview", async (req, res, next) => {
+    try {
+      const { error, value } = publicMediaOverviewQuerySchema.validate(req.query, { abortEarly: false, stripUnknown: true });
+      if (error) {
+        throw new ApiError(400, "Validation error", {
+          code: "VALIDATION_ERROR",
+          details: error.details.map((d) => ({ message: d.message, path: d.path }))
+        });
+      }
+
+      const top = Number(value.top);
+
+      const cacheKey = `public:media:overview:${JSON.stringify({ top })}`;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        res.setHeader("Cache-Control", "public, max-age=4");
+        return res.json(cached);
+      }
+
+      const match = { deletedAt: null };
+      const groupPipeline = [
+        { $match: match },
+        { $addFields: { at: { $ifNull: ["$cloudinaryCreatedAt", "$createdAt"] } } },
+        {
+          $group: {
+            _id: "$storeId",
+            total: { $sum: 1 },
+            images: { $sum: { $cond: [{ $eq: ["$resourceType", "image"] }, 1, 0] } },
+            videos: { $sum: { $cond: [{ $eq: ["$resourceType", "video"] }, 1, 0] } },
+            raws: { $sum: { $cond: [{ $eq: ["$resourceType", "raw"] }, 1, 0] } },
+            firstAt: { $min: "$at" },
+            lastAt: { $max: "$at" }
+          }
+        }
+      ];
+
+      const totalsPipeline = [
+        { $match: match },
+        { $addFields: { at: { $ifNull: ["$cloudinaryCreatedAt", "$createdAt"] } } },
+        {
+          $group: {
+            _id: null,
+            totalAssets: { $sum: 1 },
+            images: { $sum: { $cond: [{ $eq: ["$resourceType", "image"] }, 1, 0] } },
+            videos: { $sum: { $cond: [{ $eq: ["$resourceType", "video"] }, 1, 0] } },
+            raws: { $sum: { $cond: [{ $eq: ["$resourceType", "raw"] }, 1, 0] } },
+            firstAt: { $min: "$at" },
+            lastAt: { $max: "$at" }
+          }
+        }
+      ];
+
+      const [totalsAgg, totalStoresAgg, newestAgg, oldestAgg, biggestAgg, stalestAgg] = await Promise.all([
+        MediaAsset.aggregate(totalsPipeline, { allowDiskUse: true }),
+        MediaAsset.aggregate([...groupPipeline, { $count: "total" }], { allowDiskUse: true }),
+        MediaAsset.aggregate([...groupPipeline, { $sort: { lastAt: -1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
+        MediaAsset.aggregate([...groupPipeline, { $sort: { firstAt: 1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
+        MediaAsset.aggregate([...groupPipeline, { $sort: { total: -1, lastAt: -1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
+        MediaAsset.aggregate([...groupPipeline, { $sort: { lastAt: 1, _id: 1 } }, { $limit: top }], { allowDiskUse: true })
+      ]);
+
+      const totalsRoot = Array.isArray(totalsAgg) && totalsAgg.length ? totalsAgg[0] : null;
+      const totalStores = Number(totalStoresAgg?.[0]?.total || 0) || 0;
+
+      const allIds = new Set(
+        [...newestAgg, ...oldestAgg, ...biggestAgg, ...stalestAgg].map((it) => String(it?._id || "")).filter(Boolean)
+      );
+
+      const storeInfoById = new Map();
+      await Promise.all(
+        Array.from(allIds).map(async (sid) => {
+          const info = await getPublicStoreInfo(sid);
+          storeInfoById.set(String(sid), info);
+        })
+      );
+
+      function mapStoreRow(it) {
+        return {
+          storeId: String(it._id),
+          store: storeInfoById.get(String(it._id)) || null,
+          total: Number(it.total || 0) || 0,
+          images: Number(it.images || 0) || 0,
+          videos: Number(it.videos || 0) || 0,
+          raws: Number(it.raws || 0) || 0,
+          firstAt: it.firstAt ? new Date(it.firstAt).toISOString() : null,
+          lastAt: it.lastAt ? new Date(it.lastAt).toISOString() : null
+        };
+      }
+
+      const payload = {
+        ok: true,
+        generatedAt: new Date().toISOString(),
+        stats: {
+          totalStores,
+          totalAssets: Number(totalsRoot?.totalAssets || 0) || 0,
+          images: Number(totalsRoot?.images || 0) || 0,
+          videos: Number(totalsRoot?.videos || 0) || 0,
+          raws: Number(totalsRoot?.raws || 0) || 0,
+          firstAt: totalsRoot?.firstAt ? new Date(totalsRoot.firstAt).toISOString() : null,
+          lastAt: totalsRoot?.lastAt ? new Date(totalsRoot.lastAt).toISOString() : null
+        },
+        highlights: {
+          lastUploader: newestAgg && newestAgg.length ? mapStoreRow(newestAgg[0]) : null,
+          stalest: stalestAgg && stalestAgg.length ? mapStoreRow(stalestAgg[0]) : null
+        },
+        lists: {
+          newest: Array.isArray(newestAgg) ? newestAgg.map(mapStoreRow) : [],
+          oldest: Array.isArray(oldestAgg) ? oldestAgg.map(mapStoreRow) : [],
+          biggest: Array.isArray(biggestAgg) ? biggestAgg.map(mapStoreRow) : [],
+          stalest: Array.isArray(stalestAgg) ? stalestAgg.map(mapStoreRow) : []
+        }
+      };
+
+      cacheSet(cacheKey, payload, 4_000);
+      res.setHeader("Cache-Control", "public, max-age=4");
       return res.json(payload);
     } catch (err) {
       return next(err);

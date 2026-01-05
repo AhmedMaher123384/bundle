@@ -65,14 +65,14 @@ function StoreLogo({ name, logoUrl }) {
   const src = String(logoUrl || '').trim()
   return (
     <div className="relative">
-      <div className="relative grid h-24 w-24 place-items-center overflow-hidden rounded-2xl border-2 border-[#18b5d5]/30 bg-[#1a1a1a]">
+      <div className="relative grid h-24 w-24 place-items-center overflow-hidden rounded-2xl border-2 border-[#18b5d5]/30 bg-[#0f0f0f]">
         {src ? (
           <img className="h-full w-full object-cover" alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" src={src} />
         ) : (
           <div className="text-2xl font-bold tracking-wide text-white">{initialsFromName(name)}</div>
         )}
       </div>
-      <div className="absolute -right-2 -top-2 h-6 w-6 rounded-full border-4 border-[#292929] bg-[#18b5d5]" />
+      <div className="absolute -right-2 -top-2 h-6 w-6 rounded-full border-4 border-[#0b0b0b] bg-[#18b5d5]" />
     </div>
   )
 }
@@ -91,7 +91,7 @@ function MediaCard({ item }) {
         : 'bg-white/5 text-white/70 border-white/10'
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a]">
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#121212]">
       <div className="aspect-video w-full bg-black/40">
         {src ? (
           isVideo ? (
@@ -245,12 +245,10 @@ export function PublicMediaStorePage() {
   const summaryLastAt = data?.summary?.lastAt || null
 
   return (
-    <div className="min-h-screen bg-[#292929]">
+    <div className="min-h-screen bg-[#0b0b0b]">
       <div className="mx-auto w-full max-w-7xl px-4 py-8">
-        {/* Store Profile Header */}
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#1a1a1a]">
-          {/* Hero Section */}
-          <div className="relative bg-gradient-to-br from-[#18b5d5]/20 via-[#1a1a1a] to-[#292929] px-6 py-8">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0f0f0f]">
+          <div className="relative bg-gradient-to-br from-[#18b5d5]/20 via-[#0f0f0f] to-[#0b0b0b] px-6 py-8">
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djItaDJ2LTJoLTJ6bTAgNGgtMnYyaDJ2LTJ6bTAgMnYyaDJ2LTJoLTJ6bTItMmgydjJoLTJ2LTJ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-50" />
             
             <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -310,7 +308,6 @@ export function PublicMediaStorePage() {
             </div>
           </div>
 
-          {/* Stats Section */}
           <div className="grid grid-cols-2 gap-4 border-t border-white/10 p-6 sm:grid-cols-4">
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center gap-2">
@@ -370,8 +367,7 @@ export function PublicMediaStorePage() {
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
-        <div className="mt-6 rounded-xl border border-white/10 bg-[#1a1a1a] p-4">
+        <div className="mt-6 rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
               value={resourceType}
@@ -379,7 +375,7 @@ export function PublicMediaStorePage() {
                 setResourceType(e.target.value)
                 setPage(1)
               }}
-              className="rounded-lg border border-white/10 bg-[#1f1f1f] px-3 py-2.5 text-sm text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
             >
               <option value="">جميع الأنواع</option>
               <option value="image">🖼️ صور فقط</option>
@@ -387,7 +383,7 @@ export function PublicMediaStorePage() {
               <option value="raw">📄 ملفات فقط</option>
             </select>
 
-            <div className="flex flex-1 items-center gap-3 rounded-lg border border-white/10 bg-[#1f1f1f] px-3 py-2.5 hover:border-white/20 focus-within:border-[#18b5d5]/50">
+            <div className="flex flex-1 items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 hover:border-white/20 focus-within:border-[#18b5d5]/50">
               <svg className="h-4 w-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -409,7 +405,7 @@ export function PublicMediaStorePage() {
                 setLimit(Number(e.target.value))
                 setPage(1)
               }}
-              className="rounded-lg border border-white/10 bg-[#1f1f1f] px-3 py-2.5 text-sm text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
             >
               <option value="12">12 عنصر</option>
               <option value="24">24 عنصر</option>
@@ -419,8 +415,7 @@ export function PublicMediaStorePage() {
           </div>
         </div>
 
-        {/* Pagination Bar */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#1a1a1a] p-4">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
           <div className="flex items-center gap-6">
             <div>
               <div className="text-xs text-white/50">النتائج المعروضة</div>
@@ -453,7 +448,6 @@ export function PublicMediaStorePage() {
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="mt-6">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -478,7 +472,7 @@ export function PublicMediaStorePage() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-white/10 bg-[#1a1a1a] p-12 text-center">
+              <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-12 text-center">
                 <svg className="mx-auto h-16 w-16 text-white/20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
