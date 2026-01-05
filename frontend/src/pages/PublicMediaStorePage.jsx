@@ -75,7 +75,7 @@ function MediaCard({ item }) {
   const typeClasses = 'bg-transparent text-white border-[#18b5d5]/25'
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#18b5d5]/25 bg-[#242424]">
+    <div className="overflow-hidden rounded-xl border border-[#18b5d5]/25 bg-[#292929]">
       <div className="aspect-video w-full bg-[#292929]">
         {src ? (
           isVideo ? (
@@ -231,7 +231,7 @@ export function PublicMediaStorePage() {
   return (
     <div className="min-h-screen bg-[#292929]" dir="rtl">
       <div className="mx-auto w-full max-w-7xl px-4 py-8">
-        <div className="overflow-hidden rounded-2xl border border-[#18b5d5]/25 bg-[#242424]">
+        <div className="overflow-hidden rounded-2xl border border-[#18b5d5]/25 bg-[#292929]">
           <div className="px-6 py-7">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-5">
@@ -350,7 +350,7 @@ export function PublicMediaStorePage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-[#18b5d5]/25 bg-[#242424] p-4">
+        <div className="mt-6 rounded-xl border border-[#18b5d5]/25 bg-[#292929] p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
               value={resourceType}
@@ -398,7 +398,7 @@ export function PublicMediaStorePage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#18b5d5]/25 bg-[#242424] p-4">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#18b5d5]/25 bg-[#292929] p-4">
           <div className="flex items-center gap-6">
             <div>
               <div className="text-xs font-bold text-[#18b5d5]">النتائج المعروضة</div>
@@ -439,7 +439,7 @@ export function PublicMediaStorePage() {
           ) : null}
 
           {!loading && error ? (
-            <div className="rounded-xl border border-[#18b5d5]/25 bg-[#242424] p-6 text-center text-white">
+            <div className="rounded-xl border border-[#18b5d5]/25 bg-[#292929] p-6 text-center text-white">
               <svg className="mx-auto mb-3 h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -455,7 +455,7 @@ export function PublicMediaStorePage() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-[#18b5d5]/25 bg-[#242424] p-12 text-center text-white">
+              <div className="rounded-xl border border-[#18b5d5]/25 bg-[#292929] p-12 text-center text-white">
                 <svg className="mx-auto mb-4 h-16 w-16 text-white opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
