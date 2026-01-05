@@ -725,6 +725,33 @@ function createApiRouter(config) {
     return { id, name, domain, url };
   }
 
+  async function getPublicStoreInfo(storeId) {
+    const sid = String(storeId || "").trim();
+    if (!sid) return null;
+
+    const cacheKey = `public:storeInfo:${sid}`;
+    const cached = cacheGet(cacheKey);
+    if (cached === "__NULL__") return null;
+    if (cached) return cached;
+
+    try {
+      const merchant = await findMerchantByMerchantId(sid);
+      if (!merchant || merchant.appStatus !== "installed") {
+        cacheSet(cacheKey, "__NULL__", 10 * 60 * 1000);
+        return null;
+      }
+
+      await ensureMerchantTokenFresh(merchant);
+      const raw = await getStoreInfo(config.salla, merchant.accessToken);
+      const normalized = normalizeSallaStoreInfo(raw);
+      cacheSet(cacheKey, normalized || "__NULL__", 6 * 60 * 60 * 1000);
+      return normalized || null;
+    } catch {
+      cacheSet(cacheKey, "__NULL__", 10 * 60 * 1000);
+      return null;
+    }
+  }
+
   const mediaSignatureBodySchema = Joi.object({
     resourceType: Joi.string().valid("image", "video", "raw").default("image"),
     tags: Joi.array().items(Joi.string().trim().min(1).max(50)).max(20).default([]),
@@ -1136,6 +1163,15 @@ function createApiRouter(config) {
       const total = Number(root?.meta?.[0]?.total || 0) || 0;
       const items = Array.isArray(root?.items) ? root.items : [];
 
+      const storeIds = items.map((it) => String(it?._id || "")).filter(Boolean);
+      const storeInfoById = new Map();
+      await Promise.all(
+        storeIds.map(async (sid) => {
+          const info = await getPublicStoreInfo(sid);
+          storeInfoById.set(String(sid), info);
+        })
+      );
+
       const payload = {
         ok: true,
         page,
@@ -1143,6 +1179,7 @@ function createApiRouter(config) {
         total,
         stores: items.map((it) => ({
           storeId: String(it._id),
+          store: storeInfoById.get(String(it._id)) || null,
           total: Number(it.total || 0) || 0,
           images: Number(it.images || 0) || 0,
           videos: Number(it.videos || 0) || 0,
@@ -1195,7 +1232,8 @@ function createApiRouter(config) {
         return res.json(cached);
       }
 
-      const filter = { storeId, deletedAt: null };
+      const baseStoreFilter = { storeId, deletedAt: null };
+      const filter = { ...baseStoreFilter };
       if (resourceType) filter.resourceType = resourceType;
       if (q) {
         const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1203,14 +1241,45 @@ function createApiRouter(config) {
         filter.$or = [{ publicId: re }, { originalFilename: re }];
       }
 
-      const [total, docs] = await Promise.all([
+      const summaryPipeline = [
+        { $match: baseStoreFilter },
+        {
+          $group: {
+            _id: "$storeId",
+            total: { $sum: 1 },
+            images: { $sum: { $cond: [{ $eq: ["$resourceType", "image"] }, 1, 0] } },
+            videos: { $sum: { $cond: [{ $eq: ["$resourceType", "video"] }, 1, 0] } },
+            raws: { $sum: { $cond: [{ $eq: ["$resourceType", "raw"] }, 1, 0] } },
+            lastCloudinaryCreatedAt: { $max: "$cloudinaryCreatedAt" },
+            lastCreatedAt: { $max: "$createdAt" }
+          }
+        },
+        { $addFields: { lastAt: { $ifNull: ["$lastCloudinaryCreatedAt", "$lastCreatedAt"] } } }
+      ];
+
+      const [storeInfo, summaryAgg, total, docs] = await Promise.all([
+        getPublicStoreInfo(storeId),
+        MediaAsset.aggregate(summaryPipeline, { allowDiskUse: true }),
         MediaAsset.countDocuments(filter),
         MediaAsset.find(filter).sort({ cloudinaryCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit)
       ]);
 
+      const summaryRoot = Array.isArray(summaryAgg) && summaryAgg.length ? summaryAgg[0] : null;
+      const summary = summaryRoot
+        ? {
+            total: Number(summaryRoot.total || 0) || 0,
+            images: Number(summaryRoot.images || 0) || 0,
+            videos: Number(summaryRoot.videos || 0) || 0,
+            raws: Number(summaryRoot.raws || 0) || 0,
+            lastAt: summaryRoot.lastAt ? new Date(summaryRoot.lastAt).toISOString() : null
+          }
+        : { total: 0, images: 0, videos: 0, raws: 0, lastAt: null };
+
       const payload = {
         ok: true,
         storeId,
+        store: storeInfo || null,
+        summary,
         page,
         limit,
         total: Number(total || 0) || 0,

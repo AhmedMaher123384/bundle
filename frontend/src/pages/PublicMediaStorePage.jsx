@@ -115,7 +115,7 @@ export function PublicMediaStorePage() {
   const [page, setPage] = useState(pageParam)
   const [limit, setLimit] = useState(24)
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ total: 0, items: [] })
+  const [data, setData] = useState({ total: 0, items: [], store: null, summary: null })
   const [error, setError] = useState('')
 
   useEffect(() => setResourceType(rtParam), [rtParam])
@@ -153,11 +153,16 @@ export function PublicMediaStorePage() {
           query: { resourceType, q, page, limit },
           signal: controller.signal,
         })
-        setData({ total: Number(res?.total || 0) || 0, items: Array.isArray(res?.items) ? res.items : [] })
+        setData({
+          total: Number(res?.total || 0) || 0,
+          items: Array.isArray(res?.items) ? res.items : [],
+          store: res?.store || null,
+          summary: res?.summary || null,
+        })
       } catch (e) {
         if (e?.code === 'REQUEST_ABORTED') return
         setError(String(e?.message || 'Failed to load assets.'))
-        setData({ total: 0, items: [] })
+        setData({ total: 0, items: [], store: null, summary: null })
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -168,6 +173,14 @@ export function PublicMediaStorePage() {
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil((Number(data.total || 0) || 0) / limit)), [data.total, limit])
   const items = Array.isArray(data.items) ? data.items : []
+  const storeName = String(data?.store?.name || '').trim() || storeId || '—'
+  const storeDomain = String(data?.store?.domain || '').trim()
+  const storeUrl = String(data?.store?.url || '').trim()
+  const summaryTotal = Number(data?.summary?.total || 0) || 0
+  const summaryImages = Number(data?.summary?.images || 0) || 0
+  const summaryVideos = Number(data?.summary?.videos || 0) || 0
+  const summaryRaws = Number(data?.summary?.raws || 0) || 0
+  const summaryLastAt = data?.summary?.lastAt || null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -178,9 +191,16 @@ export function PublicMediaStorePage() {
               <Link to="/public-media" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">
                 رجوع
               </Link>
-              <div className="text-lg font-semibold text-slate-900">{storeId || '—'}</div>
+              <div className="min-w-0">
+                <div className="truncate text-lg font-semibold text-slate-900">{storeName}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <div className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{storeId || '—'}</div>
+                  {storeDomain ? <div className="text-xs font-semibold text-slate-700">{storeDomain}</div> : null}
+                  {!storeDomain && storeUrl ? <div className="truncate text-xs font-semibold text-slate-700">{storeUrl}</div> : null}
+                </div>
+              </div>
             </div>
-            <div className="mt-1 text-sm text-slate-600">Media assets for this store</div>
+            <div className="mt-2 text-sm text-slate-600">آخر نشاط: {formatDate(summaryLastAt)}</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -222,6 +242,25 @@ export function PublicMediaStorePage() {
               <option value="36">36</option>
               <option value="60">60</option>
             </select>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-xs font-semibold text-slate-600">الإجمالي</div>
+            <div className="mt-2 text-lg font-semibold text-slate-900">{summaryTotal.toLocaleString()}</div>
+          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+            <div className="text-xs font-semibold text-emerald-700">صور</div>
+            <div className="mt-2 text-lg font-semibold text-slate-900">{summaryImages.toLocaleString()}</div>
+          </div>
+          <div className="rounded-2xl border border-sky-200 bg-white p-4">
+            <div className="text-xs font-semibold text-sky-700">فيديو</div>
+            <div className="mt-2 text-lg font-semibold text-slate-900">{summaryVideos.toLocaleString()}</div>
+          </div>
+          <div className="rounded-2xl border border-violet-200 bg-white p-4">
+            <div className="text-xs font-semibold text-violet-700">ملفات</div>
+            <div className="mt-2 text-lg font-semibold text-slate-900">{summaryRaws.toLocaleString()}</div>
           </div>
         </div>
 
@@ -273,4 +312,3 @@ export function PublicMediaStorePage() {
     </div>
   )
 }
-

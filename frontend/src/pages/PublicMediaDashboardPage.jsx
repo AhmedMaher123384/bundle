@@ -28,25 +28,78 @@ function StatPill({ label, value, tone = 'slate' }) {
   )
 }
 
+function clamp01(n) {
+  const x = Number(n)
+  if (!Number.isFinite(x)) return 0
+  return Math.max(0, Math.min(1, x))
+}
+
+function ratio(a, b) {
+  const x = Number(a)
+  const y = Number(b)
+  if (!Number.isFinite(x) || !Number.isFinite(y) || y <= 0) return 0
+  return clamp01(x / y)
+}
+
+function timeTone(iso) {
+  if (!iso) return 'slate'
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return 'slate'
+  const diff = Date.now() - t
+  if (diff <= 6 * 60 * 60 * 1000) return 'emerald'
+  if (diff <= 24 * 60 * 60 * 1000) return 'sky'
+  return 'slate'
+}
+
 function StoreCard({ store }) {
   const storeId = String(store?.storeId || '')
   const total = Number(store?.total || 0)
   const images = Number(store?.images || 0)
   const videos = Number(store?.videos || 0)
   const raws = Number(store?.raws || 0)
+  const storeName = String(store?.store?.name || '').trim() || storeId || '—'
+  const storeDomain = String(store?.store?.domain || '').trim()
+  const storeUrl = String(store?.store?.url || '').trim()
+  const freshness = timeTone(store?.lastAt)
+  const pImages = ratio(images, total)
+  const pVideos = ratio(videos, total)
+  const pRaws = ratio(raws, total)
 
   return (
     <Link
       to={`/public-media/${encodeURIComponent(storeId)}`}
-      className="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+      className="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-slate-900/10"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-900">{storeId || '—'}</div>
-          <div className="mt-1 text-xs text-slate-600">آخر رفع: {formatDate(store?.lastAt)}</div>
+          <div className="flex items-center gap-2">
+            <div
+              className={[
+                'h-2.5 w-2.5 rounded-full',
+                freshness === 'emerald' ? 'bg-emerald-500' : freshness === 'sky' ? 'bg-sky-500' : 'bg-slate-300',
+              ].join(' ')}
+            />
+            <div className="truncate text-sm font-semibold text-slate-900">{storeName}</div>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="truncate font-mono text-[11px] font-semibold text-slate-500">{storeId || '—'}</div>
+            {storeDomain ? <div className="text-[11px] font-semibold text-slate-600">{storeDomain}</div> : null}
+            {!storeDomain && storeUrl ? (
+              <div className="truncate text-[11px] font-semibold text-slate-600">{storeUrl}</div>
+            ) : null}
+          </div>
+          <div className="mt-2 text-xs text-slate-600">آخر رفع: {formatDate(store?.lastAt)}</div>
         </div>
         <div className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
           {total.toLocaleString()}
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-full bg-slate-100">
+        <div className="flex h-2 w-full">
+          <div className="bg-emerald-500/80" style={{ width: `${(pImages * 100).toFixed(2)}%` }} />
+          <div className="bg-sky-500/80" style={{ width: `${(pVideos * 100).toFixed(2)}%` }} />
+          <div className="bg-violet-500/80" style={{ width: `${(pRaws * 100).toFixed(2)}%` }} />
         </div>
       </div>
 
@@ -199,4 +252,3 @@ export function PublicMediaDashboardPage() {
     </div>
   )
 }
-
