@@ -711,6 +711,31 @@ function createApiRouter(config) {
       : null;
     if (!store || typeof store !== "object") return null;
 
+    function pickUrl(v) {
+      if (!v) return null;
+      if (typeof v === "string") return String(v).trim() || null;
+      if (typeof v === "object") {
+        const url = v.url ?? v.src ?? v.original ?? v.full ?? v.large ?? v.medium ?? v.small ?? v.path ?? null;
+        return url != null ? String(url).trim() || null : null;
+      }
+      return null;
+    }
+
+    function pickFirstUrl(...values) {
+      for (const v of values) {
+        if (Array.isArray(v)) {
+          for (const item of v) {
+            const u = pickUrl(item);
+            if (u) return u;
+          }
+          continue;
+        }
+        const u = pickUrl(v);
+        if (u) return u;
+      }
+      return null;
+    }
+
     const id = store.id != null ? String(store.id) : null;
     const name =
       store.name != null ? String(store.name) : store.store_name != null ? String(store.store_name) : store.storeName != null ? String(store.storeName) : null;
@@ -722,7 +747,9 @@ function createApiRouter(config) {
           : null;
     const url = store.url != null ? String(store.url) : store.website != null ? String(store.website) : null;
 
-    return { id, name, domain, url };
+    const logoUrl = pickFirstUrl(store.logo, store.logo_url, store.logoUrl, store.avatar, store.image, store.images, store.media);
+
+    return { id, name, domain, url, logoUrl };
   }
 
   async function getPublicStoreInfo(storeId) {

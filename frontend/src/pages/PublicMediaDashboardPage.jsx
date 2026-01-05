@@ -51,6 +51,40 @@ function timeTone(iso) {
   return 'slate'
 }
 
+function initialsFromName(name) {
+  const s = String(name || '').trim()
+  if (!s) return '—'
+  const parts = s.split(/\s+/g).filter(Boolean)
+  const first = parts[0]?.[0] || ''
+  const second = parts.length > 1 ? parts[1]?.[0] || '' : parts[0]?.[1] || ''
+  const out = `${first}${second}`.trim().toUpperCase()
+  return out || '—'
+}
+
+function StoreLogo({ name, logoUrl, tone }) {
+  const src = String(logoUrl || '').trim()
+  return (
+    <div
+      className={[
+        'relative grid h-12 w-12 place-items-center overflow-hidden rounded-2xl ring-1',
+        tone === 'emerald' ? 'bg-emerald-50 ring-emerald-600/15' : tone === 'sky' ? 'bg-sky-50 ring-sky-600/15' : 'bg-slate-100 ring-slate-900/10',
+      ].join(' ')}
+    >
+      {src ? (
+        <img className="h-full w-full object-cover" alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" src={src} />
+      ) : (
+        <div className="text-sm font-extrabold tracking-wide text-slate-700">{initialsFromName(name)}</div>
+      )}
+      <div
+        className={[
+          'absolute right-1 top-1 h-2.5 w-2.5 rounded-full ring-2 ring-white',
+          tone === 'emerald' ? 'bg-emerald-500' : tone === 'sky' ? 'bg-sky-500' : 'bg-slate-300',
+        ].join(' ')}
+      />
+    </div>
+  )
+}
+
 function StoreCard({ store }) {
   const storeId = String(store?.storeId || '')
   const total = Number(store?.total || 0)
@@ -60,6 +94,7 @@ function StoreCard({ store }) {
   const storeName = String(store?.store?.name || '').trim() || storeId || '—'
   const storeDomain = String(store?.store?.domain || '').trim()
   const storeUrl = String(store?.store?.url || '').trim()
+  const storeLogoUrl = String(store?.store?.logoUrl || '').trim()
   const freshness = timeTone(store?.lastAt)
   const pImages = ratio(images, total)
   const pVideos = ratio(videos, total)
@@ -71,25 +106,19 @@ function StoreCard({ store }) {
       className="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-slate-900/10"
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div
-              className={[
-                'h-2.5 w-2.5 rounded-full',
-                freshness === 'emerald' ? 'bg-emerald-500' : freshness === 'sky' ? 'bg-sky-500' : 'bg-slate-300',
-              ].join(' ')}
-            />
+        <div className="flex min-w-0 items-start gap-3">
+          <StoreLogo name={storeName} logoUrl={storeLogoUrl} tone={freshness} />
+          <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-slate-900">{storeName}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="truncate font-mono text-[11px] font-semibold text-slate-500">{storeId || '—'}</div>
+              {storeDomain ? <div className="text-[11px] font-semibold text-slate-600">{storeDomain}</div> : null}
+              {!storeDomain && storeUrl ? <div className="truncate text-[11px] font-semibold text-slate-600">{storeUrl}</div> : null}
+            </div>
+            <div className="mt-2 text-xs text-slate-600">آخر رفع: {formatDate(store?.lastAt)}</div>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <div className="truncate font-mono text-[11px] font-semibold text-slate-500">{storeId || '—'}</div>
-            {storeDomain ? <div className="text-[11px] font-semibold text-slate-600">{storeDomain}</div> : null}
-            {!storeDomain && storeUrl ? (
-              <div className="truncate text-[11px] font-semibold text-slate-600">{storeUrl}</div>
-            ) : null}
-          </div>
-          <div className="mt-2 text-xs text-slate-600">آخر رفع: {formatDate(store?.lastAt)}</div>
         </div>
+
         <div className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
           {total.toLocaleString()}
         </div>

@@ -30,6 +30,36 @@ function mediaLabel(rt) {
   return '—'
 }
 
+function initialsFromName(name) {
+  const s = String(name || '').trim()
+  if (!s) return '—'
+  const parts = s.split(/\s+/g).filter(Boolean)
+  const first = parts[0]?.[0] || ''
+  const second = parts.length > 1 ? parts[1]?.[0] || '' : parts[0]?.[1] || ''
+  const out = `${first}${second}`.trim().toUpperCase()
+  return out || '—'
+}
+
+function cleanUrl(v) {
+  const s = String(v || '').trim()
+  if (!s) return ''
+  if (/^https?:\/\//i.test(s)) return s
+  return `https://${s}`
+}
+
+function StoreLogo({ name, logoUrl }) {
+  const src = String(logoUrl || '').trim()
+  return (
+    <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/15">
+      {src ? (
+        <img className="h-full w-full object-cover" alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" src={src} />
+      ) : (
+        <div className="text-base font-extrabold tracking-wide text-white">{initialsFromName(name)}</div>
+      )}
+    </div>
+  )
+}
+
 function MediaCard({ item }) {
   const isVideo = String(item?.resourceType) === 'video'
   const src = item?.secureUrl || item?.url || null
@@ -176,6 +206,7 @@ export function PublicMediaStorePage() {
   const storeName = String(data?.store?.name || '').trim() || storeId || '—'
   const storeDomain = String(data?.store?.domain || '').trim()
   const storeUrl = String(data?.store?.url || '').trim()
+  const storeLogoUrl = String(data?.store?.logoUrl || '').trim()
   const summaryTotal = Number(data?.summary?.total || 0) || 0
   const summaryImages = Number(data?.summary?.images || 0) || 0
   const summaryVideos = Number(data?.summary?.videos || 0) || 0
@@ -185,63 +216,90 @@ export function PublicMediaStorePage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <Link to="/public-media" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">
-                رجوع
-              </Link>
-              <div className="min-w-0">
-                <div className="truncate text-lg font-semibold text-slate-900">{storeName}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <div className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{storeId || '—'}</div>
-                  {storeDomain ? <div className="text-xs font-semibold text-slate-700">{storeDomain}</div> : null}
-                  {!storeDomain && storeUrl ? <div className="truncate text-xs font-semibold text-slate-700">{storeUrl}</div> : null}
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-5 py-5 text-white">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <StoreLogo name={storeName} logoUrl={storeLogoUrl} />
+                <div className="min-w-0">
+                  <div className="truncate text-xl font-semibold">{storeName}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/15">{storeId || '—'}</div>
+                    {storeDomain ? (
+                      <a
+                        className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/15 hover:bg-white/15"
+                        href={cleanUrl(storeDomain)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {storeDomain}
+                      </a>
+                    ) : null}
+                    {!storeDomain && storeUrl ? (
+                      <a
+                        className="truncate rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/15 hover:bg-white/15"
+                        href={cleanUrl(storeUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {storeUrl}
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 text-sm text-white/70">آخر نشاط: {formatDate(summaryLastAt)}</div>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2">
+                <Link to="/public-media" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/15 hover:bg-white/15">
+                  رجوع
+                </Link>
+              </div>
             </div>
-            <div className="mt-2 text-sm text-slate-600">آخر نشاط: {formatDate(summaryLastAt)}</div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={resourceType}
-              onChange={(e) => {
-                setResourceType(e.target.value)
-                setPage(1)
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
-            >
-              <option value="">الكل</option>
-              <option value="image">صور</option>
-              <option value="video">فيديو</option>
-              <option value="raw">ملفات</option>
-            </select>
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="text-sm font-semibold text-slate-700">فلترة و بحث</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={resourceType}
+                onChange={(e) => {
+                  setResourceType(e.target.value)
+                  setPage(1)
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+              >
+                <option value="">الكل</option>
+                <option value="image">صور</option>
+                <option value="video">فيديو</option>
+                <option value="raw">ملفات</option>
+              </select>
 
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value)
-                setPage(1)
-              }}
-              placeholder="ابحث بـ publicId أو اسم الملف…"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4 sm:w-96"
-              spellCheck={false}
-            />
+              <input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value)
+                  setPage(1)
+                }}
+                placeholder="ابحث بـ publicId أو اسم الملف…"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4 sm:w-96"
+                spellCheck={false}
+              />
 
-            <select
-              value={String(limit)}
-              onChange={(e) => {
-                setLimit(Number(e.target.value))
-                setPage(1)
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
-            >
-              <option value="12">12</option>
-              <option value="24">24</option>
-              <option value="36">36</option>
-              <option value="60">60</option>
-            </select>
+              <select
+                value={String(limit)}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value))
+                  setPage(1)
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
+              >
+                <option value="12">12</option>
+                <option value="24">24</option>
+                <option value="36">36</option>
+                <option value="60">60</option>
+              </select>
+            </div>
           </div>
         </div>
 
