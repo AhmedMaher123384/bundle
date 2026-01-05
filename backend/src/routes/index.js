@@ -1244,7 +1244,8 @@ function createApiRouter(config) {
   });
 
   const publicMediaOverviewQuerySchema = Joi.object({
-    top: Joi.number().integer().min(1).max(12).default(6)
+    top: Joi.number().integer().min(1).max(12).default(6),
+    latestLimit: Joi.number().integer().min(1).max(30).default(10)
   }).unknown(true);
 
   router.get("/public/media/overview", async (req, res, next) => {
@@ -1258,8 +1259,9 @@ function createApiRouter(config) {
       }
 
       const top = Number(value.top);
+      const latestLimit = Number(value.latestLimit);
 
-      const cacheKey = `public:media:overview:${JSON.stringify({ top })}`;
+      const cacheKey = `public:media:overview:${JSON.stringify({ top, latestLimit })}`;
       const cached = cacheGet(cacheKey);
       if (cached) {
         res.setHeader("Cache-Control", "public, max-age=4");
@@ -1299,21 +1301,23 @@ function createApiRouter(config) {
         }
       ];
 
-      const [totalsAgg, totalStoresAgg, newestAgg, oldestAgg, biggestAgg, stalestAgg] = await Promise.all([
+      const [totalsAgg, totalStoresAgg, newestAgg, oldestAgg, biggestAgg, stalestAgg, latestDocs] = await Promise.all([
         MediaAsset.aggregate(totalsPipeline, { allowDiskUse: true }),
         MediaAsset.aggregate([...groupPipeline, { $count: "total" }], { allowDiskUse: true }),
         MediaAsset.aggregate([...groupPipeline, { $sort: { lastAt: -1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
         MediaAsset.aggregate([...groupPipeline, { $sort: { firstAt: 1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
         MediaAsset.aggregate([...groupPipeline, { $sort: { total: -1, lastAt: -1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
-        MediaAsset.aggregate([...groupPipeline, { $sort: { lastAt: 1, _id: 1 } }, { $limit: top }], { allowDiskUse: true })
+        MediaAsset.aggregate([...groupPipeline, { $sort: { lastAt: 1, _id: 1 } }, { $limit: top }], { allowDiskUse: true }),
+        MediaAsset.find(match).sort({ cloudinaryCreatedAt: -1, createdAt: -1, _id: 1 }).limit(latestLimit)
       ]);
 
       const totalsRoot = Array.isArray(totalsAgg) && totalsAgg.length ? totalsAgg[0] : null;
       const totalStores = Number(totalStoresAgg?.[0]?.total || 0) || 0;
 
-      const allIds = new Set(
-        [...newestAgg, ...oldestAgg, ...biggestAgg, ...stalestAgg].map((it) => String(it?._id || "")).filter(Boolean)
-      );
+      const allIds = new Set([
+        ...[...newestAgg, ...oldestAgg, ...biggestAgg, ...stalestAgg].map((it) => String(it?._id || "")).filter(Boolean),
+        ...(Array.isArray(latestDocs) ? latestDocs : []).map((d) => String(d?.storeId || "")).filter(Boolean)
+      ]);
 
       const storeInfoById = new Map();
       await Promise.all(
@@ -1352,6 +1356,21 @@ function createApiRouter(config) {
           lastUploader: newestAgg && newestAgg.length ? mapStoreRow(newestAgg[0]) : null,
           stalest: stalestAgg && stalestAgg.length ? mapStoreRow(stalestAgg[0]) : null
         },
+        latestAssets: (Array.isArray(latestDocs) ? latestDocs : []).map((doc) => {
+          const at = doc?.cloudinaryCreatedAt || doc?.createdAt || null;
+          const storeId = String(doc?.storeId || "");
+          return {
+            id: String(doc?._id),
+            storeId,
+            store: storeInfoById.get(storeId) || null,
+            resourceType: doc?.resourceType || null,
+            publicId: doc?.publicId || null,
+            originalFilename: doc?.originalFilename || null,
+            url: doc?.url || null,
+            secureUrl: doc?.secureUrl || null,
+            at: at ? new Date(at).toISOString() : null
+          };
+        }),
         lists: {
           newest: Array.isArray(newestAgg) ? newestAgg.map(mapStoreRow) : [],
           oldest: Array.isArray(oldestAgg) ? oldestAgg.map(mapStoreRow) : [],

@@ -24,18 +24,12 @@ function formatDay(v) {
 }
 
 function StatPill({ label, value, tone = 'slate' }) {
-  const classes =
-    tone === 'emerald'
-      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-      : tone === 'sky'
-        ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-        : tone === 'violet'
-          ? 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-          : 'bg-white/5 text-white/70 border-white/10'
+  void tone
+  const classes = 'bg-transparent text-white border-[#18b5d5]/25'
 
   return (
     <div className={['inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold', classes].join(' ')}>
-      <span className="opacity-80">{label}</span>
+      <span className="opacity-90">{label}</span>
       <span className="font-mono text-sm">{value}</span>
     </div>
   )
@@ -75,22 +69,12 @@ function initialsFromName(name) {
 }
 
 function StoreLogo({ name, logoUrl, tone }) {
+  void tone
   const src = String(logoUrl || '').trim()
-  const bgColor = tone === 'emerald' 
-    ? 'bg-emerald-500/20' 
-    : tone === 'sky' 
-      ? 'bg-sky-500/20' 
-      : 'bg-white/10'
-  
-  const dotColor = tone === 'emerald'
-    ? 'bg-emerald-400'
-    : tone === 'sky'
-      ? 'bg-sky-400'
-      : 'bg-white/30'
 
   return (
     <div className="relative">
-      <div className={['relative grid h-16 w-16 place-items-center overflow-hidden rounded-xl border border-white/10', bgColor].join(' ')}>
+      <div className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-xl border border-[#18b5d5]/25 bg-[#292929]">
         {src ? (
           <img 
             className="h-full w-full object-cover" 
@@ -104,7 +88,7 @@ function StoreLogo({ name, logoUrl, tone }) {
           <div className="text-lg font-bold tracking-wide text-white">{initialsFromName(name)}</div>
         )}
       </div>
-      <div className={['absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full border-2 border-[#292929]', dotColor].join(' ')} />
+      <div className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full border-2 border-[#292929] bg-[#18b5d5]" />
     </div>
   )
 }
@@ -130,8 +114,8 @@ function StoreCard({ store, compact = false }) {
     <Link
       to={`/public-media/${encodeURIComponent(storeId)}`}
       className={[
-        'group block rounded-2xl border border-white/10 bg-[#121212] transition',
-        'hover:border-[#18b5d5]/50 hover:bg-[#161616] focus:outline-none focus:ring-2 focus:ring-[#18b5d5]/50',
+        'group block rounded-2xl border border-[#18b5d5]/25 bg-[#242424]',
+        'focus:outline-none focus:ring-2 focus:ring-[#18b5d5]/30',
         compact ? 'p-4' : 'p-5'
       ].join(' ')}
     >
@@ -154,40 +138,40 @@ function StoreCard({ store, compact = false }) {
             </div>
             
             <div className="shrink-0 text-right">
-              <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-extrabold text-white">
-                <span className="text-white/60">الملفات</span>
+              <div className="inline-flex items-center gap-2 rounded-xl border border-[#18b5d5]/25 bg-transparent px-3 py-1.5 text-sm font-extrabold text-white">
+                <span className="opacity-90">الملفات</span>
                 <span className="font-mono">{total.toLocaleString()}</span>
               </div>
               {!compact ? (
-                <div className="mt-2 text-[11px] text-white/50">
-                  <span className="text-white/40">آخر رفع:</span> {formatDate(lastAt)}
+                <div className="mt-2 text-[11px] text-white opacity-90">
+                  <span className="opacity-80">آخر رفع:</span> {formatDate(lastAt)}
                 </div>
               ) : null}
             </div>
           </div>
 
           {compact ? (
-            <div className="mt-2 text-[11px] text-white/50">
-              <span className="text-white/40">آخر رفع:</span> {formatDate(lastAt)}
-              <span className="mx-2 text-white/20">•</span>
-              <span className="text-white/40">أول رفع:</span> {formatDay(firstAt)}
+            <div className="mt-2 text-[11px] text-white opacity-90">
+              <span className="opacity-80">آخر رفع:</span> {formatDate(lastAt)}
+              <span className="mx-2 opacity-70">•</span>
+              <span className="opacity-80">أول رفع:</span> {formatDay(firstAt)}
             </div>
           ) : (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
-              <div className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1">
-                <span className="text-white/40">أول رفع:</span> {formatDay(firstAt)}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white opacity-90">
+              <div className="rounded-lg border border-[#18b5d5]/20 bg-transparent px-2.5 py-1">
+                <span className="opacity-80">أول رفع:</span> {formatDay(firstAt)}
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1">
-                <span className="text-white/40">آخر رفع:</span> {formatDate(lastAt)}
+              <div className="rounded-lg border border-[#18b5d5]/20 bg-transparent px-2.5 py-1">
+                <span className="opacity-80">آخر رفع:</span> {formatDate(lastAt)}
               </div>
             </div>
           )}
 
-          <div className="mt-4 overflow-hidden rounded-lg bg-white/5">
+          <div className="mt-4 overflow-hidden rounded-lg bg-[#292929]">
             <div className="flex h-1.5 w-full">
-              <div className="bg-emerald-500" style={{ width: `${(pImages * 100).toFixed(2)}%` }} />
-              <div className="bg-sky-500" style={{ width: `${(pVideos * 100).toFixed(2)}%` }} />
-              <div className="bg-violet-500" style={{ width: `${(pRaws * 100).toFixed(2)}%` }} />
+              <div className="bg-[#18b5d5]" style={{ width: `${(pImages * 100).toFixed(2)}%`, opacity: 1 }} />
+              <div className="bg-[#18b5d5]" style={{ width: `${(pVideos * 100).toFixed(2)}%`, opacity: 0.7 }} />
+              <div className="bg-[#18b5d5]" style={{ width: `${(pRaws * 100).toFixed(2)}%`, opacity: 0.4 }} />
             </div>
           </div>
 
@@ -203,34 +187,15 @@ function StoreCard({ store, compact = false }) {
 }
 
 function MetricCard({ label, value, hint, tone = 'sky', to }) {
-  const ring =
-    tone === 'emerald'
-      ? 'ring-emerald-500/20'
-      : tone === 'violet'
-        ? 'ring-violet-500/20'
-        : tone === 'amber'
-          ? 'ring-amber-400/20'
-          : 'ring-[#18b5d5]/20'
-
-  const top =
-    tone === 'emerald'
-      ? 'from-emerald-500/25 via-emerald-500/0'
-      : tone === 'violet'
-        ? 'from-violet-500/25 via-violet-500/0'
-        : tone === 'amber'
-          ? 'from-amber-400/25 via-amber-400/0'
-          : 'from-[#18b5d5]/25 via-[#18b5d5]/0'
+  void tone
 
   const inner = (
-    <div className={['relative overflow-hidden rounded-2xl border border-white/10 bg-[#121212] p-5 ring-1', ring].join(' ')}>
-      <div className={['pointer-events-none absolute inset-0 bg-gradient-to-br', top, 'to-transparent'].join(' ')} />
-      <div className="relative">
-        <div className="text-xs font-semibold tracking-wide text-white/50">{label}</div>
-        <div className="mt-2 flex items-baseline justify-between gap-3">
-          <div className="text-3xl font-extrabold text-white">{value}</div>
-        </div>
-        {hint ? <div className="mt-2 text-xs text-white/50">{hint}</div> : null}
+    <div className="rounded-2xl border border-[#18b5d5]/25 bg-[#242424] p-5">
+      <div className="text-xs font-bold tracking-wide text-[#18b5d5]">{label}</div>
+      <div className="mt-2 flex items-baseline justify-between gap-3">
+        <div className="text-3xl font-extrabold text-white">{value}</div>
       </div>
+      {hint ? <div className="mt-2 text-xs text-white opacity-90">{hint}</div> : null}
     </div>
   )
 
@@ -248,16 +213,16 @@ function SectionHeader({ title, subtitle, to, actionLabel }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div className="text-lg font-extrabold text-white">{title}</div>
-        {subtitle ? <div className="mt-1 text-sm text-white/50">{subtitle}</div> : null}
+        <div className="text-lg font-extrabold text-[#18b5d5]">{title}</div>
+        {subtitle ? <div className="mt-1 text-sm text-white opacity-90">{subtitle}</div> : null}
       </div>
       {to ? (
         <Link
           to={to}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:border-white/20 hover:bg-white/10"
+          className="inline-flex items-center gap-2 rounded-xl border border-[#18b5d5]/25 bg-transparent px-4 py-2 text-sm font-bold text-white"
         >
           {actionLabel || 'عرض الكل'}
-          <span className="text-white/40">↗</span>
+          <span className="opacity-80">↗</span>
         </Link>
       ) : null}
     </div>
@@ -344,7 +309,7 @@ export function PublicMediaDashboardPage() {
       setOverviewLoading(true)
       setOverviewError('')
       try {
-        const res = await requestJson('/api/public/media/overview', { query: { top: 6 }, signal: controller.signal })
+        const res = await requestJson('/api/public/media/overview', { query: { top: 6, latestLimit: 10 }, signal: controller.signal })
         setOverview(res || null)
       } catch (e) {
         if (e?.code === 'REQUEST_ABORTED') return
@@ -363,25 +328,22 @@ export function PublicMediaDashboardPage() {
 
   const overviewStats = overview?.stats || null
   const lastUploader = overview?.highlights?.lastUploader || null
-  const overviewLists = overview?.lists || null
+  const latestAssets = Array.isArray(overview?.latestAssets) ? overview.latestAssets : []
 
   return (
-    <div className="min-h-screen bg-[#0b0b0b]">
+    <div className="min-h-screen bg-[#292929]" dir="rtl">
       <div className="mx-auto w-full max-w-7xl px-4 py-10">
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0f0f0f] p-7">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(24,181,213,0.22),transparent_40%),radial-gradient(circle_at_80%_30%,rgba(139,92,246,0.15),transparent_40%),radial-gradient(circle_at_60%_90%,rgba(16,185,129,0.10),transparent_45%)]" />
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-white/70">
-                Public
-                <span className="text-white/30">•</span>
-                Media
+        <div className="rounded-3xl border border-[#18b5d5]/25 bg-[#242424] p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-right">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#18b5d5]/25 bg-[#292929] px-3 py-1 text-xs font-bold text-[#18b5d5]">
+                Public <span className="opacity-70">•</span> Media
               </div>
-              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">منصة الرفع</h1>
-              <p className="mt-2 text-sm text-white/55">إدارة الميديا حسب المتجر — لوحة ذكية، سريعة، ومنظمة.</p>
+              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-[#18b5d5] sm:text-4xl">منصة الرفع</h1>
+              <p className="mt-2 text-sm text-white opacity-90">إدارة الميديا حسب المتجر — لوحة رسمية، سريعة، ومنظمة.</p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 sm:justify-start">
               <button
                 type="button"
                 onClick={() => {
@@ -393,10 +355,8 @@ export function PublicMediaDashboardPage() {
                   })
                 }}
                 className={[
-                  'rounded-xl px-4 py-2 text-sm font-extrabold transition',
-                  view === 'overview'
-                    ? 'bg-[#18b5d5] text-white'
-                    : 'border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
+                  'rounded-xl px-4 py-2 text-sm font-extrabold',
+                  view === 'overview' ? 'bg-[#18b5d5] text-white' : 'border border-[#18b5d5]/25 bg-transparent text-white'
                 ].join(' ')}
               >
                 نظرة عامة
@@ -412,10 +372,8 @@ export function PublicMediaDashboardPage() {
                   })
                 }}
                 className={[
-                  'rounded-xl px-4 py-2 text-sm font-extrabold transition',
-                  view === 'stores'
-                    ? 'bg-[#18b5d5] text-white'
-                    : 'border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
+                  'rounded-xl px-4 py-2 text-sm font-extrabold',
+                  view === 'stores' ? 'bg-[#18b5d5] text-white' : 'border border-[#18b5d5]/25 bg-transparent text-white'
                 ].join(' ')}
               >
                 المتاجر
@@ -469,42 +427,75 @@ export function PublicMediaDashboardPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <div className="space-y-4">
-                    <SectionHeader title="الأحدث نشاطًا" subtitle="آخر متجر قام برفع ملفات" to="/public-media?view=stores&sort=lastAt_desc&page=1" actionLabel="كل المتاجر" />
-                    <div className="grid grid-cols-1 gap-3">
-                      {(Array.isArray(overviewLists?.newest) ? overviewLists.newest : []).slice(0, 6).map((s) => (
-                        <StoreCard key={`new-${String(s?.storeId)}`} store={s} compact />
-                      ))}
-                    </div>
+                <div className="rounded-2xl border border-[#18b5d5]/25 bg-[#242424]">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#18b5d5]/15 px-5 py-4">
+                    <div className="text-lg font-extrabold text-[#18b5d5]">آخر 10 إضافات</div>
+                    <Link
+                      to="/public-media?view=stores&sort=lastAt_desc&page=1"
+                      className="rounded-xl border border-[#18b5d5]/25 bg-transparent px-4 py-2 text-sm font-bold text-white"
+                    >
+                      عرض المتاجر
+                    </Link>
                   </div>
-                  <div className="space-y-4">
-                    <SectionHeader title="الأكبر حجمًا" subtitle="أكثر المتاجر رفعًا للملفات" to="/public-media?view=stores&sort=total_desc&page=1" actionLabel="كل المتاجر" />
-                    <div className="grid grid-cols-1 gap-3">
-                      {(Array.isArray(overviewLists?.biggest) ? overviewLists.biggest : []).slice(0, 6).map((s) => (
-                        <StoreCard key={`big-${String(s?.storeId)}`} store={s} compact />
-                      ))}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <div className="space-y-4">
-                    <SectionHeader title="الأقدم انضمامًا" subtitle="أول من بدأ رفع ملفات" to="/public-media?view=stores&sort=firstAt_asc&page=1" actionLabel="كل المتاجر" />
-                    <div className="grid grid-cols-1 gap-3">
-                      {(Array.isArray(overviewLists?.oldest) ? overviewLists.oldest : []).slice(0, 6).map((s) => (
-                        <StoreCard key={`old-${String(s?.storeId)}`} store={s} compact />
-                      ))}
+                  {latestAssets.length ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] text-sm text-white">
+                        <thead>
+                          <tr className="text-right">
+                            <th className="px-5 py-3 font-bold text-white">التاريخ</th>
+                            <th className="px-5 py-3 font-bold text-white">المتجر</th>
+                            <th className="px-5 py-3 font-bold text-white">النوع</th>
+                            <th className="px-5 py-3 font-bold text-white">الاسم</th>
+                            <th className="px-5 py-3 font-bold text-white">الرابط</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {latestAssets.slice(0, 10).map((a) => {
+                            const storeId = String(a?.storeId || '')
+                            const at = a?.at || a?.cloudinaryCreatedAt || a?.createdAt || null
+                            const type = String(a?.resourceType || '')
+                            const name = String(a?.originalFilename || a?.publicId || '—')
+                            const href = String(a?.secureUrl || a?.url || '').trim()
+                            return (
+                              <tr key={String(a?.id || a?.publicId || `${storeId}:${name}:${at}`)} className="border-t border-[#18b5d5]/10">
+                                <td className="px-5 py-3">{formatDate(at)}</td>
+                                <td className="px-5 py-3">
+                                  {storeId ? (
+                                    <Link className="font-bold text-white underline-offset-2 hover:underline" to={`/public-media/${encodeURIComponent(storeId)}`}>
+                                      {a?.store?.name ? String(a.store.name) : storeId}
+                                    </Link>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="px-5 py-3">
+                                  <span className="inline-flex items-center rounded-lg border border-[#18b5d5]/25 bg-transparent px-2.5 py-1 text-xs font-bold text-white">
+                                    {type || '—'}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3">
+                                  <div className="max-w-[340px] truncate font-bold">{name}</div>
+                                  {a?.publicId ? <div className="mt-1 max-w-[340px] truncate text-xs opacity-90">{String(a.publicId)}</div> : null}
+                                </td>
+                                <td className="px-5 py-3">
+                                  {href ? (
+                                    <a className="font-bold text-white underline-offset-2 hover:underline" href={href} target="_blank" rel="noopener noreferrer">
+                                      فتح
+                                    </a>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  </div>
-                  <div className="space-y-4">
-                    <SectionHeader title="الأقل نشاطًا" subtitle="أقدم آخر رفع (بحسب البيانات الحالية)" to="/public-media?view=stores&sort=lastAt_asc&page=1" actionLabel="كل المتاجر" />
-                    <div className="grid grid-cols-1 gap-3">
-                      {(Array.isArray(overviewLists?.stalest) ? overviewLists.stalest : []).slice(0, 6).map((s) => (
-                        <StoreCard key={`stale-${String(s?.storeId)}`} store={s} compact />
-                      ))}
-                    </div>
-                  </div>
+                  ) : (
+                    <div className="px-5 py-10 text-center text-white">لا توجد إضافات لعرضها</div>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -513,10 +504,10 @@ export function PublicMediaDashboardPage() {
 
         {view === 'stores' ? (
           <div className="mt-8 space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-[#0f0f0f] p-4">
+            <div className="rounded-2xl border border-[#18b5d5]/25 bg-[#242424] p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 hover:border-white/20 focus-within:border-[#18b5d5]/50">
-                  <svg className="h-5 w-5 text-white/35" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="flex flex-1 items-center gap-3 rounded-xl border border-[#18b5d5]/25 bg-[#292929] px-4 py-3 focus-within:border-[#18b5d5]/60">
+                  <svg className="h-5 w-5 text-white opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
@@ -526,7 +517,7 @@ export function PublicMediaDashboardPage() {
                       setPage(1)
                     }}
                     placeholder="ابحث بـ Store ID..."
-                    className="flex-1 bg-transparent text-sm text-white placeholder-white/35 outline-none"
+                    className="flex-1 bg-transparent text-sm text-white placeholder:text-white placeholder:opacity-70 outline-none"
                     spellCheck={false}
                   />
                 </div>
@@ -538,7 +529,7 @@ export function PublicMediaDashboardPage() {
                       setSort(e.target.value)
                       setPage(1)
                     }}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
+                    className="rounded-xl border border-[#18b5d5]/25 bg-[#292929] px-3 py-3 text-sm font-semibold text-white outline-none focus:border-[#18b5d5]/60"
                   >
                     <option value="lastAt_desc">الأحدث نشاطًا</option>
                     <option value="lastAt_asc">الأقل نشاطًا</option>
@@ -554,7 +545,7 @@ export function PublicMediaDashboardPage() {
                       setLimit(Number(e.target.value))
                       setPage(1)
                     }}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-white outline-none hover:border-white/20 focus:border-[#18b5d5]/50"
+                    className="rounded-xl border border-[#18b5d5]/25 bg-[#292929] px-3 py-3 text-sm font-semibold text-white outline-none focus:border-[#18b5d5]/60"
                   >
                     <option value="12">12 متجر</option>
                     <option value="24">24 متجر</option>
@@ -564,17 +555,17 @@ export function PublicMediaDashboardPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#18b5d5]/20 bg-[#292929] px-4 py-3">
                 <div className="flex items-center gap-6">
                   <div>
-                    <div className="text-xs text-white/45">إجمالي المتاجر</div>
+                    <div className="text-xs text-white opacity-90">إجمالي المتاجر</div>
                     <div className="mt-1 text-xl font-extrabold text-white">{Number(data.total || 0).toLocaleString()}</div>
                   </div>
-                  <div className="h-10 w-px bg-white/10" />
+                  <div className="h-10 w-px bg-[#18b5d5]/20" />
                   <div>
-                    <div className="text-xs text-white/45">الصفحة</div>
-                    <div className="mt-1 text-xl font-extrabold text-[#18b5d5]">
-                      {page} <span className="text-white/25">/</span> {totalPages}
+                    <div className="text-xs text-white opacity-90">الصفحة</div>
+                    <div className="mt-1 text-xl font-extrabold text-white">
+                      {page} <span className="opacity-70">/</span> {totalPages}
                     </div>
                   </div>
                 </div>
@@ -583,7 +574,7 @@ export function PublicMediaDashboardPage() {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-extrabold text-white hover:border-white/20 hover:bg-white/10 disabled:opacity-40"
+                    className="rounded-xl border border-[#18b5d5]/25 bg-transparent px-4 py-2 text-sm font-extrabold text-white disabled:opacity-40"
                   >
                     السابق
                   </button>
@@ -591,7 +582,7 @@ export function PublicMediaDashboardPage() {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => p + 1)}
-                    className="rounded-xl bg-[#18b5d5] px-4 py-2 text-sm font-extrabold text-white hover:bg-[#16a3c1] disabled:opacity-40"
+                    className="rounded-xl bg-[#18b5d5] px-4 py-2 text-sm font-extrabold text-white disabled:opacity-40"
                   >
                     التالي
                   </button>
@@ -606,8 +597,8 @@ export function PublicMediaDashboardPage() {
             ) : null}
 
             {!loading && error ? (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center">
-                <div className="text-sm font-semibold text-red-300">{error}</div>
+              <div className="rounded-2xl border border-[#18b5d5]/25 bg-[#242424] p-6 text-center">
+                <div className="text-sm font-semibold text-white">{error}</div>
               </div>
             ) : null}
 
@@ -619,9 +610,9 @@ export function PublicMediaDashboardPage() {
                   ))}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-white/10 bg-[#0f0f0f] p-12 text-center">
-                  <div className="text-sm font-semibold text-white/60">لا توجد متاجر مطابقة</div>
-                  <div className="mt-2 text-xs text-white/40">جرب تغيير البحث أو الفرز</div>
+                <div className="rounded-2xl border border-[#18b5d5]/25 bg-[#242424] p-12 text-center">
+                  <div className="text-sm font-semibold text-white">لا توجد متاجر مطابقة</div>
+                  <div className="mt-2 text-xs text-white opacity-90">جرب تغيير البحث أو الفرز</div>
                 </div>
               )
             ) : null}
