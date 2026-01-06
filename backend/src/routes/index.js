@@ -19,7 +19,6 @@ const { readSnippetCss } = require("../storefront/snippet/styles");
 const mountBundle = require("../storefront/snippet/features/bundle/bundle.mount");
 const mountAnnouncementBanner = require("../storefront/snippet/features/announcementBanner/banner.mount");
 const mountMediaPlatform = require("../storefront/snippet/features/mediaPlatform/media.mount");
-const { themeCustomAppSlotExtension } = require("../storefront/extensions/themeCustomAppSlot");
 const { createAnnouncementBannerRouter } = require("./announcementBanner.routes");
 const announcementBannerService = require("../services/announcementBanner.service");
 const MediaAsset = require("../models/MediaAsset");
@@ -636,52 +635,19 @@ function createApiRouter(config) {
       mountBundle(context);
       mountAnnouncementBanner(context);
       mountMediaPlatform(context);
+      context.parts.push(
+        [
+          "(function(){",
+          'function inject(){try{var el=document.getElementById("bundle-app-custom-app-slot");if(!el)return false;if(el.getAttribute("data-bundle-app-hello")==="1")return true;el.setAttribute("data-bundle-app-hello","1");el.textContent="HELLO MAHER";return true}catch(e){return false}}',
+          "if(!inject()){try{document.addEventListener(\"DOMContentLoaded\",inject)}catch(e){}}",
+          "})();"
+        ].join("")
+      );
       const js = context.parts.join("");
       res.setHeader("X-BundleApp-Snippet-Path", "/api/storefront/snippet.js");
       res.setHeader("X-BundleApp-Snippet-Sha256", sha256Hex(js));
       res.setHeader("X-BundleApp-Snippet-Bytes", String(Buffer.byteLength(js, "utf8")));
       return res.send(js);
-    } catch (err) {
-      return next(err);
-    }
-  });
-
-  const storefrontExtensionThemeCustomAppSlotQuerySchema = Joi.object({
-    merchantId: Joi.string().trim().min(1).max(80).required()
-  }).unknown(true);
-
-  router.get("/storefront/extensions/theme-custom-app-slot", async (req, res, next) => {
-    try {
-      const { error, value } = storefrontExtensionThemeCustomAppSlotQuerySchema.validate(req.query, {
-        abortEarly: false,
-        stripUnknown: false
-      });
-      if (error) {
-        throw new ApiError(400, "Validation error", {
-          code: "VALIDATION_ERROR",
-          details: error.details.map((d) => ({ message: d.message, path: d.path }))
-        });
-      }
-
-      const merchantId = String(value.merchantId);
-
-      const merchant = await findMerchantByMerchantId(merchantId);
-      if (!merchant) throw new ApiError(404, "Merchant not found", { code: "MERCHANT_NOT_FOUND" });
-      if (merchant.appStatus !== "installed") throw new ApiError(403, "Merchant is not active", { code: "MERCHANT_INACTIVE" });
-
-      const html = themeCustomAppSlotExtension.render({
-        merchantId,
-        storeId: String(merchant.storeId || merchant.merchantId || merchantId)
-      });
-
-      res.type("html");
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      res.setHeader("X-BundleApp-Storefront-Extension", themeCustomAppSlotExtension.key);
-      res.setHeader("X-BundleApp-Storefront-Hook", themeCustomAppSlotExtension.hook);
-      return res.send(html);
     } catch (err) {
       return next(err);
     }
