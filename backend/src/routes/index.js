@@ -635,6 +635,14 @@ function createApiRouter(config) {
       mountBundle(context);
       mountAnnouncementBanner(context);
       mountMediaPlatform(context);
+      context.parts.push(
+        [
+          "(function(){",
+          'function inject(){try{var el=document.getElementById("bundle-app-custom-app-slot");if(!el)return false;if(el.getAttribute("data-bundle-app-hello")==="1")return true;el.setAttribute("data-bundle-app-hello","1");el.textContent="HELLO MAHER";return true}catch(e){return false}}',
+          "if(!inject()){try{document.addEventListener(\"DOMContentLoaded\",inject)}catch(e){}}",
+          "})();"
+        ].join("")
+      );
       const js = context.parts.join("");
       res.setHeader("X-BundleApp-Snippet-Path", "/api/storefront/snippet.js");
       res.setHeader("X-BundleApp-Snippet-Sha256", sha256Hex(js));
